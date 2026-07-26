@@ -1,0 +1,1428 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ledger — fakturační kniha</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<style>
+  :root{
+    --ink:#182420;
+    --ink-soft:#5C6B66;
+    --paper:#EEF0EA;
+    --surface:#FFFFFF;
+    --line:#D7D9CF;
+    --accent:#1F5C4D;
+    --accent-soft:#DCE8E2;
+    --amber:#B8802B;
+    --amber-soft:#F3E6CD;
+    --red:#AE4530;
+    --red-soft:#F3DCD4;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:var(--paper);
+    color:var(--ink);
+    font-family:'Inter',sans-serif;
+    min-height:100vh;
+  }
+  .num{font-family:'IBM Plex Mono',monospace;}
+  h1,h2,h3,.display{font-family:'Fraunces',serif;}
+  button{font-family:inherit;cursor:pointer;}
+  input,select,textarea{font-family:inherit;}
+
+  #app{display:flex;min-height:100vh;}
+
+  /* SIDEBAR */
+  .sidebar{
+    width:220px;
+    flex-shrink:0;
+    background:var(--ink);
+    color:#EDEFEA;
+    display:flex;
+    flex-direction:column;
+    padding:24px 0;
+  }
+  .brand{
+    padding:0 22px 20px 22px;
+    border-bottom:1px solid rgba(255,255,255,0.12);
+    margin-bottom:16px;
+  }
+  .brand .display{font-size:22px;font-weight:600;letter-spacing:0.3px;color:#fff;}
+  .brand .sub{font-size:11px;color:#9BAAA3;text-transform:uppercase;letter-spacing:1.5px;margin-top:2px;}
+  .navitem{
+    display:flex;align-items:center;gap:10px;
+    padding:11px 22px;
+    font-size:14px;
+    color:#C9D2CC;
+    border-left:3px solid transparent;
+    transition:background .15s;
+  }
+  .navitem:hover{background:rgba(255,255,255,0.05);}
+  .navitem.active{
+    background:rgba(255,255,255,0.07);
+    color:#fff;
+    border-left:3px solid var(--accent-soft);
+  }
+  .navitem .n{font-family:'IBM Plex Mono',monospace;font-size:11px;color:#7C8B84;width:18px;}
+  .sidebar-foot{margin-top:auto;padding:16px 22px 0 22px;font-size:11px;color:#647069;border-top:1px solid rgba(255,255,255,0.1);}
+
+  /* MAIN */
+  .main{flex:1;padding:36px 44px;max-width:1180px;}
+  .pagehead{display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:28px;}
+  .pagehead h1{font-size:28px;margin:0 0 4px 0;font-weight:600;}
+  .pagehead .desc{color:var(--ink-soft);font-size:14px;margin:0;}
+  .btn{
+    border:1px solid var(--ink);
+    background:var(--ink);
+    color:#fff;
+    padding:10px 18px;
+    border-radius:3px;
+    font-size:14px;
+    font-weight:500;
+  }
+  .btn:hover{background:#0f1815;}
+  .btn.secondary{background:transparent;color:var(--ink);border:1px solid var(--line);}
+  .btn.secondary:hover{background:#fff;}
+  .btn.danger{background:transparent;color:var(--red);border:1px solid var(--red-soft);}
+  .btn.danger:hover{background:var(--red-soft);}
+  .btn.small{padding:6px 12px;font-size:12.5px;}
+
+  /* CARDS */
+  .cards{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:30px;}
+  .card{background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:16px 18px;}
+  .card .label{font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--ink-soft);margin-bottom:8px;}
+  .card .value{font-family:'IBM Plex Mono',monospace;font-size:22px;font-weight:600;}
+  .card .value.amber{color:var(--amber);}
+  .card .value.red{color:var(--red);}
+  .card .value.accent{color:var(--accent);}
+
+  /* TABLE */
+  table{width:100%;border-collapse:collapse;background:var(--surface);border:1px solid var(--line);border-radius:6px;overflow:hidden;}
+  thead th{
+    text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:0.8px;
+    color:var(--ink-soft);padding:12px 16px;border-bottom:1px solid var(--line);font-weight:600;
+  }
+  tbody td{padding:13px 16px;border-bottom:1px solid var(--line);font-size:14px;vertical-align:middle;}
+  tbody tr:last-child td{border-bottom:none;}
+  tbody tr:hover{background:#FAFAF6;}
+  .rowlink{cursor:pointer;}
+  .empty{padding:50px 20px;text-align:center;color:var(--ink-soft);}
+  .empty .display{font-size:18px;color:var(--ink);margin-bottom:6px;}
+
+  .pill{display:inline-block;padding:3px 10px;border-radius:20px;font-size:11.5px;font-weight:600;letter-spacing:0.2px;}
+  .pill.paid{background:var(--accent-soft);color:var(--accent);}
+  .pill.pending{background:var(--amber-soft);color:var(--amber);}
+  .pill.overdue{background:var(--red-soft);color:var(--red);}
+
+  /* FORMS */
+  .form-card{background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:26px 28px;max-width:840px;}
+  .field-row{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:14px;}
+  .field{margin-bottom:14px;}
+  .field label{display:block;font-size:12px;color:var(--ink-soft);margin-bottom:5px;font-weight:500;}
+  .field input,.field select,.field textarea{
+    width:100%;padding:9px 11px;border:1px solid var(--line);border-radius:4px;font-size:14px;background:#fff;color:var(--ink);
+  }
+  .field input:focus,.field select:focus,.field textarea:focus{outline:none;border-color:var(--accent);}
+  .field textarea{resize:vertical;min-height:60px;}
+  .section-title{font-size:12px;text-transform:uppercase;letter-spacing:1px;color:var(--ink-soft);margin:24px 0 12px 0;border-top:1px solid var(--line);padding-top:18px;}
+  .section-title:first-child{border-top:none;padding-top:0;margin-top:0;}
+
+  .items-table{width:100%;border-collapse:collapse;margin-bottom:10px;}
+  .items-table th{font-size:11px;text-transform:uppercase;color:var(--ink-soft);text-align:left;padding:6px 8px;border-bottom:1px solid var(--line);}
+  .items-table td{padding:6px 8px;vertical-align:top;}
+  .items-table input,.items-table select{padding:7px 8px;font-size:13.5px;}
+  .items-table .col-desc{width:38%;}
+  .items-table .col-qty,.items-table .col-price,.items-table .col-vat{width:12%;}
+  .totals-box{margin-left:auto;width:260px;font-size:14px;}
+  .totals-box .trow{display:flex;justify-content:space-between;padding:5px 0;color:var(--ink-soft);}
+  .totals-box .trow.grand{color:var(--ink);font-weight:700;font-size:17px;border-top:1px solid var(--line);margin-top:6px;padding-top:10px;font-family:'IBM Plex Mono',monospace;}
+  .formfoot{display:flex;gap:10px;margin-top:22px;align-items:center;}
+  .btn-link{background:none;border:none;color:var(--ink-soft);text-decoration:underline;font-size:14px;padding:10px 4px;}
+  .btn-link:hover{color:var(--ink);}
+
+  /* SEARCH */
+  .search-row{margin-bottom:16px;}
+  .search-input{width:100%;max-width:340px;padding:9px 12px;border:1px solid var(--line);border-radius:4px;font-size:14px;background:#fff;}
+  .search-input:focus{outline:none;border-color:var(--accent);}
+
+  /* CLIENT COMBO */
+  .combo-field{position:relative;}
+  .combo-list{
+    position:absolute;top:100%;left:0;right:0;background:#fff;border:1px solid var(--line);
+    border-radius:4px;margin-top:4px;max-height:220px;overflow-y:auto;box-shadow:0 6px 18px rgba(24,36,32,0.1);
+    z-index:20;display:none;
+  }
+  .combo-list.open{display:block;}
+  .combo-item{padding:9px 12px;font-size:13.5px;cursor:pointer;}
+  .combo-item:hover,.combo-item.hl{background:var(--accent-soft);}
+  .combo-item .sub{font-size:11.5px;color:var(--ink-soft);}
+  .combo-empty{padding:12px;font-size:13px;color:var(--ink-soft);}
+
+  /* INVOICE IMPORT */
+  .dropzone{
+    border:2px dashed var(--line);border-radius:8px;padding:40px 24px;text-align:center;
+    color:var(--ink-soft);font-size:14px;cursor:pointer;transition:border-color .15s,background .15s;
+  }
+  .dropzone:hover,.dropzone.drag{border-color:var(--accent);background:var(--accent-soft);}
+  .dropzone .display{font-size:17px;color:var(--ink);margin-bottom:6px;}
+  .import-status{margin-top:16px;font-size:14px;color:var(--ink-soft);display:flex;align-items:center;gap:8px;}
+  .spinner{width:14px;height:14px;border:2px solid var(--line);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite;}
+  @keyframes spin{to{transform:rotate(360deg);}}
+  .import-error{background:var(--red-soft);color:var(--red);font-size:13.5px;padding:10px 14px;border-radius:4px;margin-top:14px;}
+  .import-preview{margin-top:22px;border-top:1px solid var(--line);padding-top:20px;}
+  .import-preview .row{display:flex;gap:24px;margin-bottom:14px;font-size:13.5px;}
+  .import-preview .col{flex:1;}
+  .import-preview .k{font-size:10.5px;text-transform:uppercase;letter-spacing:1px;color:var(--ink-soft);margin-bottom:4px;}
+  .import-preview .badge{display:inline-block;font-size:11px;padding:2px 8px;border-radius:10px;background:var(--accent-soft);color:var(--accent);margin-left:6px;}
+  .iconbtn{background:transparent;border:none;color:var(--ink-soft);font-size:13px;padding:4px 6px;}
+  .iconbtn:hover{color:var(--red);}
+  .actions-cell{display:flex;gap:8px;}
+
+  /* INVOICE PREVIEW */
+  .preview-wrap{display:flex;gap:24px;align-items:flex-start;}
+  .invoice-sheet{
+    background:var(--surface);width:720px;padding:48px 52px;border:1px solid var(--line);
+    position:relative;overflow:hidden;border-radius:2px;
+    box-shadow:0 2px 18px rgba(24,36,32,0.06);
+  }
+  .invoice-sheet .top{display:flex;justify-content:space-between;margin-bottom:36px;}
+  .invoice-sheet .doctitle{font-size:26px;font-weight:600;}
+  .invoice-sheet .docnum{font-family:'IBM Plex Mono',monospace;color:var(--ink-soft);font-size:13px;margin-top:4px;}
+  .invoice-sheet .parties{display:flex;justify-content:space-between;margin-bottom:30px;gap:30px;}
+  .invoice-sheet .party{flex:1;font-size:13.5px;line-height:1.55;}
+  .invoice-sheet .party .k{font-size:10.5px;text-transform:uppercase;letter-spacing:1px;color:var(--ink-soft);margin-bottom:6px;}
+  .invoice-sheet .party .nm{font-weight:600;font-size:15px;margin-bottom:2px;}
+  .invoice-sheet .meta{display:flex;gap:28px;margin-bottom:26px;font-size:13px;}
+  .invoice-sheet .meta div .k{color:var(--ink-soft);font-size:10.5px;text-transform:uppercase;letter-spacing:1px;margin-bottom:3px;}
+  .invoice-sheet .meta div .v{font-family:'IBM Plex Mono',monospace;font-weight:600;}
+  .invoice-sheet table.lines{width:100%;border-collapse:collapse;margin-bottom:18px;}
+  .invoice-sheet table.lines th{text-align:left;font-size:10.5px;text-transform:uppercase;letter-spacing:0.6px;color:var(--ink-soft);border-bottom:1px solid var(--ink);padding:0 8px 8px 0;}
+  .invoice-sheet table.lines td{padding:9px 8px 9px 0;border-bottom:1px solid var(--line);font-size:13.5px;}
+  .invoice-sheet table.lines td.num,.invoice-sheet table.lines th.num{text-align:right;font-family:'IBM Plex Mono',monospace;}
+  .invoice-sheet .bottom{display:flex;justify-content:space-between;align-items:flex-start;margin-top:22px;}
+  .invoice-sheet .qrbox{text-align:center;font-size:11px;color:var(--ink-soft);}
+  .invoice-sheet .qrbox .qrimg{border:1px solid var(--line);padding:8px;background:#fff;display:inline-block;margin-bottom:6px;}
+  .invoice-sheet .totals{width:260px;}
+  .invoice-sheet .totals .trow{display:flex;justify-content:space-between;font-size:13.5px;padding:4px 0;color:var(--ink-soft);}
+  .invoice-sheet .totals .trow.grand{font-family:'IBM Plex Mono',monospace;font-size:20px;font-weight:700;color:var(--ink);border-top:1px solid var(--ink);margin-top:6px;padding-top:10px;}
+  .invoice-sheet .note{margin-top:26px;font-size:12px;color:var(--ink-soft);border-top:1px solid var(--line);padding-top:14px;}
+  .stamp{
+    position:absolute;top:120px;right:60px;
+    border:3px solid var(--accent);color:var(--accent);
+    font-family:'Fraunces',serif;font-weight:700;font-size:26px;
+    padding:8px 18px;border-radius:6px;transform:rotate(-9deg);
+    letter-spacing:2px;opacity:0.85;
+  }
+  .preview-side{width:220px;display:flex;flex-direction:column;gap:8px;}
+
+  /* LOGIN */
+  .login-wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;background:var(--ink);}
+  .login-card{background:var(--surface);width:380px;padding:36px 34px;border-radius:8px;box-shadow:0 10px 40px rgba(0,0,0,0.3);}
+  .login-card .display{font-size:24px;margin-bottom:2px;}
+  .login-card .sub{color:var(--ink-soft);font-size:13px;margin-bottom:22px;}
+  .login-card .field{margin-bottom:14px;}
+  .login-card .switch{font-size:13px;color:var(--ink-soft);margin-top:14px;text-align:center;}
+  .login-card .switch a{color:var(--accent);cursor:pointer;text-decoration:underline;}
+  .login-error{background:var(--red-soft);color:var(--red);font-size:13px;padding:9px 12px;border-radius:4px;margin-bottom:14px;}
+  .whoami{display:flex;align-items:center;justify-content:space-between;gap:8px;}
+  .whoami .name{font-size:13px;color:#EDEFEA;font-weight:600;}
+  .whoami button{background:none;border:none;color:#9BAAA3;font-size:12px;text-decoration:underline;padding:0;}
+  .user-row{display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-bottom:1px solid var(--line);font-size:14px;}
+  .user-row:last-child{border-bottom:none;}
+
+  @media print{
+    .sidebar,.pagehead,.preview-side,.no-print{display:none !important;}
+    body,.main{background:#fff;padding:0;margin:0;}
+    .preview-wrap{display:block;}
+    .invoice-sheet{box-shadow:none;border:none;width:auto;}
+  }
+</style>
+</head>
+<body>
+<div id="app"></div>
+
+<script>
+/* ---------- STATE ---------- */
+let state = {
+  view: 'dashboard',
+  company: null,
+  clients: [],
+  invoices: [],
+  users: [],
+  currentUser: null,
+  authView: 'login', // 'login' | 'register'
+  authError: '',
+  editingInvoiceId: null,
+  editingClientId: null,
+  previewId: null,
+  formItems: [],
+  loaded: false,
+  clientSearch: '',
+  preselectClientId: null,
+  importBusy: false,
+  importError: '',
+  importResult: null, // { company, client, matchedClientId, invoice }
+  backupDates: []
+};
+
+const VAT_RATES = [21, 12, 0];
+
+function uid(){ return Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
+function fmt(n){ return (Math.round((n+Number.EPSILON)*100)/100).toLocaleString('cs-CZ',{minimumFractionDigits:2,maximumFractionDigits:2}); }
+function todayISO(){ return new Date().toISOString().slice(0,10); }
+function addDays(dateStr, days){ const d = new Date(dateStr); d.setDate(d.getDate()+days); return d.toISOString().slice(0,10); }
+function stripDiacritics(s){ return (s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,''); }
+
+/* ---------- STORAGE ---------- */
+async function loadUsers(){
+  try{ const r = await window.storage.get('users', true); state.users = r ? JSON.parse(r.value) : []; }catch(e){ state.users = []; }
+}
+async function saveUsers(){ try{ await window.storage.set('users', JSON.stringify(state.users), true); }catch(e){ console.error(e); } }
+
+async function loadAll(){
+  try{ const r = await window.storage.get('company', true); state.company = r ? JSON.parse(r.value) : null; }catch(e){ state.company = null; }
+  try{ const r = await window.storage.get('clients', true); state.clients = r ? JSON.parse(r.value) : []; }catch(e){ state.clients = []; }
+  try{ const r = await window.storage.get('invoices', true); state.invoices = r ? JSON.parse(r.value) : []; }catch(e){ state.invoices = []; }
+  if(!state.company){
+    state.company = { name:'', address:'', ico:'', dic:'', account:'', iban:'', email:'', phone:'', prefix: new Date().getFullYear().toString(), nextNumber:1, defaultDueDays:14, defaultNote:'Děkujeme za spolupráci.' };
+  }
+  state.backupDates = await loadBackupIndex();
+  state.loaded = true;
+}
+async function saveCompany(){ try{ await window.storage.set('company', JSON.stringify(state.company), true); }catch(e){ console.error(e); } saveSnapshotBackup(); }
+async function saveClients(){ try{ await window.storage.set('clients', JSON.stringify(state.clients), true); }catch(e){ console.error(e); } saveSnapshotBackup(); }
+async function saveInvoices(){ try{ await window.storage.set('invoices', JSON.stringify(state.invoices), true); }catch(e){ console.error(e); } saveSnapshotBackup(); }
+
+/* ---------- BACKUP / SNAPSHOTS ---------- */
+async function loadBackupIndex(){
+  try{ const r = await window.storage.get('backup-index', true); return r ? JSON.parse(r.value) : []; }catch(e){ return []; }
+}
+async function saveSnapshotBackup(){
+  try{
+    const date = todayISO();
+    const payload = JSON.stringify({ savedAt: new Date().toISOString(), company: state.company, clients: state.clients, invoices: state.invoices });
+    await window.storage.set('backup:'+date, payload, true);
+    let dates = await loadBackupIndex();
+    if(!dates.includes(date)) dates.push(date);
+    dates.sort();
+    while(dates.length > 10){
+      const old = dates.shift();
+      try{ await window.storage.delete('backup:'+old, true); }catch(e){/* ignore */}
+    }
+    await window.storage.set('backup-index', JSON.stringify(dates), true);
+    state.backupDates = dates;
+  }catch(e){ console.error('Snapshot backup failed', e); }
+}
+
+function exportBackupFile(){
+  const payload = { exportedAt: new Date().toISOString(), company: state.company, clients: state.clients, invoices: state.invoices };
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type:'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `faktury-zaloha-${todayISO()}.json`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+async function restoreFromBackupObject(data, label){
+  if(!confirm(`Obnovit data ${label}? Přepíší se tím současní klienti, faktury i údaje o firmě.`)) return;
+  try{
+    if(data.company){ state.company = data.company; await saveCompany(); }
+    if(Array.isArray(data.clients)){ state.clients = data.clients; await saveClients(); }
+    if(Array.isArray(data.invoices)){ state.invoices = data.invoices; await saveInvoices(); }
+    alert('Data byla obnovena ze zálohy.');
+    render();
+  }catch(e){
+    console.error(e);
+    alert('Obnovení se nepovedlo.');
+  }
+}
+
+async function restoreFromSnapshot(date){
+  try{
+    const r = await window.storage.get('backup:'+date, true);
+    if(!r){ alert('Tato záloha už není dostupná.'); return; }
+    const data = JSON.parse(r.value);
+    await restoreFromBackupObject(data, `z automatické zálohy ${date}`);
+  }catch(e){
+    console.error(e);
+    alert('Zálohu se nepodařilo načíst.');
+  }
+}
+
+async function restoreFromUploadedFile(file){
+  try{
+    const text = await file.text();
+    const data = JSON.parse(text);
+    await restoreFromBackupObject(data, 'z nahraného souboru');
+  }catch(e){
+    console.error(e);
+    alert('Soubor se nepodařilo přečíst — zkontroluj, že je to platná záloha (.json) z této appky.');
+  }
+}
+
+/* ---------- DERIVED ---------- */
+function invoiceTotals(inv){
+  let base=0, vat=0;
+  (inv.items||[]).forEach(it=>{
+    const b = (it.qty||0)*(it.price||0);
+    base += b;
+    vat += b*((it.vat||0)/100);
+  });
+  return { base, vat, total: base+vat };
+}
+function invoiceStatus(inv){
+  if(inv.paid) return 'paid';
+  if(inv.dueDate && inv.dueDate < todayISO()) return 'overdue';
+  return 'pending';
+}
+function statusLabel(s){ return s==='paid'?'Zaplaceno':(s==='overdue'?'Po splatnosti':'Čeká na platbu'); }
+function clientById(id){ return state.clients.find(c=>c.id===id); }
+
+/* ---------- RENDER ROOT ---------- */
+function render(){
+  const app = document.getElementById('app');
+  if(!state.currentUser){
+    app.innerHTML = renderAuth();
+    afterRenderAuth();
+    return;
+  }
+  app.innerHTML = `
+    <div class="sidebar">
+      <div class="brand">
+        <div class="display">Ledger</div>
+        <div class="sub">Fakturační kniha</div>
+      </div>
+      <div class="navitem ${state.view==='dashboard'?'active':''}" data-action="nav" data-view="dashboard">Přehled</div>
+      <div class="navitem ${state.view==='invoices'||state.view==='invoice-form'||state.view==='invoice-preview'||state.view==='invoice-import'?'active':''}" data-action="nav" data-view="invoices">Faktury</div>
+      <div class="navitem ${state.view==='clients'||state.view==='client-form'?'active':''}" data-action="nav" data-view="clients">Klienti</div>
+      <div class="navitem ${state.view==='settings'?'active':''}" data-action="nav" data-view="settings">Nastavení</div>
+      <div class="sidebar-foot">
+        <div class="whoami">
+          <span class="name">${escapeHtml(state.currentUser)}</span>
+          <button data-action="logout">Odhlásit</button>
+        </div>
+      </div>
+    </div>
+    <div class="main">${renderView()}</div>
+  `;
+  afterRender();
+}
+
+/* ---------- AUTH ---------- */
+function renderAuth(){
+  const hasUsers = state.users.length > 0;
+  if(state.authView==='register' || !hasUsers){
+    return `
+      <div class="login-wrap">
+        <div class="login-card">
+          <div class="display">${hasUsers ? 'Nový kolega' : 'Založit firmu'}</div>
+          <div class="sub">${hasUsers ? 'Vytvoř si vlastní přihlášení do sdílené fakturace.' : 'Vytvoř první přihlášení — pak se přidají i kolegové.'}</div>
+          ${state.authError?`<div class="login-error">${escapeHtml(state.authError)}</div>`:''}
+          <form id="register-form">
+            <div class="field"><label>Jméno</label><input name="name" required autofocus></div>
+            <div class="field"><label>Heslo</label><input name="password" type="password" required></div>
+            <button type="submit" class="btn" style="width:100%;">Vytvořit a přihlásit</button>
+          </form>
+          ${hasUsers ? `<div class="switch">Už máš přihlášení? <a data-action="auth-switch" data-view="login">Přihlásit se</a></div>` : ''}
+        </div>
+      </div>
+    `;
+  }
+  return `
+    <div class="login-wrap">
+      <div class="login-card">
+        <div class="display">Ledger</div>
+        <div class="sub">Přihlas se ke sdílené fakturaci.</div>
+        ${state.authError?`<div class="login-error">${escapeHtml(state.authError)}</div>`:''}
+        <form id="login-form">
+          <div class="field"><label>Jméno</label>
+            <select name="name">${state.users.map(u=>`<option value="${escapeAttr(u.name)}">${escapeHtml(u.name)}</option>`).join('')}</select>
+          </div>
+          <div class="field"><label>Heslo</label><input name="password" type="password" required autofocus></div>
+          <button type="submit" class="btn" style="width:100%;">Přihlásit se</button>
+        </form>
+        <div class="switch">Nový kolega? <a data-action="auth-switch" data-view="register">Vytvořit přihlášení</a></div>
+      </div>
+    </div>
+  `;
+}
+
+function afterRenderAuth(){
+  const lf = document.getElementById('login-form');
+  if(lf) lf.addEventListener('submit', onSubmitLogin);
+  const rf = document.getElementById('register-form');
+  if(rf) rf.addEventListener('submit', onSubmitRegister);
+}
+
+async function onSubmitLogin(e){
+  e.preventDefault();
+  const fd = new FormData(e.target);
+  const name = fd.get('name');
+  const password = fd.get('password');
+  const user = state.users.find(u=>u.name===name);
+  if(!user || user.password!==password){
+    state.authError = 'Nesedí jméno nebo heslo.';
+    render();
+    return;
+  }
+  state.authError='';
+  state.currentUser = name;
+  await loadAll();
+  state.view='dashboard';
+  render();
+}
+
+async function onSubmitRegister(e){
+  e.preventDefault();
+  const fd = new FormData(e.target);
+  const name = (fd.get('name')||'').trim();
+  const password = fd.get('password');
+  if(state.users.find(u=>u.name.toLowerCase()===name.toLowerCase())){
+    state.authError = 'Toto jméno už existuje, zvol jiné nebo se přihlas.';
+    render();
+    return;
+  }
+  state.users.push({name, password});
+  await saveUsers();
+  state.authError='';
+  state.currentUser = name;
+  await loadAll();
+  state.view='dashboard';
+  render();
+}
+
+function renderView(){
+  switch(state.view){
+    case 'dashboard': return viewDashboard();
+    case 'invoices': return viewInvoices();
+    case 'invoice-form': return viewInvoiceForm();
+    case 'invoice-preview': return viewInvoicePreview();
+    case 'invoice-import': return viewInvoiceImport();
+    case 'clients': return viewClients();
+    case 'client-form': return viewClientForm();
+    case 'settings': return viewSettings();
+    default: return '';
+  }
+}
+
+/* ---------- DASHBOARD ---------- */
+function viewDashboard(){
+  const withStatus = state.invoices.map(i=>({...i, status: invoiceStatus(i), t: invoiceTotals(i)}));
+  const unpaidSum = withStatus.filter(i=>i.status!=='paid').reduce((s,i)=>s+i.t.total,0);
+  const overdueCount = withStatus.filter(i=>i.status==='overdue').length;
+  const thisMonth = withStatus.filter(i=> (i.issueDate||'').slice(0,7)===todayISO().slice(0,7)).reduce((s,i)=>s+i.t.total,0);
+  const recent = [...state.invoices].sort((a,b)=> (b.issueDate||'').localeCompare(a.issueDate||'')).slice(0,6);
+
+  return `
+    <div class="pagehead">
+      <div><h1>Přehled</h1><p class="desc">Stav fakturace na jeden pohled.</p></div>
+      <button class="btn no-print" data-action="new-invoice">+ Nová faktura</button>
+    </div>
+    <div class="cards">
+      <div class="card"><div class="label">Faktur celkem</div><div class="value">${state.invoices.length}</div></div>
+      <div class="card"><div class="label">Nezaplaceno</div><div class="value amber num">${fmt(unpaidSum)} Kč</div></div>
+      <div class="card"><div class="label">Po splatnosti</div><div class="value red num">${overdueCount}</div></div>
+      <div class="card"><div class="label">Fakturováno tento měsíc</div><div class="value accent num">${fmt(thisMonth)} Kč</div></div>
+    </div>
+    <div class="section-title">Poslední faktury</div>
+    ${recent.length ? renderInvoiceTable(recent) : emptyState('Zatím žádné faktury','Vystav svou první fakturu a uvidíš ji tady.')}
+  `;
+}
+
+function emptyState(title, sub){
+  return `<div class="empty"><div class="display">${title}</div><div>${sub}</div></div>`;
+}
+
+/* ---------- INVOICES ---------- */
+function viewInvoices(){
+  const sorted = [...state.invoices].sort((a,b)=> (b.number||'').localeCompare(a.number||''));
+  return `
+    <div class="pagehead">
+      <div><h1>Faktury</h1><p class="desc">${state.invoices.length} vystavených faktur.</p></div>
+      <div style="display:flex;gap:10px;">
+        <button class="btn secondary" data-action="goto-import">⇧ Nahrát starou fakturu</button>
+        <button class="btn" data-action="new-invoice">+ Nová faktura</button>
+      </div>
+    </div>
+    ${sorted.length ? renderInvoiceTable(sorted) : emptyState('Žádné faktury', 'Klikni na „Nová faktura“ a vystav první doklad.')}
+  `;
+}
+
+function renderInvoiceTable(list){
+  return `
+  <table>
+    <thead><tr>
+      <th>Číslo</th><th>Klient</th><th>Vystaveno</th><th>Splatnost</th><th>Částka</th><th>Stav</th><th>Vytvořil</th><th></th>
+    </tr></thead>
+    <tbody>
+      ${list.map(inv=>{
+        const c = clientById(inv.clientId);
+        const t = invoiceTotals(inv);
+        const s = invoiceStatus(inv);
+        return `<tr class="rowlink" data-action="preview-invoice" data-id="${inv.id}">
+          <td class="num">${inv.number}</td>
+          <td>${c ? escapeHtml(c.name) : '—'}</td>
+          <td class="num">${inv.issueDate||''}</td>
+          <td class="num">${inv.dueDate||''}</td>
+          <td class="num">${fmt(t.total)} Kč</td>
+          <td><span class="pill ${s}">${statusLabel(s)}</span></td>
+          <td>${escapeHtml(inv.createdBy||'—')}</td>
+          <td class="actions-cell no-print" onclick="event.stopPropagation()">
+            <button class="iconbtn" data-action="edit-invoice" data-id="${inv.id}" title="Upravit">✎</button>
+            <button class="iconbtn" data-action="delete-invoice" data-id="${inv.id}" title="Smazat">✕</button>
+          </td>
+        </tr>`;
+      }).join('')}
+    </tbody>
+  </table>`;
+}
+
+function blankInvoice(){
+  const c = state.company;
+  const num = `${c.prefix}${String(c.nextNumber).padStart(4,'0')}`;
+  const preselected = state.preselectClientId && clientById(state.preselectClientId) ? state.preselectClientId : (state.clients[0]?state.clients[0].id:null);
+  state.preselectClientId = null;
+  return {
+    id:null, number:num, clientId: preselected,
+    issueDate: todayISO(), taxDate: todayISO(), dueDate: addDays(todayISO(), c.defaultDueDays||14),
+    variableSymbol: num.replace(/\D/g,''), note: c.defaultNote||'', paid:false, paidDate:null
+  };
+}
+
+function viewInvoiceForm(){
+  const editing = state.editingInvoiceId ? state.invoices.find(i=>i.id===state.editingInvoiceId) : null;
+  const inv = editing ? {...editing} : blankInvoice();
+  if(!state.formItems.length){
+    state.formItems = editing && editing.items && editing.items.length ? JSON.parse(JSON.stringify(editing.items)) : [{desc:'',qty:1,unit:'ks',price:0,vat:21}];
+  }
+  if(!state.clients.length){
+    return `
+      <div class="pagehead"><div><h1>${editing?'Upravit fakturu':'Nová faktura'}</h1></div></div>
+      <div class="form-card">${emptyState('Nejdřív přidej klienta','Fakturu potřebuje mít komu poslat — přidej klienta v sekci „Klienti“.')}
+      <div class="formfoot"><button class="btn secondary" data-action="nav" data-view="clients">Přejít na klienty</button></div></div>
+    `;
+  }
+  return `
+    <div class="pagehead"><div><h1>${editing?'Upravit fakturu':'Nová faktura'}</h1></div></div>
+    <form id="invoice-form" class="form-card">
+      <div class="section-title">Základní údaje</div>
+      <div class="field-row">
+        <div class="field"><label>Číslo faktury</label><input name="number" value="${inv.number}" required></div>
+        <div class="field combo-field">
+          <label>Klient</label>
+          <input type="text" id="client-combo-input" placeholder="Hledat klienta podle názvu, IČO…" autocomplete="off" value="${escapeAttr(clientById(inv.clientId)?clientById(inv.clientId).name:'')}">
+          <input type="hidden" name="clientId" id="client-combo-value" value="${inv.clientId||''}">
+          <div class="combo-list" id="client-combo-list"></div>
+        </div>
+      </div>
+      <div class="field-row">
+        <div class="field"><label>Datum vystavení</label><input type="date" name="issueDate" value="${inv.issueDate}" required></div>
+        <div class="field"><label>Datum splatnosti</label><input type="date" name="dueDate" value="${inv.dueDate}" required></div>
+      </div>
+      <div class="field-row">
+        <div class="field"><label>Datum zdanitelného plnění</label><input type="date" name="taxDate" value="${inv.taxDate}"></div>
+        <div class="field"><label>Variabilní symbol</label><input name="variableSymbol" value="${inv.variableSymbol||''}"></div>
+      </div>
+
+      <div class="section-title">Položky</div>
+      <table class="items-table">
+        <thead><tr><th class="col-desc">Popis</th><th>Množství</th><th>Jedn.</th><th class="col-price">Cena/ks</th><th class="col-vat">DPH</th><th class="num">Celkem</th><th></th></tr></thead>
+        <tbody id="items-body">${renderItemRows()}</tbody>
+      </table>
+      <button type="button" class="btn secondary small no-print" data-action="add-item">+ Přidat položku</button>
+
+      <div class="section-title">Souhrn</div>
+      <div class="totals-box" id="totals-box">${renderTotalsBox()}</div>
+
+      <div class="section-title">Poznámka</div>
+      <div class="field"><textarea name="note">${inv.note||''}</textarea></div>
+
+      <div class="formfoot">
+        <button type="submit" class="btn">Uložit fakturu</button>
+        <button type="button" class="btn-link" data-action="nav" data-view="invoices">Zrušit</button>
+      </div>
+      <input type="hidden" name="paid" value="${inv.paid?'1':''}">
+      <input type="hidden" name="paidDate" value="${inv.paidDate||''}">
+      <input type="hidden" name="id" value="${inv.id||''}">
+    </form>
+  `;
+}
+
+function renderItemRows(){
+  return state.formItems.map((it,idx)=>{
+    const lineTotal = (it.qty||0)*(it.price||0)*(1+(it.vat||0)/100);
+    return `<tr>
+      <td class="col-desc"><input data-field="desc" data-index="${idx}" value="${escapeAttr(it.desc)}" placeholder="Popis položky"></td>
+      <td class="col-qty"><input type="number" step="0.01" data-field="qty" data-index="${idx}" value="${it.qty}"></td>
+      <td><input data-field="unit" data-index="${idx}" value="${escapeAttr(it.unit||'ks')}" style="width:60px"></td>
+      <td class="col-price"><input type="number" step="0.01" data-field="price" data-index="${idx}" value="${it.price}"></td>
+      <td class="col-vat"><select data-field="vat" data-index="${idx}">${VAT_RATES.map(r=>`<option value="${r}" ${r==it.vat?'selected':''}>${r}%</option>`).join('')}</select></td>
+      <td class="num" style="white-space:nowrap;padding-top:14px;">${fmt(lineTotal)} Kč</td>
+      <td><button type="button" class="iconbtn no-print" data-action="remove-item" data-index="${idx}">✕</button></td>
+    </tr>`;
+  }).join('');
+}
+
+function renderTotalsBox(){
+  let base=0, vat=0;
+  state.formItems.forEach(it=>{ const b=(it.qty||0)*(it.price||0); base+=b; vat+=b*((it.vat||0)/100); });
+  return `
+    <div class="trow"><span>Základ daně</span><span class="num">${fmt(base)} Kč</span></div>
+    <div class="trow"><span>DPH</span><span class="num">${fmt(vat)} Kč</span></div>
+    <div class="trow grand"><span>Celkem</span><span>${fmt(base+vat)} Kč</span></div>
+  `;
+}
+
+/* ---------- INVOICE PREVIEW ---------- */
+function viewInvoicePreview(){
+  const inv = state.invoices.find(i=>i.id===state.previewId);
+  if(!inv) return emptyState('Faktura nenalezena','');
+  const c = clientById(inv.clientId);
+  const co = state.company;
+  const t = invoiceTotals(inv);
+  const status = invoiceStatus(inv);
+
+  const spayd = buildSpayd(co, inv, t.total);
+
+  return `
+    <div class="pagehead no-print">
+      <div><h1>Faktura ${inv.number}</h1><p class="desc">Náhled dokladu</p></div>
+      <div style="display:flex;gap:10px;">
+        <button class="btn secondary" data-action="edit-invoice" data-id="${inv.id}">Upravit</button>
+        <button class="btn secondary" data-action="toggle-paid" data-id="${inv.id}">${inv.paid?'Označit jako nezaplacenou':'Označit jako zaplacenou'}</button>
+        <button class="btn" data-action="print-invoice">Stáhnout PDF / Tisk</button>
+      </div>
+    </div>
+    <div class="preview-wrap">
+      <div class="invoice-sheet" id="invoice-sheet">
+        ${inv.paid ? `<div class="stamp">ZAPLACENO</div>` : ''}
+        <div class="top">
+          <div><div class="doctitle">Faktura – daňový doklad</div><div class="docnum">${inv.number}</div></div>
+        </div>
+        <div class="parties">
+          <div class="party">
+            <div class="k">Dodavatel</div>
+            <div class="nm">${escapeHtml(co.name||'—')}</div>
+            <div>${nl2br(co.address)}</div>
+            ${co.ico?`<div>IČO: ${escapeHtml(co.ico)}</div>`:''}
+            ${co.dic?`<div>DIČ: ${escapeHtml(co.dic)}</div>`:''}
+            ${co.email?`<div>${escapeHtml(co.email)}</div>`:''}
+          </div>
+          <div class="party">
+            <div class="k">Odběratel</div>
+            <div class="nm">${c?escapeHtml(c.name):'—'}</div>
+            <div>${c?nl2br(c.address):''}</div>
+            ${c&&c.ico?`<div>IČO: ${escapeHtml(c.ico)}</div>`:''}
+            ${c&&c.dic?`<div>DIČ: ${escapeHtml(c.dic)}</div>`:''}
+          </div>
+        </div>
+        <div class="meta">
+          <div><div class="k">Vystaveno</div><div class="v">${inv.issueDate||''}</div></div>
+          <div><div class="k">Splatnost</div><div class="v">${inv.dueDate||''}</div></div>
+          <div><div class="k">Zd. plnění</div><div class="v">${inv.taxDate||''}</div></div>
+          <div><div class="k">Var. symbol</div><div class="v">${inv.variableSymbol||''}</div></div>
+        </div>
+        <table class="lines">
+          <thead><tr><th>Popis</th><th class="num">Množství</th><th class="num">Cena/ks</th><th class="num">DPH</th><th class="num">Celkem</th></tr></thead>
+          <tbody>
+            ${(inv.items||[]).map(it=>{
+              const lt=(it.qty||0)*(it.price||0)*(1+(it.vat||0)/100);
+              return `<tr><td>${escapeHtml(it.desc)}</td><td class="num">${it.qty} ${escapeHtml(it.unit||'')}</td><td class="num">${fmt(it.price)} Kč</td><td class="num">${it.vat}%</td><td class="num">${fmt(lt)} Kč</td></tr>`;
+            }).join('')}
+          </tbody>
+        </table>
+        <div class="bottom">
+          <div class="qrbox">
+            ${spayd ? `<div class="qrimg" id="qr-holder"></div><div>QR platba</div>` : `<div style="max-width:160px;color:var(--ink-soft);">Doplň IBAN v nastavení pro QR platbu</div>`}
+          </div>
+          <div class="totals">
+            <div class="trow"><span>Základ daně</span><span>${fmt(t.base)} Kč</span></div>
+            <div class="trow"><span>DPH</span><span>${fmt(t.vat)} Kč</span></div>
+            <div class="trow grand"><span>K úhradě</span><span>${fmt(t.total)} Kč</span></div>
+          </div>
+        </div>
+        ${co.account?`<div class="note">Bankovní účet: ${escapeHtml(co.account)}${co.iban?' · IBAN: '+escapeHtml(co.iban):''}</div>`:''}
+        ${inv.note?`<div class="note">${escapeHtml(inv.note)}</div>`:''}
+      </div>
+      <div class="preview-side no-print">
+        <div class="card"><div class="label">Stav</div><span class="pill ${status}">${statusLabel(status)}</span></div>
+      </div>
+    </div>
+    <div data-spayd="${spayd?escapeAttr(spayd):''}"></div>
+  `;
+}
+
+function buildSpayd(co, inv, total){
+  if(!co.iban) return null;
+  const acc = co.iban.replace(/\s+/g,'');
+  const msg = stripDiacritics(`FAKTURA ${inv.number}`).toUpperCase();
+  const vs = (inv.variableSymbol||'').replace(/\D/g,'');
+  let s = `SPD*1.0*ACC:${acc}*AM:${total.toFixed(2)}*CC:CZK*MSG:${msg}`;
+  if(vs) s += `*X-VS:${vs}`;
+  return s;
+}
+
+/* ---------- CLIENTS ---------- */
+function viewClients(){
+  return `
+    <div class="pagehead">
+      <div><h1>Klienti</h1><p class="desc">${state.clients.length} klientů v evidenci. Klikni na klienta pro rovnou vystavení faktury.</p></div>
+      <button class="btn" data-action="new-client">+ Přidat klienta</button>
+    </div>
+    ${state.clients.length ? `
+    <div class="search-row">
+      <input type="text" id="client-search-input" class="search-input" placeholder="Hledat klienta (název, IČO, email, telefon)…" value="${escapeAttr(state.clientSearch)}">
+    </div>
+    <table>
+      <thead><tr><th>Název</th><th>IČO</th><th>Email</th><th>Telefon</th><th></th></tr></thead>
+      <tbody id="clients-tbody">
+        ${state.clients.map(c=>{
+          const searchBlob = escapeAttr(stripDiacritics(`${c.name} ${c.ico||''} ${c.email||''} ${c.phone||''}`).toLowerCase());
+          return `
+          <tr class="rowlink" data-action="client-to-invoice" data-id="${c.id}" data-search="${searchBlob}">
+            <td>${escapeHtml(c.name)}</td>
+            <td class="num">${escapeHtml(c.ico||'—')}</td>
+            <td>${escapeHtml(c.email||'—')}</td>
+            <td>${escapeHtml(c.phone||'—')}</td>
+            <td class="actions-cell no-print" onclick="event.stopPropagation()">
+              <button class="iconbtn" data-action="edit-client" data-id="${c.id}" title="Upravit">✎</button>
+              <button class="iconbtn" data-action="delete-client" data-id="${c.id}" title="Smazat">✕</button>
+            </td>
+          </tr>`;}).join('')}
+        <tr id="clients-empty-row" style="display:none;"><td colspan="5" class="empty">Žádný klient neodpovídá hledání.</td></tr>
+      </tbody>
+    </table>` : emptyState('Žádní klienti', 'Přidej prvního klienta, aby ses jim mohl fakturovat.')}
+  `;
+}
+
+function filterClientRows(query){
+  const q = stripDiacritics(query||'').toLowerCase().trim();
+  const tbody = document.getElementById('clients-tbody');
+  if(!tbody) return;
+  let visibleCount = 0;
+  tbody.querySelectorAll('tr[data-search]').forEach(row=>{
+    const match = !q || row.getAttribute('data-search').includes(q);
+    row.style.display = match ? '' : 'none';
+    if(match) visibleCount++;
+  });
+  const emptyRow = document.getElementById('clients-empty-row');
+  if(emptyRow) emptyRow.style.display = visibleCount===0 ? '' : 'none';
+}
+
+function viewClientForm(){
+  const editing = state.editingClientId ? state.clients.find(c=>c.id===state.editingClientId) : null;
+  const c = editing || {name:'',address:'',ico:'',dic:'',email:'',phone:''};
+  return `
+    <div class="pagehead"><div><h1>${editing?'Upravit klienta':'Nový klient'}</h1></div></div>
+    <form id="client-form" class="form-card">
+      <div class="field"><label>Název / jméno</label><input name="name" value="${escapeAttr(c.name)}" required></div>
+      <div class="field"><label>Adresa</label><textarea name="address">${c.address||''}</textarea></div>
+      <div class="field-row">
+        <div class="field"><label>IČO</label><input name="ico" value="${escapeAttr(c.ico)}"></div>
+        <div class="field"><label>DIČ</label><input name="dic" value="${escapeAttr(c.dic)}"></div>
+      </div>
+      <div class="field-row">
+        <div class="field"><label>Email</label><input type="email" name="email" value="${escapeAttr(c.email)}"></div>
+        <div class="field"><label>Telefon</label><input name="phone" value="${escapeAttr(c.phone)}"></div>
+      </div>
+      <div class="formfoot">
+        <button type="submit" class="btn">Uložit klienta</button>
+        <button type="button" class="btn secondary" data-action="nav" data-view="clients">Zrušit</button>
+      </div>
+      <input type="hidden" name="id" value="${c.id||''}">
+    </form>
+  `;
+}
+
+/* ---------- SETTINGS ---------- */
+function viewSettings(){
+  const co = state.company;
+  return `
+    <div class="pagehead"><div><h1>Nastavení</h1><p class="desc">Údaje o firmě a fakturaci.</p></div></div>
+    <form id="settings-form" class="form-card">
+      <div class="section-title">Firma</div>
+      <div class="field"><label>Název firmy / jméno OSVČ</label><input name="name" value="${escapeAttr(co.name)}" required></div>
+      <div class="field"><label>Adresa</label><textarea name="address">${co.address||''}</textarea></div>
+      <div class="field-row">
+        <div class="field"><label>IČO</label><input name="ico" value="${escapeAttr(co.ico)}"></div>
+        <div class="field"><label>DIČ</label><input name="dic" value="${escapeAttr(co.dic)}"></div>
+      </div>
+      <div class="field-row">
+        <div class="field"><label>Email</label><input type="email" name="email" value="${escapeAttr(co.email)}"></div>
+        <div class="field"><label>Telefon</label><input name="phone" value="${escapeAttr(co.phone)}"></div>
+      </div>
+
+      <div class="section-title">Platby</div>
+      <div class="field-row">
+        <div class="field"><label>Číslo účtu</label><input name="account" value="${escapeAttr(co.account)}" placeholder="123456789/0300"></div>
+        <div class="field"><label>IBAN (pro QR platbu)</label><input name="iban" value="${escapeAttr(co.iban)}" placeholder="CZ..."></div>
+      </div>
+
+      <div class="section-title">Fakturace</div>
+      <div class="field-row">
+        <div class="field"><label>Prefix čísla faktury</label><input name="prefix" value="${escapeAttr(co.prefix)}"></div>
+        <div class="field"><label>Další pořadové číslo</label><input type="number" name="nextNumber" value="${co.nextNumber}"></div>
+      </div>
+      <div class="field-row">
+        <div class="field"><label>Výchozí splatnost (dny)</label><input type="number" name="defaultDueDays" value="${co.defaultDueDays}"></div>
+        <div class="field"><label>Výchozí poznámka</label><input name="defaultNote" value="${escapeAttr(co.defaultNote)}"></div>
+      </div>
+
+      <div class="formfoot">
+        <button type="submit" class="btn">Uložit nastavení</button>
+      </div>
+    </form>
+
+    <div class="section-title" style="margin-top:30px;">Kolegové s přístupem</div>
+    <div class="form-card">
+      ${state.users.map(u=>`
+        <div class="user-row">
+          <span>${escapeHtml(u.name)}${u.name===state.currentUser?' (ty)':''}</span>
+          ${state.users.length>1 ? `<button class="iconbtn" data-action="remove-user" data-name="${escapeAttr(u.name)}" title="Odebrat">✕</button>` : ''}
+        </div>
+      `).join('')}
+      <div class="formfoot">
+        <button type="button" class="btn secondary" data-action="auth-switch-inline">+ Přidat kolegu</button>
+      </div>
+      <p style="font-size:12px;color:var(--ink-soft);margin-top:10px;">
+        Přihlášení chrání jen jednoduché heslo přímo v appce — neslouží jako skutečné zabezpečení, jen jako rozlišení, kdo je kdo.
+      </p>
+    </div>
+
+    <div class="section-title" style="margin-top:30px;">Zálohování dat</div>
+    <div class="form-card">
+      <p style="font-size:13px;color:var(--ink-soft);margin-top:0;">
+        Data appky (klienti, faktury, firma) žijí v uložišti napojeném na tuto appku, ne v tomto souboru.
+        Aby ses nikdy nespoléhal jen na to, doporučujeme si čas od času stáhnout zálohu na vlastní počítač —
+        navíc appka sama každý den, kdy něco uložíš, vytvoří automatický záložní snímek (posledních 10 dní).
+      </p>
+      <div class="formfoot" style="margin-top:6px;">
+        <button type="button" class="btn secondary" data-action="export-backup">⬇ Stáhnout zálohu (.json)</button>
+        <button type="button" class="btn secondary" data-action="trigger-restore-file">⬆ Obnovit ze souboru</button>
+        <input type="file" id="restore-file-input" accept=".json" style="display:none;">
+      </div>
+      ${state.backupDates && state.backupDates.length ? `
+        <div class="section-title">Automatické denní zálohy</div>
+        ${[...state.backupDates].sort().reverse().map(d=>`
+          <div class="user-row">
+            <span>${escapeHtml(d)}</span>
+            <button class="iconbtn" style="text-decoration:underline;" data-action="restore-snapshot" data-date="${escapeAttr(d)}">Obnovit</button>
+          </div>
+        `).join('')}
+      ` : `<p style="font-size:12.5px;color:var(--ink-soft);">Zatím žádné automatické zálohy — vytvoří se, jakmile poprvé něco uložíš.</p>`}
+    </div>
+  `;
+}
+
+/* ---------- INVOICE IMPORT (upload old invoice, auto-extract) ---------- */
+function viewInvoiceImport(){
+  return `
+    <div class="pagehead">
+      <div><h1>Nahrát starou fakturu</h1><p class="desc">Nahraj PDF staré faktury (s textovou vrstvou) — přečte a rozpozná se přímo v prohlížeči, soubor nikam neodchází.</p></div>
+      <button class="btn secondary" data-action="nav" data-view="invoices">Zpět na faktury</button>
+    </div>
+    <div class="form-card">
+      ${state.importResult ? renderImportPreview() : `
+        <div class="dropzone" id="import-dropzone">
+          <div class="display">Přetáhni sem PDF nebo klikni pro výběr</div>
+          <div>Funguje jen pro PDF s textovou vrstvou (ne sken/foto) — vše se čte lokálně v prohlížeči.</div>
+          <input type="file" id="import-file-input" accept=".pdf" style="display:none;">
+        </div>
+        ${state.importBusy ? `<div class="import-status"><span class="spinner"></span> Čtu PDF a rozpoznávám údaje…</div>` : ''}
+        ${state.importError ? `<div class="import-error">${escapeHtml(state.importError)}</div>` : ''}
+        <p style="font-size:12px;color:var(--ink-soft);margin-top:16px;">
+          Rozpoznávání je založené na vzorech v textu (ne AI), takže u položek faktury doporučujeme po importu rychlou kontrolu —
+          po uložení tě rovnou přesměruju do editace faktury.
+        </p>
+      `}
+    </div>
+  `;
+}
+
+function renderImportPreview(){
+  const r = state.importResult;
+  const inv = r.invoice || {};
+  let base=0, vat=0;
+  (inv.items||[]).forEach(it=>{ const b=(it.qty||0)*(it.price||0); base+=b; vat+=b*((it.vat||0)/100); });
+  const existingClient = r.matchedClientId ? clientById(r.matchedClientId) : null;
+  return `
+    <div class="import-preview">
+      <div class="section-title" style="margin-top:0;">Rozpoznané údaje — zkontroluj před uložením</div>
+      <div class="row">
+        <div class="col"><div class="k">Dodavatel</div>${escapeHtml((r.company&&r.company.name)||'—')}${!state.company.name?' <span class="badge">uloží se jako moje firma</span>':''}</div>
+        <div class="col"><div class="k">Odběratel</div>${escapeHtml((r.client&&r.client.name)||'—')} ${existingClient?'<span class="badge">existující klient</span>':'<span class="badge">nový klient</span>'}</div>
+      </div>
+      <div class="row">
+        <div class="col"><div class="k">Číslo faktury</div>${escapeHtml(inv.number||'—')}</div>
+        <div class="col"><div class="k">Vystaveno / splatnost</div>${escapeHtml(inv.issueDate||'—')} / ${escapeHtml(inv.dueDate||'—')}</div>
+      </div>
+      <table class="items-table">
+        <thead><tr><th class="col-desc">Popis</th><th>Množství</th><th>Jedn.</th><th class="col-price">Cena/ks</th><th class="col-vat">DPH</th><th class="num">Celkem</th></tr></thead>
+        <tbody>
+          ${(inv.items&&inv.items.length ? inv.items : [{desc:'(žádné položky nerozpoznány)',qty:0,unit:'',price:0,vat:0}]).map(it=>{
+            const lt=(it.qty||0)*(it.price||0)*(1+(it.vat||0)/100);
+            return `<tr><td>${escapeHtml(it.desc||'')}</td><td>${it.qty||0}</td><td>${escapeHtml(it.unit||'')}</td><td>${fmt(it.price||0)} Kč</td><td>${it.vat||0}%</td><td class="num">${fmt(lt)} Kč</td></tr>`;
+          }).join('')}
+        </tbody>
+      </table>
+      <div class="totals-box"><div class="trow grand"><span>Celkem</span><span>${fmt(base+vat)} Kč</span></div></div>
+      <p style="font-size:12.5px;color:var(--ink-soft);">Po uložení se faktura přidá do historie a dá se dál upravit jako kterákoli jiná (tlačítko ✎ u faktury).</p>
+      <div class="formfoot">
+        <button class="btn" data-action="import-confirm">Uložit do historie</button>
+        <button type="button" class="btn-link" data-action="import-discard">Zahodit a zkusit jiný soubor</button>
+      </div>
+    </div>
+  `;
+}
+
+function setupImportDropzone(){
+  const zone = document.getElementById('import-dropzone');
+  const fileInput = document.getElementById('import-file-input');
+  if(!zone || !fileInput) return;
+  zone.addEventListener('click', ()=> fileInput.click());
+  fileInput.addEventListener('change', ()=>{ if(fileInput.files[0]) handleImportFile(fileInput.files[0]); });
+  zone.addEventListener('dragover', (e)=>{ e.preventDefault(); zone.classList.add('drag'); });
+  zone.addEventListener('dragleave', ()=> zone.classList.remove('drag'));
+  zone.addEventListener('drop', (e)=>{
+    e.preventDefault(); zone.classList.remove('drag');
+    if(e.dataTransfer.files && e.dataTransfer.files[0]) handleImportFile(e.dataTransfer.files[0]);
+  });
+}
+
+async function handleImportFile(file){
+  state.importBusy = true; state.importError=''; render();
+  try{
+    const isPdf = (file.type && file.type.includes('pdf')) || file.name.toLowerCase().endsWith('.pdf');
+    if(!isPdf) throw new Error('Podporujeme jen PDF s textovou vrstvou (ne fotku/sken).');
+    if(!window.pdfjsLib) throw new Error('Čtečka PDF se nenačetla — zkontroluj připojení a zkus to znovu.');
+
+    const buf = await file.arrayBuffer();
+    const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
+    let fullText = '';
+    const lines = [];
+    for(let p=1; p<=pdf.numPages; p++){
+      const page = await pdf.getPage(p);
+      const content = await page.getTextContent();
+      // group text items into visual lines using their y-position, keep left-to-right order
+      const buckets = new Map();
+      content.items.forEach(it=>{
+        const y = Math.round(it.transform[5]);
+        const key = Math.round(y/3)*3; // tolerance for items on same visual line
+        if(!buckets.has(key)) buckets.set(key, []);
+        buckets.get(key).push(it);
+      });
+      const sortedKeys = [...buckets.keys()].sort((a,b)=>b-a); // top to bottom
+      sortedKeys.forEach(k=>{
+        const rowItems = buckets.get(k).sort((a,b)=>a.transform[4]-b.transform[4]);
+        const lineText = rowItems.map(it=>it.str).join(' ').replace(/\s+/g,' ').trim();
+        if(lineText) lines.push(lineText);
+      });
+      fullText += lines.join('\n') + '\n';
+    }
+    if(!fullText.trim()) throw new Error('V PDF nebyl nalezen žádný text — jde nejspíš o naskenovaný obrázek, ten se lokálně přečíst nedá.');
+
+    const parsed = parseInvoiceText(fullText, lines);
+
+    const cName = stripDiacritics(parsed.client.name||'').toLowerCase().trim();
+    const cIco = (parsed.client.ico||'').replace(/\s+/g,'');
+    let matched = null;
+    if(cName || cIco){
+      matched = state.clients.find(c=>{
+        const sameIco = cIco && c.ico && c.ico.replace(/\s+/g,'')===cIco;
+        const sameName = cName && stripDiacritics(c.name||'').toLowerCase().trim()===cName;
+        return sameIco || sameName;
+      }) || null;
+    }
+
+    state.importResult = {
+      company: parsed.company,
+      client: parsed.client,
+      matchedClientId: matched ? matched.id : null,
+      invoice: parsed.invoice
+    };
+    state.importBusy = false;
+    render();
+  }catch(err){
+    console.error(err);
+    state.importBusy = false;
+    state.importError = err.message || 'PDF se nepodařilo přečíst. Zkus jiný soubor.';
+    render();
+  }
+}
+
+/* ---------- LOCAL PATTERN-BASED INVOICE PARSER (no AI, runs fully client-side) ---------- */
+function parseInvoiceText(text, lines){
+  const norm = text.replace(/\r/g,'');
+
+  function findAll(re){ return [...norm.matchAll(re)].map(m=>m[1].trim()); }
+  function findFirst(re){ const m = re.exec(norm); return m ? m[1].trim() : ''; }
+
+  const icos = findAll(/I[ČC]O[:\s]*([0-9]{6,9})/gi);
+  const dics = findAll(/DI[ČC][:\s]*([A-Z]{2}\s?[0-9]{8,10})/gi);
+  const ibans = findAll(/\b([A-Z]{2}[0-9]{2}\s?(?:[A-Z0-9]{4}\s?){2,7}[A-Z0-9]{1,4})\b/g);
+  const accounts = findAll(/\b(\d{2,10}\/\d{4})\b/g);
+
+  const number = findFirst(/(?:Faktura|Da[nň]ov[ýy]\s+doklad)[^0-9A-Za-z]{0,15}(?:[ČC]\.?|[ČC]íslo)?[:\s]*([A-Z0-9\-\/]{4,20})/i)
+              || findFirst(/[ČC]íslo\s+faktury[:\s]*([A-Z0-9\-\/]{4,20})/i);
+  const variableSymbol = findFirst(/Variabiln[íi]\s+symbol[:\s]*([0-9]{3,15})/i);
+
+  const dateRe = /(\d{1,2}\.\s?\d{1,2}\.\s?\d{4}|\d{4}-\d{2}-\d{2})/;
+  function findDateNear(label){
+    const re = new RegExp(label + '[^0-9]{0,20}' + dateRe.source, 'i');
+    const m = re.exec(norm);
+    return m ? normalizeDate(m[1]) : '';
+  }
+  function normalizeDate(d){
+    if(/^\d{4}-\d{2}-\d{2}$/.test(d)) return d;
+    const m = /(\d{1,2})\.\s?(\d{1,2})\.\s?(\d{4})/.exec(d);
+    if(!m) return '';
+    return `${m[3]}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`;
+  }
+  const issueDate = findDateNear('Datum\\s+vystaven[íi]') || findDateNear('Vystaveno');
+  const dueDate = findDateNear('Datum\\s+splatnosti') || findDateNear('Splatnost');
+  const taxDate = findDateNear('Datum\\s+zdanite[lľ]n[ée]ho\\s+pln[ěe]n[íi]') || issueDate;
+
+  function extractBetween(startLabel, endLabels){
+    const m = new RegExp(startLabel, 'i').exec(norm);
+    if(!m) return '';
+    let rest = norm.slice(m.index + m[0].length);
+    let endIdx = 250;
+    endLabels.forEach(el=>{
+      const em = new RegExp(el,'i').exec(rest);
+      if(em && em.index < endIdx) endIdx = em.index;
+    });
+    return rest.slice(0, endIdx).replace(/\n+/g,' ').trim();
+  }
+  const boundaryLabels = ['Odb[ěe]ratel','Dodavatel','I[ČC]O','DI[ČC]','Faktura','Splatnost','Vystaveno'];
+  let supplierBlock = extractBetween('Dodavatel', boundaryLabels.filter(l=>l!=='Dodavatel'));
+  let customerBlock = extractBetween('Odb[ěe]ratel', boundaryLabels.filter(l=>l!=='Odb[ěe]ratel'));
+
+  function firstWordyLine(block){
+    if(!block) return '';
+    const cleaned = block.replace(/I[ČC]O.*$/i,'').trim();
+    return cleaned.split(/\s{2,}|,/)[0].trim().slice(0,80);
+  }
+  const supplierName = firstWordyLine(supplierBlock);
+  const customerName = firstWordyLine(customerBlock);
+
+  // fallback: if labels not found, assume first ICO/DIC pair = dodavatel, second = odběratel
+  const company = {
+    name: supplierName || '', address: '',
+    ico: icos[0] || '', dic: dics[0] || '',
+    email: findFirst(/([\w.\-]+@[\w.\-]+\.\w+)/),
+    phone: '', account: accounts[0] || '', iban: (ibans[0]||'').replace(/\s+/g,'')
+  };
+  const client = {
+    name: customerName || '', address: '',
+    ico: icos[1] || icos[0] || '', dic: dics[1] || dics[0] || '',
+    email: '', phone: ''
+  };
+
+  // items: look for lines that look like a table row — description followed by numbers/Kč
+  const itemLineRe = /^(.{3,60}?)\s+([\d]+(?:[.,]\d+)?)\s*(ks|hod|kg|m|den|dny|měsíc|balení)?\s*([\d\s]+[.,]?\d*)\s*K[čc]\.?\s*(\d{1,2})?\s*%?\s*([\d\s]+[.,]?\d*)\s*K[čc]\.?$/i;
+  const items = [];
+  (lines||[]).forEach(line=>{
+    const m = itemLineRe.exec(line.trim());
+    if(m){
+      items.push({
+        desc: m[1].trim(),
+        qty: parseFloat((m[2]||'1').replace(',','.')) || 1,
+        unit: m[3] || 'ks',
+        price: parseFloat((m[4]||'0').replace(/\s/g,'').replace(',','.')) || 0,
+        vat: parseInt(m[5]||'21') || 21
+      });
+    }
+  });
+
+  return {
+    company, client,
+    invoice: {
+      number: number || '', issueDate, dueDate, taxDate,
+      variableSymbol: variableSymbol || '', note: '',
+      items
+    }
+  };
+}
+
+async function confirmImport(){
+  const r = state.importResult;
+  if(!r) return;
+  if(!state.company.name && r.company && r.company.name){
+    state.company = {
+      ...state.company,
+      name: r.company.name || state.company.name,
+      address: r.company.address || state.company.address,
+      ico: r.company.ico || state.company.ico,
+      dic: r.company.dic || state.company.dic,
+      email: r.company.email || state.company.email,
+      phone: r.company.phone || state.company.phone,
+      account: r.company.account || state.company.account,
+      iban: r.company.iban || state.company.iban
+    };
+    await saveCompany();
+  }
+  let clientId = r.matchedClientId;
+  if(!clientId){
+    const c = r.client||{};
+    const newClient = {
+      id: uid(), name: c.name || 'Neznámý klient', address: c.address||'',
+      ico: c.ico||'', dic: c.dic||'', email: c.email||'', phone: c.phone||''
+    };
+    state.clients.push(newClient);
+    await saveClients();
+    clientId = newClient.id;
+  }
+  const inv = r.invoice || {};
+  const items = (inv.items||[]).filter(it=> it && ((it.desc||'').trim()!=='' || (it.qty||0)!==0) );
+  const newInvoice = {
+    id: uid(),
+    number: inv.number || `${state.company.prefix||''}${String(state.company.nextNumber||1).padStart(4,'0')}`,
+    clientId,
+    issueDate: inv.issueDate||'', dueDate: inv.dueDate||'', taxDate: inv.taxDate||inv.issueDate||'',
+    variableSymbol: inv.variableSymbol||'', note: inv.note||'',
+    items: items.length ? items : [{desc:'',qty:1,unit:'ks',price:0,vat:21}],
+    paid:false, paidDate:null, createdBy: state.currentUser
+  };
+  state.invoices.push(newInvoice);
+  await saveInvoices();
+  state.importResult = null;
+  state.editingInvoiceId = newInvoice.id;
+  state.formItems = JSON.parse(JSON.stringify(newInvoice.items));
+  state.view = 'invoice-form';
+  render();
+}
+
+/* ---------- HELPERS ---------- */
+function escapeHtml(s){ if(s==null) return ''; return String(s).replace(/[&<>"']/g, m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
+function escapeAttr(s){ return escapeHtml(s); }
+function nl2br(s){ return escapeHtml(s).replace(/\n/g,'<br>'); }
+
+/* ---------- EVENTS ---------- */
+function afterRender(){
+  // QR code render
+  const spaydHolder = document.querySelector('[data-spayd]');
+  if(spaydHolder){
+    const val = spaydHolder.getAttribute('data-spayd');
+    const target = document.getElementById('qr-holder');
+    if(val && target && window.QRCode){
+      target.innerHTML='';
+      new QRCode(target, { text: val, width:110, height:110, correctLevel: QRCode.CorrectLevel.M });
+    }
+  }
+
+  const invoiceForm = document.getElementById('invoice-form');
+  if(invoiceForm){
+    invoiceForm.addEventListener('submit', onSubmitInvoice);
+  }
+  const clientForm = document.getElementById('client-form');
+  if(clientForm){ clientForm.addEventListener('submit', onSubmitClient); }
+  const clientSearchInput = document.getElementById('client-search-input');
+  if(clientSearchInput){
+    clientSearchInput.addEventListener('input', (e)=>{ state.clientSearch = e.target.value; filterClientRows(e.target.value); });
+    if(state.clientSearch) filterClientRows(state.clientSearch);
+  }
+  setupClientCombo();
+  setupImportDropzone();
+  const settingsForm = document.getElementById('settings-form');
+  if(settingsForm){ settingsForm.addEventListener('submit', onSubmitSettings); }
+  const restoreFileInput = document.getElementById('restore-file-input');
+  if(restoreFileInput){
+    restoreFileInput.addEventListener('change', ()=>{ if(restoreFileInput.files[0]) restoreFromUploadedFile(restoreFileInput.files[0]); });
+  }
+
+  // item input sync
+  const itemsBody = document.getElementById('items-body');
+  if(itemsBody){
+    itemsBody.addEventListener('input', (e)=>{
+      const f = e.target.getAttribute('data-field');
+      const idx = e.target.getAttribute('data-index');
+      if(f==null||idx==null) return;
+      let val = e.target.value;
+      if(f==='qty'||f==='price'||f==='vat') val = parseFloat(val)||0;
+      state.formItems[idx][f]=val;
+      // live update row total + totals box without full rerender (keeps focus)
+      const totalsBox = document.getElementById('totals-box');
+      if(totalsBox) totalsBox.innerHTML = renderTotalsBox();
+      const row = e.target.closest('tr');
+      if(row){
+        const it = state.formItems[idx];
+        const lineTotal = (it.qty||0)*(it.price||0)*(1+(it.vat||0)/100);
+        const cell = row.querySelector('.num');
+        if(cell) cell.textContent = fmt(lineTotal)+' Kč';
+      }
+    });
+  }
+}
+
+/* ---------- CLIENT COMBO BOX (searchable client picker in invoice form) ---------- */
+function setupClientCombo(){
+  const input = document.getElementById('client-combo-input');
+  const hidden = document.getElementById('client-combo-value');
+  const list = document.getElementById('client-combo-list');
+  if(!input || !hidden || !list) return;
+
+  function renderList(query){
+    const q = stripDiacritics(query||'').toLowerCase().trim();
+    const matches = state.clients.filter(c=>{
+      if(!q) return true;
+      return stripDiacritics(`${c.name} ${c.ico||''}`).toLowerCase().includes(q);
+    }).slice(0,30);
+    if(!matches.length){
+      list.innerHTML = `<div class="combo-empty">Žádný klient neodpovídá. <span style="text-decoration:underline;cursor:pointer;" data-action="new-client">Přidat nového?</span></div>`;
+    } else {
+      list.innerHTML = matches.map(c=>`
+        <div class="combo-item" data-id="${c.id}">
+          <div>${escapeHtml(c.name)}</div>
+          ${c.ico?`<div class="sub">IČO: ${escapeHtml(c.ico)}</div>`:''}
+        </div>
+      `).join('');
+    }
+    list.classList.add('open');
+  }
+
+  input.addEventListener('focus', ()=> renderList(input.value));
+  input.addEventListener('input', ()=>{ hidden.value=''; renderList(input.value); });
+  list.addEventListener('mousedown', (e)=>{
+    const item = e.target.closest('.combo-item');
+    if(!item) return;
+    const c = clientById(item.getAttribute('data-id'));
+    if(c){ input.value = c.name; hidden.value = c.id; }
+    list.classList.remove('open');
+  });
+  document.addEventListener('click', (e)=>{
+    if(e.target!==input && !list.contains(e.target)) list.classList.remove('open');
+  });
+}
+
+document.addEventListener('click', async (e)=>{
+  const el = e.target.closest('[data-action]');
+  if(!el) return;
+  const action = el.getAttribute('data-action');
+  const id = el.getAttribute('data-id');
+
+  if(action==='auth-switch'){ state.authView = el.getAttribute('data-view'); state.authError=''; render(); }
+  else if(action==='logout'){ state.currentUser=null; state.authView='login'; state.view='dashboard'; render(); }
+  else if(action==='nav'){ state.view = el.getAttribute('data-view'); state.editingInvoiceId=null; state.editingClientId=null; state.formItems=[]; render(); }
+  else if(action==='new-invoice'){ state.view='invoice-form'; state.editingInvoiceId=null; state.formItems=[]; render(); }
+  else if(action==='edit-invoice'){ state.view='invoice-form'; state.editingInvoiceId=id; state.formItems=[]; render(); }
+  else if(action==='preview-invoice'){ state.view='invoice-preview'; state.previewId=id; render(); }
+  else if(action==='delete-invoice'){ if(confirm('Smazat tuto fakturu?')){ state.invoices = state.invoices.filter(i=>i.id!==id); await saveInvoices(); render(); } }
+  else if(action==='toggle-paid'){
+    const inv = state.invoices.find(i=>i.id===id);
+    if(inv){ inv.paid = !inv.paid; inv.paidDate = inv.paid ? todayISO() : null; await saveInvoices(); render(); }
+  }
+  else if(action==='print-invoice'){ window.print(); }
+  else if(action==='remove-user'){
+    const name = el.getAttribute('data-name');
+    if(name===state.currentUser){ alert('Nemůžeš odebrat sám sebe, dokud jsi přihlášen.'); return; }
+    if(confirm(`Odebrat přístup pro „${name}“?`)){ state.users = state.users.filter(u=>u.name!==name); await saveUsers(); render(); }
+  }
+  else if(action==='auth-switch-inline'){
+    const name = (prompt('Jméno nového kolegy:')||'').trim();
+    if(!name) return;
+    if(state.users.find(u=>u.name.toLowerCase()===name.toLowerCase())){ alert('Toto jméno už existuje.'); return; }
+    const password = prompt(`Heslo pro „${name}“:`)||'';
+    if(!password){ alert('Heslo nesmí být prázdné.'); return; }
+    state.users.push({name, password});
+    await saveUsers();
+    render();
+  }
+  else if(action==='new-client'){ state.view='client-form'; state.editingClientId=null; render(); }
+  else if(action==='edit-client'){ state.view='client-form'; state.editingClientId=id; render(); }
+  else if(action==='delete-client'){ if(confirm('Smazat tohoto klienta?')){ state.clients = state.clients.filter(c=>c.id!==id); await saveClients(); render(); } }
+  else if(action==='client-to-invoice'){ state.preselectClientId=id; state.view='invoice-form'; state.editingInvoiceId=null; state.formItems=[]; render(); }
+  else if(action==='add-item'){ state.formItems.push({desc:'',qty:1,unit:'ks',price:0,vat:21}); render(); }
+  else if(action==='remove-item'){ const idx = parseInt(el.getAttribute('data-index')); state.formItems.splice(idx,1); if(!state.formItems.length) state.formItems.push({desc:'',qty:1,unit:'ks',price:0,vat:21}); render(); }
+  else if(action==='goto-import'){ state.view='invoice-import'; state.importError=''; state.importResult=null; render(); }
+  else if(action==='import-discard'){ state.importResult=null; state.importError=''; render(); }
+  else if(action==='import-confirm'){ await confirmImport(); }
+  else if(action==='export-backup'){ exportBackupFile(); }
+  else if(action==='trigger-restore-file'){ const fi=document.getElementById('restore-file-input'); if(fi) fi.click(); }
+  else if(action==='restore-snapshot'){ const date=el.getAttribute('data-date'); await restoreFromSnapshot(date); }
+});
+
+async function onSubmitInvoice(e){
+  e.preventDefault();
+  const fd = new FormData(e.target);
+  const id = fd.get('id');
+  if(!fd.get('clientId') || !clientById(fd.get('clientId'))){
+    alert('Vyber klienta ze seznamu (napiš jeho jméno a klikni na něj v nabídce).');
+    return;
+  }
+  const items = state.formItems.filter(it=> (it.desc||'').trim()!=='' || (it.qty||0)!==0 );
+  const invoice = {
+    id: id || uid(),
+    number: fd.get('number'),
+    clientId: fd.get('clientId'),
+    issueDate: fd.get('issueDate'),
+    dueDate: fd.get('dueDate'),
+    taxDate: fd.get('taxDate'),
+    variableSymbol: fd.get('variableSymbol'),
+    note: fd.get('note'),
+    items: items,
+    paid: fd.get('paid')==='1',
+    paidDate: fd.get('paidDate')||null,
+    createdBy: id ? (state.invoices.find(i=>i.id===id)||{}).createdBy || state.currentUser : state.currentUser
+  };
+  if(id){
+    const idx = state.invoices.findIndex(i=>i.id===id);
+    state.invoices[idx] = invoice;
+  } else {
+    state.invoices.push(invoice);
+    state.company.nextNumber = (state.company.nextNumber||1) + 1;
+    await saveCompany();
+  }
+  await saveInvoices();
+  state.formItems = [];
+  state.previewId = invoice.id;
+  state.view = 'invoice-preview';
+  render();
+}
+
+async function onSubmitClient(e){
+  e.preventDefault();
+  const fd = new FormData(e.target);
+  const id = fd.get('id');
+  const client = { id: id || uid(), name: fd.get('name'), address: fd.get('address'), ico: fd.get('ico'), dic: fd.get('dic'), email: fd.get('email'), phone: fd.get('phone') };
+  if(id){ const idx = state.clients.findIndex(c=>c.id===id); state.clients[idx]=client; }
+  else{ state.clients.push(client); }
+  await saveClients();
+  state.view='clients';
+  render();
+}
+
+async function onSubmitSettings(e){
+  e.preventDefault();
+  const fd = new FormData(e.target);
+  state.company = {
+    ...state.company,
+    name: fd.get('name'), address: fd.get('address'), ico: fd.get('ico'), dic: fd.get('dic'),
+    email: fd.get('email'), phone: fd.get('phone'), account: fd.get('account'), iban: fd.get('iban'),
+    prefix: fd.get('prefix'), nextNumber: parseInt(fd.get('nextNumber'))||1,
+    defaultDueDays: parseInt(fd.get('defaultDueDays'))||14, defaultNote: fd.get('defaultNote')
+  };
+  await saveCompany();
+  render();
+}
+
+/* ---------- INIT ---------- */
+(async function(){
+  if(window.pdfjsLib){
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+  }
+  document.getElementById('app').innerHTML = '<div style="padding:60px;font-family:Inter,sans-serif;color:#5C6B66;">Načítám…</div>';
+  await loadUsers();
+  render();
+})();
+</script>
+</body>
+</html>
