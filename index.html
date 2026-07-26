@@ -2652,31 +2652,82 @@ function renderClientsWithInvoices() {
   });
 }
 
-function showClientInvoices(clientId) {
+function renderClients() {
+  const container = document.getElementById('view-clients');
+  if (!container) return;
+
+  const clients = state.clients || [];
+  const invoices = state.invoices || [];
+
+  if (clients.length === 0) {
+    container.innerHTML = `
+      <div class="card" style="padding: 24px; text-align: center;">
+        <p style="color: var(--ink-soft); margin-bottom: 16px;">Zatím nemáte žádné uložené odběratele.</p>
+        <button class="btn btn-primary" onclick="openClientModal()">+ Přidat prvního odběratele</button>
+      </div>`;
+    return;
+  }
+
+  container.innerHTML = `
+    <div style="display: grid; grid-template-columns: 320px 1fr; gap: 20px; align-items: start;">
+      <div>
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+          <h3 style="margin:0;">Odběratelé</h3>
+          <button class="btn btn-primary btn-sm" onclick="openClientModal()">+ Nový</button>
+        </div>
+        <div style="display:flex; flex-direction:column; gap:8px;">
+          ${clients.map(c => {
+            const clientInvoices = invoices.filter(i => 
+              (i.client && i.client.ic && c.ic && i.client.ic === c.ic) || 
+              (i.client && i.client.name === c.name)
+            );
+            return `
+              <div class="card client-item-btn" data-id="${c.id}" onclick="selectClientForInvoices('${c.id}')" style="cursor:pointer; padding:12px 16px; transition: all 0.2s ease;">
+                <div style="font-weight:600; color:var(--ink);">${c.name}</div>
+                <div style="font-size:0.85rem; color:var(--ink-soft); margin-top:2px;">
+                  IČ: ${c.ic || '—'} · <span style="color:var(--accent); font-weight:500;">Faktur: ${clientInvoices.length}</span>
+                </div>
+              </div>
+            `;
+          }).join('')}
+        </div>
+      </div>
+
+      <div id="client-invoices-detail">
+        <div class="card" style="padding: 32px; text-align: center; color: var(--ink-soft);">
+          👈 Klikněte na odběratele vlevo pro zobrazení jeho detailu a vystavených faktur.
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+// Funkce pro zobrazení faktur vybraného odběratele
+function selectClientForInvoices(clientId) {
   const client = (state.clients || []).find(c => String(c.id) === String(clientId));
-  const detailCol = document.getElementById('client-detail-col');
-  if (!client || !detailCol) return;
+  const detailEl = document.getElementById('client-invoices-detail');
+  if (!client || !detailEl) return;
 
   const invoices = (state.invoices || []).filter(i => 
-    (i.client && i.client.ic === client.ic) || 
+    (i.client && i.client.ic && client.ic && i.client.ic === client.ic) || 
     (i.client && i.client.name === client.name)
   );
 
-  let invoicesHtml = '';
+  let invoicesListHtml = '';
   if (invoices.length === 0) {
-    invoicesHtml = `<p style="color:var(--ink-soft);">Pro tohoto odběratele zatím nebyly vystaveny žádné faktury.</p>`;
+    invoicesListHtml = `<p style="color:var(--ink-soft); margin-top:12px;">Pro tohoto odběratele nemáte zatím vystavené žádné faktury.</p>`;
   } else {
-    invoicesHtml = `
+    invoicesListHtml = `
       <div style="display:flex; flex-direction:column; gap:8px; margin-top:12px;">
         ${invoices.map(inv => `
-          <div style="display:flex; justify-content:space-between; align-items:center; padding:10px; border-bottom:1px solid var(--line);">
+          <div style="display:flex; justify-content:space-between; align-items:center; padding:12px; background:var(--paper); border-radius:6px;">
             <div>
-              <strong>${inv.number || 'Faktura bez čísla'}</strong>
+              <div style="font-weight:600;">${inv.number || 'Faktura'}</div>
               <div style="font-size:0.8rem; color:var(--ink-soft);">${inv.date || ''}</div>
             </div>
             <div style="text-align:right;">
-              <strong>${inv.total ? inv.total + ' Kč' : ''}</strong>
-              <div><span class="badge ${inv.status === 'Zaplaceno' ? 'badge-success' : 'badge-warning'}">${inv.status || 'Vystaveno'}</span></div>
+              <div style="font-weight:700; color:var(--ink);">${inv.total ? Number(inv.total).toLocaleString('cs-CZ') + ' Kč' : ''}</div>
+              <span class="badge ${inv.status === 'Zaplaceno' ? 'badge-success' : ''}" style="font-size:0.75rem;">${inv.status || 'Vystaveno'}</span>
             </div>
           </div>
         `).join('')}
@@ -2684,26 +2735,28 @@ function showClientInvoices(clientId) {
     `;
   }
 
-  detailCol.innerHTML = `
-    <div class="card" style="padding: 20px;">
-      <h2>${client.name}</h2>
-      <p style="margin-bottom: 4px;"><strong>IČ:</strong> ${client.ic || '—'} | <strong>DIČ:</strong> ${client.dic || '—'}</p>
-      <p style="margin-bottom: 16px;"><strong>Adresa:</strong> ${client.address || ''} ${client.city || ''} ${client.zip || ''}</p>
+  detailEl.innerHTML = `
+    <div class="card" style="padding: 24px;">
+      <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:16px;">
+        <div>
+          <h2 style="margin:0 0 4px 0;">${client.name}</h2>
+          <div style="color:var(--ink-soft); font-size:0.9rem;">
+            IČ: ${client.ic || '—'} ${client.dic ? '· DIČ: ' + client.dic : ''}
+          </div>
+          <div style="color:var(--ink-soft); font-size:0.9rem; margin-top:2px;">
+            ${[client.address, client.city, client.zip].filter(Boolean).join(', ')}
+          </div>
+        </div>
+        <button class="btn btn-secondary btn-sm" onclick="editClient('${client.id}')">Upravit</button>
+      </div>
+
       <hr style="border:0; border-top:1px solid var(--line); margin: 16px 0;">
-      <h3>Faktury odběratele (${invoices.length})</h3>
-      ${invoicesHtml}
+
+      <h3 style="margin:0 0 8px 0;">Faktury odběratele (${invoices.length})</h3>
+      ${invoicesListHtml}
     </div>
   `;
 }
-
-// Propojení s hlavní funkcí render
-const oldRender = window.render;
-window.render = function() {
-  if (typeof oldRender === 'function') oldRender();
-  if (state.tab === 'clients') {
-    renderClientsWithInvoices();
-  }
-};
 </script>
 </body>
 </html>
