@@ -228,11 +228,47 @@
   .preview-side{width:220px;display:flex;flex-direction:column;gap:8px;}
 
   /* LOGIN */
-  .login-wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;background:var(--ink);}
-  .login-card{background:var(--surface);width:400px;padding:36px 34px 30px 34px;border-radius:10px;box-shadow:0 10px 40px rgba(0,0,0,0.3);}
-  .login-card .brand-head{text-align:center;margin-bottom:26px;}
-  .login-card .display{font-size:26px;margin-bottom:2px;}
-  .login-card .sub{color:var(--ink-soft);font-size:13px;margin-bottom:0;}
+  .login-wrap{min-height:100vh;display:flex;background:var(--surface);}
+  .login-side{
+    flex:1 1 46%;
+    position:relative;
+    overflow:hidden;
+    display:flex;flex-direction:column;justify-content:space-between;
+    padding:56px 56px;
+    background:
+      radial-gradient(560px 420px at 15% 12%, rgba(220,232,226,0.16), transparent 60%),
+      radial-gradient(680px 520px at 88% 90%, rgba(184,128,43,0.14), transparent 55%),
+      linear-gradient(155deg, #14201c 0%, var(--ink) 55%, #0f1815 100%);
+    color:#EDEFEA;
+  }
+  .login-side::before{
+    content:'';position:absolute;inset:0;
+    background-image:radial-gradient(rgba(255,255,255,0.09) 1px, transparent 1px);
+    background-size:26px 26px;
+    -webkit-mask-image:radial-gradient(650px 500px at 20% 15%, #000 0%, transparent 70%);
+    mask-image:radial-gradient(650px 500px at 20% 15%, #000 0%, transparent 70%);
+    pointer-events:none;
+  }
+  .login-side .side-top{position:relative;z-index:1;}
+  .login-side .side-mark{
+    display:inline-flex;align-items:center;justify-content:center;
+    width:44px;height:44px;border-radius:11px;
+    background:rgba(220,232,226,0.12);border:1px solid rgba(220,232,226,0.22);
+    font-family:'Fraunces',serif;font-weight:600;font-size:19px;color:#fff;
+    margin-bottom:22px;
+  }
+  .login-side .side-brand{font-family:'Fraunces',serif;font-size:30px;font-weight:600;color:#fff;margin-bottom:8px;}
+  .login-side .side-sub{font-size:14.5px;color:#AEBBB4;max-width:320px;line-height:1.55;}
+  .login-side .side-foot{position:relative;z-index:1;font-size:12px;color:#7C8B84;letter-spacing:0.3px;}
+  .login-form-side{
+    flex:1 1 54%;
+    display:flex;align-items:center;justify-content:center;
+    padding:40px;
+  }
+  .login-card{width:100%;max-width:380px;padding:0;}
+  .login-card .brand-head{margin-bottom:26px;}
+  .login-card .display{font-size:24px;margin-bottom:3px;font-weight:600;}
+  .login-card .sub{color:var(--ink-soft);font-size:13.5px;margin-bottom:0;}
   .login-card .field{margin-bottom:14px;}
   .login-card .switch{font-size:13px;color:var(--ink-soft);margin-top:14px;text-align:center;}
   .login-card .switch a{color:var(--accent);cursor:pointer;text-decoration:underline;}
@@ -247,6 +283,16 @@
   .whoami button{background:none;border:none;color:#9BAAA3;font-size:12px;text-decoration:underline;padding:0;}
   .user-row{display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-bottom:1px solid var(--line);font-size:14px;}
   .user-row:last-child{border-bottom:none;}
+
+  @media (max-width:860px){
+    .login-wrap{flex-direction:column;}
+    .login-side{
+      flex:0 0 auto;padding:34px 28px;min-height:0;
+    }
+    .login-side .side-sub{max-width:none;}
+    .login-side .side-foot{display:none;}
+    .login-form-side{padding:32px 28px 48px 28px;}
+  }
 
   @media print{
     .sidebar,.pagehead,.preview-side,.no-print{display:none !important;}
@@ -502,18 +548,28 @@ function renderAuth(){
   const view = hasUsers ? state.authView : 'register';
   return `
     <div class="login-wrap">
-      <div class="login-card">
-        <div class="brand-head">
-          <div class="display">Ledger</div>
-          <div class="sub">Sdílená fakturační kniha</div>
+      <div class="login-side">
+        <div class="side-top">
+          <div class="side-mark">L</div>
+          <div class="side-brand">Ledger</div>
+          <div class="side-sub">Sdílená fakturační kniha pro tebe a tvůj tým — jedno místo pro faktury, klienty a přehledy.</div>
         </div>
-        <div class="auth-tabs">
-          <div class="auth-tab ${view==='login'?'active':''} ${!hasUsers?'disabled':''}"
-               ${hasUsers?`data-action="auth-switch" data-view="login"`:''}>Přihlásit se</div>
-          <div class="auth-tab ${view==='register'?'active':''}" data-action="auth-switch" data-view="register">Registrace</div>
+        <div class="side-foot">© ${new Date().getFullYear()} · Ledger</div>
+      </div>
+      <div class="login-form-side">
+        <div class="login-card">
+          <div class="brand-head">
+            <div class="display">${view==='register' ? 'Vytvořit účet' : 'Vítej zpět'}</div>
+            <div class="sub">${view==='register' ? '' : 'Přihlas se ke sdílené fakturaci.'}</div>
+          </div>
+          <div class="auth-tabs">
+            <div class="auth-tab ${view==='login'?'active':''} ${!hasUsers?'disabled':''}"
+                 ${hasUsers?`data-action="auth-switch" data-view="login"`:''}>Přihlásit se</div>
+            <div class="auth-tab ${view==='register'?'active':''}" data-action="auth-switch" data-view="register">Registrace</div>
+          </div>
+          ${state.authError?`<div class="login-error">${escapeHtml(state.authError)}</div>`:''}
+          ${view==='register' ? renderRegisterForm(hasUsers) : renderLoginForm()}
         </div>
-        ${state.authError?`<div class="login-error">${escapeHtml(state.authError)}</div>`:''}
-        ${view==='register' ? renderRegisterForm(hasUsers) : renderLoginForm()}
       </div>
     </div>
   `;
@@ -1173,18 +1229,25 @@ async function handleImportFile(file){
 /* ---------- LOCAL PATTERN-BASED INVOICE PARSER (no AI, runs fully client-side) ---------- */
 function parseInvoiceText(text, lines){
   const norm = text.replace(/\r/g,'');
+  lines = (lines && lines.length ? lines : norm.split('\n')).map(l=>l.trim()).filter(l=>l.length);
 
   function findAll(re){ return [...norm.matchAll(re)].map(m=>m[1].trim()); }
-  function findFirst(re){ const m = re.exec(norm); return m ? m[1].trim() : ''; }
 
   const icos = findAll(/I[ČC]O[:\s]*([0-9]{6,9})/gi);
   const dics = findAll(/DI[ČC][:\s]*([A-Z]{2}\s?[0-9]{8,10})/gi);
   const ibans = findAll(/\b([A-Z]{2}[0-9]{2}\s?(?:[A-Z0-9]{4}\s?){2,7}[A-Z0-9]{1,4})\b/g);
   const accounts = findAll(/\b(\d{2,10}\/\d{4})\b/g);
 
-  const number = findFirst(/(?:Faktura|Da[nň]ov[ýy]\s+doklad)[^0-9A-Za-z]{0,15}(?:[ČC]\.?|[ČC]íslo)?[:\s]*([A-Z0-9\-\/]{4,20})/i)
-              || findFirst(/[ČC]íslo\s+faktury[:\s]*([A-Z0-9\-\/]{4,20})/i);
-  const variableSymbol = findFirst(/Variabiln[íi]\s+symbol[:\s]*([0-9]{3,15})/i);
+  // ---- invoice number: scan line by line so the match can never spill onto a
+  // following heading like "Dodavatel" — and require the captured value to
+  // actually contain a digit, otherwise it isn't an invoice number ----
+  let number = '';
+  const numberLineRe = /(?:Faktura(?:\s*[-–—]\s*da[nň]ov[ýy]\s+doklad)?|Da[nň]ov[ýy]\s+doklad|[ČC]íslo\s+faktury)\s*(?:[ČC]\.?|[ČC]íslo)?\s*[:\s]\s*([A-Z0-9][A-Z0-9\-\/]{2,19})/i;
+  for(const line of lines){
+    const m = numberLineRe.exec(line);
+    if(m && /\d/.test(m[1])){ number = m[1].trim(); break; }
+  }
+  const variableSymbol = (()=>{ const m = /Variabiln[íi]\s+symbol[:\s]*([0-9]{3,15})/i.exec(norm); return m ? m[1].trim() : ''; })();
 
   const dateRe = /(\d{1,2}\.\s?\d{1,2}\.\s?\d{4}|\d{4}-\d{2}-\d{2})/;
   function findDateNear(label){
@@ -1202,50 +1265,59 @@ function parseInvoiceText(text, lines){
   const dueDate = findDateNear('Datum\\s+splatnosti') || findDateNear('Splatnost');
   const taxDate = findDateNear('Datum\\s+zdanite[lľ]n[ée]ho\\s+pln[ěe]n[íi]') || issueDate;
 
-  function extractBetween(startLabel, endLabels){
-    const m = new RegExp(startLabel, 'i').exec(norm);
-    if(!m) return '';
-    let rest = norm.slice(m.index + m[0].length);
-    let endIdx = 250;
-    endLabels.forEach(el=>{
-      const em = new RegExp(el,'i').exec(rest);
-      if(em && em.index < endIdx) endIdx = em.index;
-    });
-    return rest.slice(0, endIdx).replace(/\n+/g,' ').trim();
-  }
-  const boundaryLabels = ['Odb[ěe]ratel','Dodavatel','I[ČC]O','DI[ČC]','Faktura','Splatnost','Vystaveno'];
-  let supplierBlock = extractBetween('Dodavatel', boundaryLabels.filter(l=>l!=='Dodavatel'));
-  let customerBlock = extractBetween('Odb[ěe]ratel', boundaryLabels.filter(l=>l!=='Odb[ěe]ratel'));
+  // ---- supplier / customer blocks: walk the reconstructed lines instead of a
+  // single text blob, so we can also pick up the address lines that sit
+  // between the name and the IČO/DIČ, and never keep a stray leading ":" ----
+  const boundaryRe = /^(Odb[ěe]ratel|Dodavatel|I[ČC]O|DI[ČC]|Faktura|Da[nň]ov[ýy]\s+doklad|Splatnost|Vystaveno|Variabiln[íi]|Bankovn[íi])\b/i;
 
-  function firstWordyLine(block){
-    if(!block) return '';
-    const cleaned = block.replace(/I[ČC]O.*$/i,'').trim();
-    return cleaned.split(/\s{2,}|,/)[0].trim().slice(0,80);
+  function blockAfterLabel(label){
+    const labelLineRe = new RegExp('^'+label+'\\s*:?\\s*(.*)$','i');
+    const idx = lines.findIndex(l=> labelLineRe.test(l));
+    if(idx===-1) return { name:'', address:'' };
+    const sameLine = labelLineRe.exec(lines[idx]);
+    const collected = [];
+    if(sameLine && sameLine[1] && sameLine[1].trim()) collected.push(sameLine[1].replace(/^:\s*/,'').trim());
+    for(let i=idx+1; i<lines.length && collected.length<6; i++){
+      const l = lines[i];
+      if(boundaryRe.test(l)) break;
+      collected.push(l);
+    }
+    const name = (collected[0]||'').trim();
+    const address = collected.slice(1).join(', ').trim();
+    return { name, address };
   }
-  const supplierName = firstWordyLine(supplierBlock);
-  const customerName = firstWordyLine(customerBlock);
 
-  // fallback: if labels not found, assume first ICO/DIC pair = dodavatel, second = odběratel
+  const supplier = blockAfterLabel('Dodavatel');
+  const customer = blockAfterLabel('Odb[ěe]ratel');
+
   const company = {
-    name: supplierName || '', address: '',
+    name: supplier.name || '', address: supplier.address || '',
     ico: icos[0] || '', dic: dics[0] || '',
-    email: findFirst(/([\w.\-]+@[\w.\-]+\.\w+)/),
+    email: (()=>{ const m = /([\w.\-]+@[\w.\-]+\.\w+)/.exec(norm); return m ? m[1] : ''; })(),
     phone: '', account: accounts[0] || '', iban: (ibans[0]||'').replace(/\s+/g,'')
   };
   const client = {
-    name: customerName || '', address: '',
+    name: customer.name || '', address: customer.address || '',
     ico: icos[1] || icos[0] || '', dic: dics[1] || dics[0] || '',
     email: '', phone: ''
   };
 
-  // items: look for lines that look like a table row — description followed by numbers/Kč
-  const itemLineRe = /^(.{3,60}?)\s+([\d]+(?:[.,]\d+)?)\s*(ks|hod|kg|m|den|dny|měsíc|balení)?\s*([\d\s]+[.,]?\d*)\s*K[čc]\.?\s*(\d{1,2})?\s*%?\s*([\d\s]+[.,]?\d*)\s*K[čc]\.?$/i;
+  // ---- items: look for lines that look like a table row — description
+  // followed by qty/unit/price/vat/total. Made more tolerant of spacing,
+  // "Kč"/"CZK", and templates that omit the unit column ----
+  // a row only counts as a line item if it actually ends in a currency amount —
+  // this also keeps header/label lines (invoice number, dates, VS…) out of the table
+  const itemLineRe = /^(.{2,80}?)\s+([\d]+(?:[.,]\d+)?)\s*(ks|hod|kg|g|m|den|dny|dní|m[ěe]s[íi]c|balen[íi]|l)?\.?\s*([\d\s]{1,12}(?:[.,]\d{1,2})?)\s*(?:K[čc]\.?|CZK)\s*(\d{1,2})?\s*%?\s*([\d\s]{1,12}(?:[.,]\d{1,2})?)\s*(?:K[čc]\.?|CZK)$/i;
+  const nonItemLineRe = /^(Faktura|Da[nň]ov[ýy]\s+doklad|[ČC]íslo\s+faktury|Variabiln[íi]\s+symbol|Datum|I[ČC]O|DI[ČC]|Splatnost|Vystaveno|Bankovn[íi])\b/i;
   const items = [];
-  (lines||[]).forEach(line=>{
-    const m = itemLineRe.exec(line.trim());
+  lines.forEach(line=>{
+    if(boundaryRe.test(line) || nonItemLineRe.test(line)) return;
+    const m = itemLineRe.exec(line);
     if(m){
+      const desc = m[1].trim();
+      if(!desc || /^(Popis|Polo[žz]ka|Množstv[íi]|Cena|Jedn\.?|DPH|Celkem)$/i.test(desc)) return;
       items.push({
-        desc: m[1].trim(),
+        desc,
         qty: parseFloat((m[2]||'1').replace(',','.')) || 1,
         unit: m[3] || 'ks',
         price: parseFloat((m[4]||'0').replace(/\s/g,'').replace(',','.')) || 0,
