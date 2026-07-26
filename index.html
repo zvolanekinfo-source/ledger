@@ -1474,35 +1474,7 @@ function viewSettings(){
         <div class="field"><label>Zápis v rejstříku (nepovinné)</label><input name="registration" value="${escapeAttr(co.registration)}" placeholder="Zapsáno v OR vedeném..."></div>
       </div>
 
-      <div class="section-title">Dodavatelé</div>
-      <div class="form-card">
-        ${state.suppliers.length === 0 ? `
-          <p style="color:var(--ink-soft);margin:0;">Zatím nemáš žádné uložené dodavatele.</p>
-          <div class="formfoot">
-            <button type="button" class="btn btn-primary" data-action="open-supplier-modal">+ Přidat prvního dodavatele</button>
-          </div>
-        ` : `
-          <div style="display:flex; flex-direction:column; gap:8px; margin-bottom:16px;">
-            ${state.suppliers.map(s => `
-              <div class="card" style="padding:12px 16px; display:flex; justify-content:space-between; align-items:center;">
-                <div>
-                  <div style="font-weight:600; color:var(--ink);">${escapeHtml(s.name)}</div>
-                  <div style="font-size:0.85rem; color:var(--ink-soft); margin-top:2px;">
-                    IČ: ${escapeHtml(s.ico || '—')} · ${escapeHtml(s.email || '')}
-                  </div>
-                </div>
-                <div style="display:flex; gap:6px;">
-                  <button type="button" class="btn btn-small secondary" data-action="edit-supplier" data-id="${escapeAttr(s.id)}">Upravit</button>
-                  <button type="button" class="btn btn-small danger" data-action="delete-supplier" data-id="${escapeAttr(s.id)}">Smazat</button>
-                </div>
-              </div>
-            `).join('')}
-          </div>
-          <button type="button" class="btn btn-primary btn-sm" data-action="open-supplier-modal">+ Nový dodavatel</button>
-        `}
-      </div>
-
-      <div class="section-title">Platby</div>
+      <div class="section-title">Moje bankovní údaje</div>
       <div class="field-row">
         <div class="field"><label>Číslo účtu</label><input name="account" value="${escapeAttr(co.account)}" placeholder="123456789/0300"></div>
         <div class="field"><label>Banka</label><input name="bankName" value="${escapeAttr(co.bankName)}" placeholder="např. Fio banka"></div>
@@ -1550,6 +1522,41 @@ function viewSettings(){
         ${brandSlot('stamp','Razítko','Foto razítka firmy.','Razítko')}
       </div>
       <input type="file" id="branding-file-input" accept="image/*" style="display:none;">
+    </div>
+
+    <div class="section-title" style="margin-top:30px;">Dodavatelé</div>
+    <div class="form-card">
+      ${state.suppliers.length === 0 ? `
+        <p style="color:var(--ink-soft);margin:0;">Zatím nemáš žádné uložené dodavatele.</p>
+        <div class="formfoot">
+          <button type="button" class="btn btn-primary" data-action="open-supplier-modal">+ Přidat prvního dodavatele</button>
+        </div>
+      ` : `
+        <div style="display:flex; flex-direction:column; gap:8px; margin-bottom:16px;">
+          ${state.suppliers.map(s => `
+            <div class="card" style="padding:12px 16px;">
+              <div style="display:flex; justify-content:space-between; align-items:start;">
+                <div style="flex:1;">
+                  <div style="font-weight:600; color:var(--ink);">${escapeHtml(s.name)}</div>
+                  <div style="font-size:0.85rem; color:var(--ink-soft); margin-top:4px;">
+                    IČ: ${escapeHtml(s.ico || '—')} · ${escapeHtml(s.email || '')}
+                  </div>
+                  ${s.account || s.iban ? `
+                    <div style="font-size:0.8rem; color:var(--ink-soft); margin-top:6px;">
+                      ${s.iban ? '💳 ' + escapeHtml(s.iban) : '💳 ' + escapeHtml(s.account || '')}
+                    </div>
+                  ` : ''}
+                </div>
+                <div style="display:flex; gap:6px;">
+                  <button type="button" class="btn btn-small secondary" data-action="edit-supplier" data-id="${escapeAttr(s.id)}">Upravit</button>
+                  <button type="button" class="btn btn-small danger" data-action="delete-supplier" data-id="${escapeAttr(s.id)}">Smazat</button>
+                </div>
+              </div>
+            </div>
+          `).join('')}
+        </div>
+        <button type="button" class="btn btn-primary btn-sm" data-action="open-supplier-modal">+ Nový dodavatel</button>
+      `}
     </div>
 
     <div class="section-title" style="margin-top:30px;">Kolegové s přístupem</div>
@@ -2288,6 +2295,13 @@ function setupSupplierCombo(){
   const list = document.getElementById('supplier-combo-list');
   if(!input || !hidden || !list) return;
 
+  // Auto-select first supplier if none selected
+  if(!hidden.value && state.suppliers.length > 0){
+    const firstSupplier = state.suppliers[0];
+    input.value = firstSupplier.name;
+    hidden.value = firstSupplier.id;
+  }
+
   let addingNew = false;
 
   function renderList(query){
@@ -2529,9 +2543,11 @@ function openSupplierModal(id){
   const modalHtml = `
     <div class="modal-overlay" id="supplier-modal-overlay">
       <div class="modal-card">
-        <h2>Dodavatel</h2>
-        <form id="supplier-form">
+        <h2>${id ? 'Upravit' : 'Nový'} dodavatel</h2>
+        <form id="supplier-form" style="max-height:70vh;overflow-y:auto;">
           <input type="hidden" name="id" value="${supplier?.id || ''}">
+          
+          <div class="section-title" style="margin-top:0;">Základní údaje</div>
           <div class="field"><label>Název firmy / jméno</label><input name="name" id="supplier-form-name" value="${escapeAttr(supplier?.name || '')}" required></div>
           <div class="field combo-field">
             <label>IČO</label>
@@ -2546,8 +2562,19 @@ function openSupplierModal(id){
             <div class="field"><label>Telefon</label><input name="phone" value="${escapeAttr(supplier?.phone || '')}"></div>
           </div>
           <p style="font-size:11.5px;color:var(--ink-soft);margin:6px 0 14px 0;">Napiš název firmy nebo IČO — údaje z veřejného rejstříku ARES se doplní automaticky.</p>
-          <div style="display:flex; gap:10px;">
-            <button type="submit" class="btn">Uložit dodavatele</button>
+
+          <div class="section-title">Bankovní údaje</div>
+          <div class="field-row">
+            <div class="field"><label>Číslo účtu</label><input name="account" value="${escapeAttr(supplier?.account || '')}" placeholder="123456789/0300"></div>
+            <div class="field"><label>Banka</label><input name="bankName" value="${escapeAttr(supplier?.bankName || '')}" placeholder="např. Fio banka"></div>
+          </div>
+          <div class="field-row">
+            <div class="field"><label>IBAN</label><input name="iban" value="${escapeAttr(supplier?.iban || '')}" placeholder="CZ..."></div>
+            <div class="field"><label>SWIFT/BIC</label><input name="swift" value="${escapeAttr(supplier?.swift || '')}"></div>
+          </div>
+
+          <div style="display:flex; gap:10px; margin-top:24px;">
+            <button type="submit" class="btn" style="flex:1;">Uložit dodavatele</button>
             <button type="button" class="btn secondary" data-action="close-supplier-modal">Zrušit</button>
           </div>
         </form>
@@ -2577,7 +2604,19 @@ async function onSubmitSupplier(e){
   e.preventDefault();
   const fd = new FormData(e.target);
   const id = fd.get('id');
-  const supplier = { id: id || uid(), name: fd.get('name'), address: fd.get('address'), ico: fd.get('ico'), dic: fd.get('dic'), email: fd.get('email'), phone: fd.get('phone') };
+  const supplier = { 
+    id: id || uid(), 
+    name: fd.get('name'), 
+    address: fd.get('address'), 
+    ico: fd.get('ico'), 
+    dic: fd.get('dic'), 
+    email: fd.get('email'), 
+    phone: fd.get('phone'),
+    account: fd.get('account'),
+    bankName: fd.get('bankName'),
+    iban: fd.get('iban'),
+    swift: fd.get('swift')
+  };
   if(id){ const idx = state.suppliers.findIndex(s=>s.id===id); state.suppliers[idx]=supplier; }
   else{ state.suppliers.push(supplier); }
   await saveSuppliers();
