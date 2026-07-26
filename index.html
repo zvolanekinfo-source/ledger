@@ -2701,62 +2701,6 @@ function renderClients() {
     </div>
   `;
 }
-
-// Funkce pro zobrazení faktur vybraného odběratele
-function selectClientForInvoices(clientId) {
-  const client = (state.clients || []).find(c => String(c.id) === String(clientId));
-  const detailEl = document.getElementById('client-invoices-detail');
-  if (!client || !detailEl) return;
-
-  const invoices = (state.invoices || []).filter(i => 
-    (i.client && i.client.ic && client.ic && i.client.ic === client.ic) || 
-    (i.client && i.client.name === client.name)
-  );
-
-  let invoicesListHtml = '';
-  if (invoices.length === 0) {
-    invoicesListHtml = `<p style="color:var(--ink-soft); margin-top:12px;">Pro tohoto odběratele nemáte zatím vystavené žádné faktury.</p>`;
-  } else {
-    invoicesListHtml = `
-      <div style="display:flex; flex-direction:column; gap:8px; margin-top:12px;">
-        ${invoices.map(inv => `
-          <div style="display:flex; justify-content:space-between; align-items:center; padding:12px; background:var(--paper); border-radius:6px;">
-            <div>
-              <div style="font-weight:600;">${inv.number || 'Faktura'}</div>
-              <div style="font-size:0.8rem; color:var(--ink-soft);">${inv.date || ''}</div>
-            </div>
-            <div style="text-align:right;">
-              <div style="font-weight:700; color:var(--ink);">${inv.total ? Number(inv.total).toLocaleString('cs-CZ') + ' Kč' : ''}</div>
-              <span class="badge ${inv.status === 'Zaplaceno' ? 'badge-success' : ''}" style="font-size:0.75rem;">${inv.status || 'Vystaveno'}</span>
-            </div>
-          </div>
-        `).join('')}
-      </div>
-    `;
-  }
-
-  detailEl.innerHTML = `
-    <div class="card" style="padding: 24px;">
-      <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:16px;">
-        <div>
-          <h2 style="margin:0 0 4px 0;">${client.name}</h2>
-          <div style="color:var(--ink-soft); font-size:0.9rem;">
-            IČ: ${client.ic || '—'} ${client.dic ? '· DIČ: ' + client.dic : ''}
-          </div>
-          <div style="color:var(--ink-soft); font-size:0.9rem; margin-top:2px;">
-            ${[client.address, client.city, client.zip].filter(Boolean).join(', ')}
-          </div>
-        </div>
-        <button class="btn btn-secondary btn-sm" onclick="editClient('${client.id}')">Upravit</button>
-      </div>
-
-      <hr style="border:0; border-top:1px solid var(--line); margin: 16px 0;">
-
-      <h3 style="margin:0 0 8px 0;">Faktury odběratele (${invoices.length})</h3>
-      ${invoicesListHtml}
-    </div>
-  `;
-}
 </script>
 </body>
 </html>
