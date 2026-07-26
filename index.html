@@ -2598,6 +2598,112 @@ document.addEventListener('focusin', (e) => {
     });
   }
 });
+/* ---------- ZOBRAZENÍ FAKTUR U ODBĚRATELE ---------- */
+
+// Přepsání vykreslení odběratelů, aby kliknutí zobrazilo jeho faktury
+const originalRenderClients = typeof renderClients === 'function' ? renderClients : null;
+
+function renderClientsWithInvoices() {
+  const container = document.getElementById('view-clients');
+  if (!container) return;
+
+  const clients = state.clients || [];
+  const invoices = state.invoices || [];
+
+  if (clients.length === 0) {
+    container.innerHTML = `<div class="empty-state">Zatím nemáš žádné odběratele.</div>`;
+    return;
+  }
+
+  container.innerHTML = `
+    <div style="display: flex; gap: 24px; align-items: flex-start; flex-wrap: wrap;">
+      <div style="flex: 1; min-width: 280px;" id="client-list-col">
+        <h3>Seznam odběratelů</h3>
+        <div class="client-cards-list">
+          ${clients.map(c => {
+            const clientInvoices = invoices.filter(i => 
+              (i.client && i.client.ic === c.ic) || 
+              (i.client && i.client.name === c.name)
+            );
+            return `
+              <div class="card client-card-item" data-id="${c.id}" style="cursor:pointer; margin-bottom: 12px; padding: 14px; border: 1px solid var(--line); border-radius: 8px;">
+                <div style="font-weight:600; font-size:1.05rem;">${c.name}</div>
+                <div style="font-size:0.85rem; color:var(--ink-soft);">IČ: ${c.ic || '—'}</div>
+                <div style="font-size:0.8rem; margin-top:6px; color:var(--accent);">Počet faktur: <strong>${clientInvoices.length}</strong></div>
+              </div>
+            `;
+          }).join('')}
+        </div>
+      </div>
+      <div style="flex: 1.5; min-width: 320px;" id="client-detail-col">
+        <div class="card" style="padding: 20px;">
+          <i>Vyber odběratele vlevo pro zobrazení jeho faktur.</i>
+        </div>
+      </div>
+    </div>
+  `;
+
+  // Připojení eventů na kliknutí
+  container.querySelectorAll('.client-card-item').forEach(card => {
+    card.addEventListener('click', () => {
+      const clientId = card.dataset.id;
+      showClientInvoices(clientId);
+    });
+  });
+}
+
+function showClientInvoices(clientId) {
+  const client = (state.clients || []).find(c => String(c.id) === String(clientId));
+  const detailCol = document.getElementById('client-detail-col');
+  if (!client || !detailCol) return;
+
+  const invoices = (state.invoices || []).filter(i => 
+    (i.client && i.client.ic === client.ic) || 
+    (i.client && i.client.name === client.name)
+  );
+
+  let invoicesHtml = '';
+  if (invoices.length === 0) {
+    invoicesHtml = `<p style="color:var(--ink-soft);">Pro tohoto odběratele zatím nebyly vystaveny žádné faktury.</p>`;
+  } else {
+    invoicesHtml = `
+      <div style="display:flex; flex-direction:column; gap:8px; margin-top:12px;">
+        ${invoices.map(inv => `
+          <div style="display:flex; justify-content:space-between; align-items:center; padding:10px; border-bottom:1px solid var(--line);">
+            <div>
+              <strong>${inv.number || 'Faktura bez čísla'}</strong>
+              <div style="font-size:0.8rem; color:var(--ink-soft);">${inv.date || ''}</div>
+            </div>
+            <div style="text-align:right;">
+              <strong>${inv.total ? inv.total + ' Kč' : ''}</strong>
+              <div><span class="badge ${inv.status === 'Zaplaceno' ? 'badge-success' : 'badge-warning'}">${inv.status || 'Vystaveno'}</span></div>
+            </div>
+          </div>
+        `).join('')}
+      </div>
+    `;
+  }
+
+  detailCol.innerHTML = `
+    <div class="card" style="padding: 20px;">
+      <h2>${client.name}</h2>
+      <p style="margin-bottom: 4px;"><strong>IČ:</strong> ${client.ic || '—'} | <strong>DIČ:</strong> ${client.dic || '—'}</p>
+      <p style="margin-bottom: 16px;"><strong>Adresa:</strong> ${client.address || ''} ${client.city || ''} ${client.zip || ''}</p>
+      <hr style="border:0; border-top:1px solid var(--line); margin: 16px 0;">
+      <h3>Faktury odběratele (${invoices.length})</h3>
+      ${invoicesHtml}
+    </div>
+  `;
+}
+
+// Propojení s hlavní funkcí render
+const oldRender = window.render;
+window.render = function() {
+  if (typeof oldRender === 'function') oldRender();
+  if (state.tab === 'clients') {
+    renderClientsWithInvoices();
+  }
+};
 </script>
 </body>
 </html>
