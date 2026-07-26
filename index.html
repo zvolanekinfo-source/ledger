@@ -222,13 +222,19 @@
 
   /* LOGIN */
   .login-wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;background:var(--ink);}
-  .login-card{background:var(--surface);width:380px;padding:36px 34px;border-radius:8px;box-shadow:0 10px 40px rgba(0,0,0,0.3);}
-  .login-card .display{font-size:24px;margin-bottom:2px;}
-  .login-card .sub{color:var(--ink-soft);font-size:13px;margin-bottom:22px;}
+  .login-card{background:var(--surface);width:400px;padding:36px 34px 30px 34px;border-radius:10px;box-shadow:0 10px 40px rgba(0,0,0,0.3);}
+  .login-card .brand-head{text-align:center;margin-bottom:26px;}
+  .login-card .display{font-size:26px;margin-bottom:2px;}
+  .login-card .sub{color:var(--ink-soft);font-size:13px;margin-bottom:0;}
   .login-card .field{margin-bottom:14px;}
   .login-card .switch{font-size:13px;color:var(--ink-soft);margin-top:14px;text-align:center;}
   .login-card .switch a{color:var(--accent);cursor:pointer;text-decoration:underline;}
-  .login-error{background:var(--red-soft);color:var(--red);font-size:13px;padding:9px 12px;border-radius:4px;margin-bottom:14px;}
+  .login-error{background:var(--red-soft);color:var(--red);font-size:13px;padding:9px 12px;border-radius:4px;margin-bottom:16px;}
+  .auth-tabs{display:flex;background:var(--paper);border-radius:8px;padding:4px;margin-bottom:24px;gap:4px;}
+  .auth-tab{flex:1;text-align:center;padding:9px 0;font-size:13.5px;font-weight:600;color:var(--ink-soft);cursor:pointer;border-radius:6px;transition:background .15s,color .15s;}
+  .auth-tab.active{background:var(--surface);color:var(--ink);box-shadow:0 1px 3px rgba(0,0,0,0.1);}
+  .auth-tab.disabled{opacity:.35;cursor:not-allowed;}
+  .auth-subtitle{font-size:13px;color:var(--ink-soft);margin:-6px 0 18px 0;}
   .whoami{display:flex;align-items:center;justify-content:space-between;gap:8px;}
   .whoami .name{font-size:13px;color:#EDEFEA;font-weight:600;}
   .whoami button{background:none;border:none;color:#9BAAA3;font-size:12px;text-decoration:underline;padding:0;}
@@ -486,39 +492,47 @@ function render(){
 /* ---------- AUTH ---------- */
 function renderAuth(){
   const hasUsers = state.users.length > 0;
-  if(state.authView==='register' || !hasUsers){
-    return `
-      <div class="login-wrap">
-        <div class="login-card">
-          <div class="display">${hasUsers ? 'Nový kolega' : 'Založit firmu'}</div>
-          <div class="sub">${hasUsers ? 'Vytvoř si vlastní přihlášení do sdílené fakturace.' : 'Vytvoř první přihlášení — pak se přidají i kolegové.'}</div>
-          ${state.authError?`<div class="login-error">${escapeHtml(state.authError)}</div>`:''}
-          <form id="register-form">
-            <div class="field"><label>Jméno</label><input name="name" required autofocus></div>
-            <div class="field"><label>Heslo</label><input name="password" type="password" required></div>
-            <button type="submit" class="btn" style="width:100%;">Vytvořit a přihlásit</button>
-          </form>
-          ${hasUsers ? `<div class="switch">Už máš přihlášení? <a data-action="auth-switch" data-view="login">Přihlásit se</a></div>` : ''}
-        </div>
-      </div>
-    `;
-  }
+  const view = hasUsers ? state.authView : 'register';
   return `
     <div class="login-wrap">
       <div class="login-card">
-        <div class="display">Ledger</div>
-        <div class="sub">Přihlas se ke sdílené fakturaci.</div>
+        <div class="brand-head">
+          <div class="display">Ledger</div>
+          <div class="sub">Sdílená fakturační kniha</div>
+        </div>
+        <div class="auth-tabs">
+          <div class="auth-tab ${view==='login'?'active':''} ${!hasUsers?'disabled':''}"
+               ${hasUsers?`data-action="auth-switch" data-view="login"`:''}>Přihlásit se</div>
+          <div class="auth-tab ${view==='register'?'active':''}" data-action="auth-switch" data-view="register">Registrace</div>
+        </div>
         ${state.authError?`<div class="login-error">${escapeHtml(state.authError)}</div>`:''}
-        <form id="login-form">
-          <div class="field"><label>Jméno</label>
-            <select name="name">${state.users.map(u=>`<option value="${escapeAttr(u.name)}">${escapeHtml(u.name)}</option>`).join('')}</select>
-          </div>
-          <div class="field"><label>Heslo</label><input name="password" type="password" required autofocus></div>
-          <button type="submit" class="btn" style="width:100%;">Přihlásit se</button>
-        </form>
-        <div class="switch">Nový kolega? <a data-action="auth-switch" data-view="register">Vytvořit přihlášení</a></div>
+        ${view==='register' ? renderRegisterForm(hasUsers) : renderLoginForm()}
       </div>
     </div>
+  `;
+}
+
+function renderLoginForm(){
+  return `
+    <form id="login-form">
+      <div class="field"><label>Jméno</label>
+        <select name="name">${state.users.map(u=>`<option value="${escapeAttr(u.name)}">${escapeHtml(u.name)}</option>`).join('')}</select>
+      </div>
+      <div class="field"><label>Heslo</label><input name="password" type="password" required autofocus></div>
+      <button type="submit" class="btn" style="width:100%;">Přihlásit se</button>
+    </form>
+  `;
+}
+
+function renderRegisterForm(hasUsers){
+  return `
+    <div class="auth-subtitle">${hasUsers ? 'Vytvoř si vlastní přihlášení do sdílené fakturace.' : 'Vytvoř první přihlášení — pak se přidají i kolegové.'}</div>
+    <form id="register-form">
+      <div class="field"><label>Jméno</label><input name="name" required autofocus></div>
+      <div class="field"><label>Heslo</label><input name="password" type="password" required minlength="4"></div>
+      <div class="field"><label>Heslo znovu</label><input name="password2" type="password" required minlength="4"></div>
+      <button type="submit" class="btn" style="width:100%;">Vytvořit a přihlásit</button>
+    </form>
   `;
 }
 
@@ -552,6 +566,12 @@ async function onSubmitRegister(e){
   const fd = new FormData(e.target);
   const name = (fd.get('name')||'').trim();
   const password = fd.get('password');
+  const password2 = fd.get('password2');
+  if(password !== password2){
+    state.authError = 'Zadaná hesla se neshodují.';
+    render();
+    return;
+  }
   if(state.users.find(u=>u.name.toLowerCase()===name.toLowerCase())){
     state.authError = 'Toto jméno už existuje, zvol jiné nebo se přihlas.';
     render();
