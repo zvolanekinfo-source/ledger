@@ -1502,21 +1502,20 @@ function viewSettings(){
         <div class="field"><label>SWIFT / BIC</label><input name="swift" value="${escapeAttr(co.swift)}"></div>
       </div>
 
-      <div class="section-title">Vzhled mojí firmy (logo, razítko, podpis)</div>
+      <div class="section-title">Vzhled mojí firmy</div>
       <div class="toggle-row"><input type="checkbox" name="showLogo" id="chk-showLogo" value="1" ${co.showLogo?'checked':''}><label for="chk-showLogo">Zobrazovat logo na fakturách</label></div>
       <div class="toggle-row"><input type="checkbox" name="showStamp" id="chk-showStamp" value="1" ${co.showStamp?'checked':''}><label for="chk-showStamp">Zobrazovat razítko na fakturách</label></div>
       <div class="toggle-row"><input type="checkbox" name="showSignature" id="chk-showSignature" value="1" ${co.showSignature?'checked':''}><label for="chk-showSignature">Zobrazovat elektronický podpis na fakturách</label></div>
       <div class="toggle-row"><input type="checkbox" name="showQr" id="chk-showQr" value="1" ${co.showQr?'checked':''}><label for="chk-showQr">Zobrazovat QR platbu (vyžaduje vyplněný IBAN)</label></div>
-      
-      <div style="margin-top:16px; padding-top:16px; border-top:1px solid var(--border);">
-        <p style="font-size:12.5px;color:var(--ink-soft);margin-top:0;">Nahraj logo firmy, obrázek svého podpisu a fotku razítka — objeví se na fakturách přesně tak, jak si je nastavíš výše.</p>
-        <div class="brand-grid">
-          ${brandSlot('logo','Logo firmy','Zobrazí se v hlavičce faktury.','Logo firmy')}
-          ${brandSlot('signature','Elektronický podpis','Foto nebo scan podpisu.','Podpis')}
-          ${brandSlot('stamp','Razítko','Foto razítka firmy.','Razítko')}
-        </div>
-        <input type="file" id="branding-file-input" accept="image/*" style="display:none;">
+
+      <div class="section-title">Logo, podpis a razítko</div>
+      <p style="font-size:12.5px;color:var(--ink-soft);margin-top:0;">Nahraj logo firmy, obrázek svého podpisu a fotku razítka — objeví se na fakturách přesně tak, jak si je nastavíš.</p>
+      <div class="brand-grid">
+        ${brandSlot('logo','Logo firmy','Zobrazí se v hlavičce faktury.','Logo firmy')}
+        ${brandSlot('signature','Elektronický podpis','Foto nebo scan podpisu.','Podpis')}
+        ${brandSlot('stamp','Razítko','Foto razítka firmy.','Razítko')}
       </div>
+      <input type="file" id="branding-file-input" accept="image/*" style="display:none;">
 
       <div class="section-title">Fakturace</div>
       <div class="field-row">
@@ -1558,12 +1557,12 @@ function viewSettings(){
                   </div>
                   ${s.account || s.iban ? `
                     <div style="font-size:0.8rem; color:var(--ink-soft); margin-top:6px;">
-                  <div style="font-size:0.8rem; color:var(--ink-soft); margin-top:6px;">
-                    Vzhled: ${s.showLogo?"🎨 Logo":""}${s.showStamp?" 🔖 Razítko":""}${s.showSignature?" ✍️ Podpis":""}${s.showQr?" 📱 QR":""}${!s.showLogo&&!s.showStamp&&!s.showSignature&&!s.showQr?"(vypnuto)":""}
-                  </div>
-                      ${s.iban ? '💳 ' + escapeHtml(s.iban) : '💳 ' + escapeHtml(s.account || '')}
+                      💳 ${s.iban ? escapeHtml(s.iban) : escapeHtml(s.account || '')}
                     </div>
                   ` : ''}
+                  <div style="font-size:0.8rem; color:var(--ink-soft); margin-top:6px;">
+                    Vzhled: ${s.showLogo?'🎨 Logo':''}${s.showStamp?' 🔖 Razítko':''}${s.showSignature?' ✍️ Podpis':''}${s.showQr?' 📱 QR':''}${!s.showLogo&&!s.showStamp&&!s.showSignature&&!s.showQr?'(vypnuto)':''}
+                  </div>
                 </div>
                 <div style="display:flex; gap:6px;">
                   <button type="button" class="btn btn-small secondary" data-action="edit-supplier" data-id="${escapeAttr(s.id)}">Upravit</button>
