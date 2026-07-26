@@ -1071,7 +1071,7 @@ function blankInvoice(){
     issueDate: todayISO(), taxDate: todayISO(), dueDate: addDays(todayISO(), c.defaultDueDays||14),
     variableSymbol: num.replace(/\D/g,''), note: c.defaultNote||'', paid:false, paidDate:null,
     paymentMethod: c.defaultPaymentMethod || 'Bankovním převodem',
-    includeStamp:true, includeSignature:true, includeQr:true
+    includeStamp:true, includeSignature:true, includeQr:true, colorScheme:'color'
   };
 }
 
@@ -1092,6 +1092,7 @@ function viewInvoiceForm(){
   return `
     <div class="pagehead"><div><h1>${editing?'Upravit fakturu':'Nová faktura'}</h1></div></div>
     <form id="invoice-form" class="form-card">
+      <input type="hidden" name="colorScheme" id="invoice-color-scheme" value="${inv.colorScheme||'color'}">
       <div class="section-title">Základní údaje</div>
       <div class="field-row">
         <div class="field"><label>Číslo faktury</label><input name="number" value="${inv.number}" required></div>
@@ -1146,6 +1147,11 @@ function viewInvoiceForm(){
       <div class="toggle-row"><input type="checkbox" name="includeStamp" id="chk-inc-stamp" value="1" ${inv.includeStamp!==false?'checked':''}><label for="chk-inc-stamp">Zobrazit razítko (pokud je nahrané v nastavení)</label></div>
       <div class="toggle-row"><input type="checkbox" name="includeSignature" id="chk-inc-sig" value="1" ${inv.includeSignature!==false?'checked':''}><label for="chk-inc-sig">Zobrazit elektronický podpis (pokud je nahraný)</label></div>
       <div class="toggle-row"><input type="checkbox" name="includeQr" id="chk-inc-qr" value="1" ${inv.includeQr!==false?'checked':''}><label for="chk-inc-qr">Zobrazit QR platbu (vyžaduje IBAN)</label></div>
+      
+      <div style="display:flex; gap:10px; margin-top:16px;">
+        <button type="button" class="btn" style="flex:1;" data-action="set-scheme" data-scheme="color">🎨 Barevně</button>
+        <button type="button" class="btn secondary" style="flex:1;" data-action="set-scheme" data-scheme="bw">⬜ Černobílé</button>
+      </div>
 
       <div class="section-title">Položky</div>
       <div class="items-table-wrap">
@@ -1468,6 +1474,34 @@ function viewSettings(){
         <div class="field"><label>Zápis v rejstříku (nepovinné)</label><input name="registration" value="${escapeAttr(co.registration)}" placeholder="Zapsáno v OR vedeném..."></div>
       </div>
 
+      <div class="section-title">Dodavatelé</div>
+      <div class="form-card">
+        ${state.suppliers.length === 0 ? `
+          <p style="color:var(--ink-soft);margin:0;">Zatím nemáš žádné uložené dodavatele.</p>
+          <div class="formfoot">
+            <button type="button" class="btn btn-primary" data-action="open-supplier-modal">+ Přidat prvního dodavatele</button>
+          </div>
+        ` : `
+          <div style="display:flex; flex-direction:column; gap:8px; margin-bottom:16px;">
+            ${state.suppliers.map(s => `
+              <div class="card" style="padding:12px 16px; display:flex; justify-content:space-between; align-items:center;">
+                <div>
+                  <div style="font-weight:600; color:var(--ink);">${escapeHtml(s.name)}</div>
+                  <div style="font-size:0.85rem; color:var(--ink-soft); margin-top:2px;">
+                    IČ: ${escapeHtml(s.ico || '—')} · ${escapeHtml(s.email || '')}
+                  </div>
+                </div>
+                <div style="display:flex; gap:6px;">
+                  <button type="button" class="btn btn-small secondary" data-action="edit-supplier" data-id="${escapeAttr(s.id)}">Upravit</button>
+                  <button type="button" class="btn btn-small danger" data-action="delete-supplier" data-id="${escapeAttr(s.id)}">Smazat</button>
+                </div>
+              </div>
+            `).join('')}
+          </div>
+          <button type="button" class="btn btn-primary btn-sm" data-action="open-supplier-modal">+ Nový dodavatel</button>
+        `}
+      </div>
+
       <div class="section-title">Platby</div>
       <div class="field-row">
         <div class="field"><label>Číslo účtu</label><input name="account" value="${escapeAttr(co.account)}" placeholder="123456789/0300"></div>
@@ -1495,13 +1529,6 @@ function viewSettings(){
       <div class="field"><label>Platební podmínky / patička faktury</label><textarea name="invoiceTerms" style="min-height:70px;">${co.invoiceTerms||''}</textarea></div>
 
       <div class="section-title">Vzhled faktury</div>
-      <div class="field">
-        <label>Barva zvýraznění na faktuře</label>
-        <div class="color-row">
-          <input type="color" name="invoiceAccent" value="${co.invoiceAccent||'#1F5C4D'}">
-          <span style="font-size:12.5px;color:var(--ink-soft);">Výchozí je světle zelená stejná jako v appce — klidně uprav dle svého brandu.</span>
-        </div>
-      </div>
       <div class="toggle-row"><input type="checkbox" name="showLogo" id="chk-showLogo" value="1" ${co.showLogo?'checked':''}><label for="chk-showLogo">Zobrazovat logo na fakturách</label></div>
       <div class="toggle-row"><input type="checkbox" name="showStamp" id="chk-showStamp" value="1" ${co.showStamp?'checked':''}><label for="chk-showStamp">Zobrazovat razítko na fakturách</label></div>
       <div class="toggle-row"><input type="checkbox" name="showSignature" id="chk-showSignature" value="1" ${co.showSignature?'checked':''}><label for="chk-showSignature">Zobrazovat elektronický podpis na fakturách</label></div>
@@ -1562,34 +1589,6 @@ function viewSettings(){
           </div>
         `).join('')}
       ` : `<p style="font-size:12.5px;color:var(--ink-soft);">Zatím žádné automatické zálohy — vytvoří se, jakmile poprvé něco uložíš.</p>`}
-    </div>
-
-    <div class="section-title" style="margin-top:30px;">Dodavatelé</div>
-    <div class="form-card">
-      ${state.suppliers.length === 0 ? `
-        <p style="color:var(--ink-soft);margin:0;">Zatím nemáš žádné uložené dodavatele.</p>
-        <div class="formfoot">
-          <button type="button" class="btn btn-primary" data-action="open-supplier-modal">+ Přidat prvního dodavatele</button>
-        </div>
-      ` : `
-        <div style="display:flex; flex-direction:column; gap:8px; margin-bottom:16px;">
-          ${state.suppliers.map(s => `
-            <div class="card" style="padding:12px 16px; display:flex; justify-content:space-between; align-items:center;">
-              <div>
-                <div style="font-weight:600; color:var(--ink);">${escapeHtml(s.name)}</div>
-                <div style="font-size:0.85rem; color:var(--ink-soft); margin-top:2px;">
-                  IČ: ${escapeHtml(s.ico || '—')} · ${escapeHtml(s.email || '')}
-                </div>
-              </div>
-              <div style="display:flex; gap:6px;">
-                <button type="button" class="btn btn-small secondary" data-action="edit-supplier" data-id="${escapeAttr(s.id)}">Upravit</button>
-                <button type="button" class="btn btn-small danger" data-action="delete-supplier" data-id="${escapeAttr(s.id)}">Smazat</button>
-              </div>
-            </div>
-          `).join('')}
-        </div>
-        <button type="button" class="btn btn-primary btn-sm" data-action="open-supplier-modal">+ Nový dodavatel</button>
-      `}
     </div>
   `;
 }
@@ -2089,6 +2088,97 @@ function setupClientFormAres(){
   dicInput.addEventListener('blur', lookupDic);
 }
 
+/* ---------- ARES LOOKUP FOR SUPPLIERS ---------- */
+function setupSupplierFormAres(){
+  const nameInput = document.getElementById('supplier-form-name');
+  const icoInput = document.getElementById('supplier-form-ico');
+  const dicInput = document.getElementById('supplier-form-dic');
+  const addressInput = document.getElementById('supplier-form-address');
+  const list = document.getElementById('supplier-form-ares-list');
+  const status = document.getElementById('supplier-form-ares-status');
+  if(!nameInput || !icoInput || !list) return;
+
+  function setStatus(html){ if(status) status.innerHTML = html; }
+
+  function fillFromAres(d){
+    if(!d) return;
+    if(d.name) nameInput.value = d.name;
+    if(d.ico) icoInput.value = d.ico;
+    if(d.dic) dicInput.value = d.dic;
+    if(d.address && addressInput) addressInput.value = d.address;
+    list.classList.remove('open');
+    setStatus(`<span style="color:var(--accent);">✓ Doplněno z ARES</span>`);
+  }
+
+  function renderAresList(items){
+    if(!items.length){
+      list.classList.remove('open');
+      return;
+    }
+    list.innerHTML = `<div class="combo-group-label">Nalezeno v ARES</div>` + items.map((it,i)=>`
+      <div class="combo-item ares-item" data-ares-index="${i}">
+        <div>${escapeHtml(it.name||'—')}</div>
+        <div class="sub">IČO: ${escapeHtml(it.ico||'—')}${it.address?' · '+escapeHtml(it.address):''}</div>
+      </div>
+    `).join('');
+    list._aresItems = items;
+    list.classList.add('open');
+  }
+
+  list.addEventListener('mousedown', (e)=>{
+    const item = e.target.closest('.combo-item[data-ares-index]');
+    if(!item) return;
+    const idx = parseInt(item.getAttribute('data-ares-index'));
+    const d = (list._aresItems||[])[idx];
+    fillFromAres(d);
+  });
+
+  document.addEventListener('click', (e)=>{
+    if(e.target!==nameInput && !list.contains(e.target)) list.classList.remove('open');
+  });
+
+  let nameTimer = null;
+  nameInput.addEventListener('input', ()=>{
+    clearTimeout(nameTimer);
+    const q = nameInput.value.trim();
+    if(q.length<3){ list.classList.remove('open'); setStatus(''); return; }
+    setStatus(`<span class="ares-spinner"></span> Hledám v ARES…`);
+    nameTimer = setTimeout(async ()=>{
+      try{
+        const results = await aresSearchByName(q);
+        renderAresList(results);
+        setStatus(results.length ? `Nalezeno ${results.length} shod v ARES — vyber ze seznamu.` : 'V ARES nic nenalezeno, vyplň prosím ručně.');
+      }catch(err){
+        setStatus(`<span style="color:var(--red);">${escapeHtml(err.message||'ARES nelze kontaktovat.')}</span>`);
+      }
+    }, 450);
+  });
+
+  async function lookupIco(){
+    const val = icoInput.value.trim();
+    if(!/^\d{6,9}$/.test(val)) return;
+    setStatus(`<span class="ares-spinner"></span> Hledám IČO ${escapeHtml(val)} v ARES…`);
+    try{
+      const d = await aresLookupByIco(val);
+      fillFromAres(d);
+    }catch(err){
+      setStatus(`<span style="color:var(--red);">${escapeHtml(err.message||'ARES nelze kontaktovat.')}</span>`);
+    }
+  }
+  icoInput.addEventListener('blur', lookupIco);
+  icoInput.addEventListener('keydown', (e)=>{ if(e.key==='Enter'){ e.preventDefault(); lookupIco(); } });
+
+  async function lookupDic(){
+    const val = dicInput.value.trim();
+    if(val.length<8) return;
+    setStatus(`<span class="ares-spinner"></span> Hledám DIČ ${escapeHtml(val)} v ARES…`);
+    const results = await aresSearchByDic(val).catch(()=>[]);
+    if(results.length){ fillFromAres(results[0]); }
+    else { setStatus('V ARES nic nenalezeno pro toto DIČ.'); }
+  }
+  dicInput.addEventListener('blur', lookupDic);
+}
+
 /* ---------- CLIENT COMBO BOX (searchable client picker in invoice form) ---------- */
 function setupClientCombo(){
   const input = document.getElementById('client-combo-input');
@@ -2330,6 +2420,15 @@ document.addEventListener('click', async (e)=>{
     const field = el.getAttribute('data-field');
     if(confirm('Odebrat tento obrázek?')) await removeBrandingImage(field);
   }
+  else if(action==='set-scheme'){
+    const scheme = el.getAttribute('data-scheme');
+    const field = document.getElementById('invoice-color-scheme');
+    if(field) field.value = scheme;
+    // Visual feedback - update button states
+    document.querySelectorAll('[data-action="set-scheme"]').forEach(btn => {
+      btn.classList.toggle('secondary', btn.getAttribute('data-scheme') !== scheme);
+    });
+  }
 });
 
 async function downloadInvoicePdf(id, triggerEl){
@@ -2394,6 +2493,7 @@ async function onSubmitInvoice(e){
     items: items,
     paid: fd.get('paid')==='1',
     paidDate: fd.get('paidDate')||null,
+    colorScheme: fd.get('colorScheme')||'color',
     createdBy: id ? (state.invoices.find(i=>i.id===id)||{}).createdBy || state.currentUser : state.currentUser
   };
   if(id){
@@ -2432,17 +2532,21 @@ function openSupplierModal(id){
         <h2>Dodavatel</h2>
         <form id="supplier-form">
           <input type="hidden" name="id" value="${supplier?.id || ''}">
-          <div class="field"><label>Název firmy / jméno</label><input name="name" value="${escapeAttr(supplier?.name || '')}" required></div>
-          <div class="field"><label>Adresa</label><textarea name="address">${escapeAttr(supplier?.address || '')}</textarea></div>
-          <div class="field-row">
-            <div class="field"><label>IČO</label><input name="ico" value="${escapeAttr(supplier?.ico || '')}"></div>
-            <div class="field"><label>DIČ</label><input name="dic" value="${escapeAttr(supplier?.dic || '')}"></div>
+          <div class="field"><label>Název firmy / jméno</label><input name="name" id="supplier-form-name" value="${escapeAttr(supplier?.name || '')}" required></div>
+          <div class="field combo-field">
+            <label>IČO</label>
+            <input name="ico" id="supplier-form-ico" value="${escapeAttr(supplier?.ico || '')}" placeholder="Zadej a doplní se z ARES">
+            <div class="combo-list" id="supplier-form-ares-list"></div>
+            <div id="supplier-form-ares-status" style="font-size:11px;margin-top:4px;"></div>
           </div>
+          <div class="field"><label>DIČ</label><input name="dic" id="supplier-form-dic" value="${escapeAttr(supplier?.dic || '')}"></div>
+          <div class="field"><label>Adresa</label><textarea name="address" id="supplier-form-address">${escapeAttr(supplier?.address || '')}</textarea></div>
           <div class="field-row">
             <div class="field"><label>Email</label><input type="email" name="email" value="${escapeAttr(supplier?.email || '')}"></div>
             <div class="field"><label>Telefon</label><input name="phone" value="${escapeAttr(supplier?.phone || '')}"></div>
           </div>
-          <div style="display:flex; gap:10px; margin-top:16px;">
+          <p style="font-size:11.5px;color:var(--ink-soft);margin:6px 0 14px 0;">Napiš název firmy nebo IČO — údaje z veřejného rejstříku ARES se doplní automaticky.</p>
+          <div style="display:flex; gap:10px;">
             <button type="submit" class="btn">Uložit dodavatele</button>
             <button type="button" class="btn secondary" data-action="close-supplier-modal">Zrušit</button>
           </div>
@@ -2461,6 +2565,7 @@ function openSupplierModal(id){
   document.querySelectorAll('[data-action="close-supplier-modal"]').forEach(btn => {
     btn.addEventListener('click', closeSupplerModal);
   });
+  setupSupplierFormAres();
 }
 
 function closeSupplerModal(){
