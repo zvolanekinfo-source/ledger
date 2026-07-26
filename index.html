@@ -16,7 +16,6 @@ function openSupplierModal(id){
         <h2>${id ? 'Upravit' : 'Nová'} další firma</h2>
         <form id="supplier-form" style="max-height:90vh;overflow-y:auto;">
           <input type="hidden" name="id" value="${supplier?.id || ''}">
-          
           <div class="section-title" style="margin-top:0;">Základní údaje</div>
           <div class="field"><label>Název firmy / jméno OSVČ</label><input name="name" value="${escapeAttr(supplier?.name || '')}" required></div>
           <div class="field"><label>Podtitulek / obor činnosti</label><input name="tagline" value="${escapeAttr(supplier?.tagline || '')}" placeholder="např. Profesionální služby"></div>
@@ -33,7 +32,6 @@ function openSupplierModal(id){
             <div class="field"><label>Web</label><input name="website" value="${escapeAttr(supplier?.website || '')}" placeholder="www.firma.cz"></div>
             <div class="field"><label>Zápis v rejstříku (nepovinné)</label><input name="registration" value="${escapeAttr(supplier?.registration || '')}" placeholder="Zapsáno v OR vedeném..."></div>
           </div>
-
           <div class="section-title">Bankovní údaje</div>
           <div class="field-row">
             <div class="field"><label>Číslo účtu</label><input name="account" value="${escapeAttr(supplier?.account || '')}" placeholder="123456789/0300"></div>
@@ -43,7 +41,6 @@ function openSupplierModal(id){
             <div class="field"><label>IBAN (pro QR platbu)</label><input name="iban" value="${escapeAttr(supplier?.iban || '')}" placeholder="CZ..."></div>
             <div class="field"><label>SWIFT / BIC</label><input name="swift" value="${escapeAttr(supplier?.swift || '')}"></div>
           </div>
-
           <div style="display:flex; gap:10px; margin-top:24px;">
             <button type="submit" class="btn" style="flex:1;">Uložit další firmu</button>
             <button type="button" class="btn secondary" data-action="close-supplier-modal">Zrušit</button>
@@ -109,7 +106,6 @@ function openSupplierModal(id){
         <h2>${id ? 'Upravit' : 'Nová'} další firma</h2>
         <form id="supplier-form" style="max-height:90vh;overflow-y:auto;">
           <input type="hidden" name="id" value="${supplier?.id || ''}">
-          
           <div class="section-title" style="margin-top:0;">Základní údaje</div>
           <div class="field"><label>Název firmy / jméno OSVČ</label><input name="name" value="${escapeAttr(supplier?.name || '')}" required></div>
           <div class="field"><label>Podtitulek / obor činnosti</label><input name="tagline" value="${escapeAttr(supplier?.tagline || '')}" placeholder="např. Profesionální služby"></div>
@@ -126,7 +122,6 @@ function openSupplierModal(id){
             <div class="field"><label>Web</label><input name="website" value="${escapeAttr(supplier?.website || '')}" placeholder="www.firma.cz"></div>
             <div class="field"><label>Zápis v rejstříku (nepovinné)</label><input name="registration" value="${escapeAttr(supplier?.registration || '')}" placeholder="Zapsáno v OR vedeném..."></div>
           </div>
-
           <div class="section-title">Bankovní údaje</div>
           <div class="field-row">
             <div class="field"><label>Číslo účtu</label><input name="account" value="${escapeAttr(supplier?.account || '')}" placeholder="123456789/0300"></div>
@@ -136,7 +131,6 @@ function openSupplierModal(id){
             <div class="field"><label>IBAN (pro QR platbu)</label><input name="iban" value="${escapeAttr(supplier?.iban || '')}" placeholder="CZ..."></div>
             <div class="field"><label>SWIFT / BIC</label><input name="swift" value="${escapeAttr(supplier?.swift || '')}"></div>
           </div>
-
           <div style="display:flex; gap:10px; margin-top:24px;">
             <button type="submit" class="btn" style="flex:1;">Uložit další firmu</button>
             <button type="button" class="btn secondary" data-action="close-supplier-modal">Zrušit</button>
@@ -202,7 +196,6 @@ function openSupplierModal(id){
         <h2>${id ? 'Upravit' : 'Nová'} další firma</h2>
         <form id="supplier-form" style="max-height:90vh;overflow-y:auto;">
           <input type="hidden" name="id" value="${supplier?.id || ''}">
-          
           <div class="section-title" style="margin-top:0;">Základní údaje</div>
           <div class="field"><label>Název firmy / jméno OSVČ</label><input name="name" value="${escapeAttr(supplier?.name || '')}" required></div>
           <div class="field"><label>Podtitulek / obor činnosti</label><input name="tagline" value="${escapeAttr(supplier?.tagline || '')}" placeholder="např. Profesionální služby"></div>
@@ -219,7 +212,6 @@ function openSupplierModal(id){
             <div class="field"><label>Web</label><input name="website" value="${escapeAttr(supplier?.website || '')}" placeholder="www.firma.cz"></div>
             <div class="field"><label>Zápis v rejstříku (nepovinné)</label><input name="registration" value="${escapeAttr(supplier?.registration || '')}" placeholder="Zapsáno v OR vedeném..."></div>
           </div>
-
           <div class="section-title">Bankovní údaje</div>
           <div class="field-row">
             <div class="field"><label>Číslo účtu</label><input name="account" value="${escapeAttr(supplier?.account || '')}" placeholder="123456789/0300"></div>
@@ -229,7 +221,6 @@ function openSupplierModal(id){
             <div class="field"><label>IBAN (pro QR platbu)</label><input name="iban" value="${escapeAttr(supplier?.iban || '')}" placeholder="CZ..."></div>
             <div class="field"><label>SWIFT / BIC</label><input name="swift" value="${escapeAttr(supplier?.swift || '')}"></div>
           </div>
-
           <div style="display:flex; gap:10px; margin-top:24px;">
             <button type="submit" class="btn" style="flex:1;">Uložit další firmu</button>
             <button type="button" class="btn secondary" data-action="close-supplier-modal">Zrušit</button>
@@ -419,9 +410,7 @@ async function onSubmitSupplier(e){
   .chart-card .chart-head .chart-total{font-family:'IBM Plex Mono',monospace;font-weight:700;font-size:18px;color:var(--accent);}
 
   /* FORMS */
-  .form-card{background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:26px 28px;max-width:840px;}
-  .modal-overlay{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;z-index:1000;}
-  .modal-card{background:var(--surface);border-radius:8px;box-shadow:0 10px 40px rgba(0,0,0,0.2);padding:32px;max-width:500px;width:90%;max-height:90vh;overflow-y:auto;}
+  .form-card{background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:26px 28px;max-width:840px;}.modal-overlay{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;z-index:1000;}.modal-card{background:var(--surface);border-radius:8px;box-shadow:0 10px 40px rgba(0,0,0,0.2);padding:32px;max-width:500px;width:90%;max-height:90vh;overflow-y:auto;}
   .field-row{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:14px;}
   .field{margin-bottom:14px;}
   .field label{display:block;font-size:12px;color:var(--ink-soft);margin-bottom:5px;font-weight:500;}
@@ -788,6 +777,7 @@ async function loadAll(){
   try{ const r = await window.storage.get('company', true); state.company = r ? JSON.parse(r.value) : null; }catch(e){ state.company = null; }
   try{ const r = await window.storage.get('clients', true); state.clients = r ? JSON.parse(r.value) : []; }catch(e){ state.clients = []; }
   try{ const r = await window.storage.get('invoices', true); state.invoices = r ? JSON.parse(r.value) : []; }catch(e){ state.invoices = []; }
+  try{ const r = await window.storage.get('suppliers', true); state.suppliers = r ? JSON.parse(r.value) : []; }catch(e){ state.suppliers = []; }
   if(!state.company){
     state.company = {
       name:'', tagline:'', address:'', ico:'', dic:'', account:'', bankName:'', iban:'', swift:'', email:'', phone:'', website:'',
@@ -812,6 +802,7 @@ async function loadAll(){
 async function saveCompany(){ try{ await window.storage.set('company', JSON.stringify(state.company), true); }catch(e){ console.error(e); } saveSnapshotBackup(); }
 async function saveClients(){ try{ await window.storage.set('clients', JSON.stringify(state.clients), true); }catch(e){ console.error(e); } saveSnapshotBackup(); }
 async function saveInvoices(){ try{ await window.storage.set('invoices', JSON.stringify(state.invoices), true); }catch(e){ console.error(e); } saveSnapshotBackup(); }
+async function saveSuppliers(){ try{ await window.storage.set('suppliers', JSON.stringify(state.suppliers), true); }catch(e){ console.error(e); } saveSnapshotBackup(); }
 
 /* ---------- BACKUP / SNAPSHOTS ---------- */
 async function loadBackupIndex(){
@@ -964,6 +955,7 @@ function invoiceStatus(inv){
 }
 function statusLabel(s){ return s==='paid'?'Zaplaceno':(s==='overdue'?'Po splatnosti':'Čeká na platbu'); }
 function clientById(id){ return state.clients.find(c=>c.id===id); }
+function supplierById(id){ return state.suppliers.find(s=>s.id===id); }
 
 function applyDateRangeFromPreset(preset){
   const today = todayISO();
@@ -1384,8 +1376,8 @@ function viewInvoiceForm(){
       <div class="toggle-row"><input type="checkbox" name="includeQr" id="chk-inc-qr" value="1" ${inv.includeQr!==false?'checked':''}><label for="chk-inc-qr">Zobrazit QR platbu (vyžaduje IBAN)</label></div>
 
       <div style="margin-top:16px; display:flex; gap:10px;">
-        <button type="button" class="btn ${(inv.colorScheme||'color')==='color'?'':'secondary'}" data-action="set-scheme" data-scheme="color">🎨 Barevně</button>
-        <button type="button" class="btn ${(inv.colorScheme||'color')==='bw'?'':'secondary'}" data-action="set-scheme" data-scheme="bw">⬜ Černobílé</button>
+        <button type="button" class="btn ${(inv.colorScheme||'color')==='color'?'':' secondary'}" data-action="set-scheme" data-scheme="color">🎨 Barevně</button>
+        <button type="button" class="btn ${(inv.colorScheme||'color')==='bw'?'':' secondary'}" data-action="set-scheme" data-scheme="bw">⬜ Černobílé</button>
       </div>
       <input type="hidden" name="colorScheme" id="invoice-color-scheme" value="${inv.colorScheme||'color'}">
 
@@ -1773,19 +1765,10 @@ function viewSettings(){
                   <div style="font-weight:600; color:var(--ink); margin-bottom:4px;">${escapeHtml(s.name)}</div>
                   ${s.tagline ? `<div style="font-size:0.85rem; color:var(--ink-soft); margin-bottom:8px;">${escapeHtml(s.tagline)}</div>` : ''}
                   <div style="font-size:0.8rem; color:var(--ink-soft); line-height:1.4;">
-                    ${s.ico || s.dic ? `
-                      <div>IČO: ${escapeHtml(s.ico || '—')}${s.dic ? ` · DIČ: ${escapeHtml(s.dic)}` : ''}</div>
-                    ` : ''}
-                    ${s.email || s.phone ? `
-                      <div>${s.email ? escapeHtml(s.email) : ''}${s.email && s.phone ? ' · ' : ''}${s.phone ? escapeHtml(s.phone) : ''}</div>
-                    ` : ''}
+                    ${s.ico || s.dic ? `<div>IČO: ${escapeHtml(s.ico || '—')}${s.dic ? ` · DIČ: ${escapeHtml(s.dic)}` : ''}</div>` : ''}
+                    ${s.email || s.phone ? `<div>${s.email ? escapeHtml(s.email) : ''}${s.email && s.phone ? ' · ' : ''}${s.phone ? escapeHtml(s.phone) : ''}</div>` : ''}
                     ${s.website ? `<div>Web: ${escapeHtml(s.website)}</div>` : ''}
-                    ${s.account || s.iban ? `
-                      <div style="margin-top:4px; padding-top:4px; border-top:1px solid var(--border);">
-                        💳 ${s.iban ? escapeHtml(s.iban) : escapeHtml(s.account || '')}
-                        ${s.bankName ? ` · ${escapeHtml(s.bankName)}` : ''}
-                      </div>
-                    ` : ''}
+                    ${s.account || s.iban ? `<div style="margin-top:4px; padding-top:4px; border-top:1px solid var(--border);">💳 ${s.iban ? escapeHtml(s.iban) : escapeHtml(s.account || '')}${s.bankName ? ` · ${escapeHtml(s.bankName)}` : ''}</div>` : ''}
                   </div>
                 </div>
                 <div style="display:flex; gap:6px; flex-shrink:0;">
@@ -3040,7 +3023,6 @@ function openSupplierModal(id){
         <h2>${id ? 'Upravit' : 'Nová'} další firma</h2>
         <form id="supplier-form" style="max-height:90vh;overflow-y:auto;">
           <input type="hidden" name="id" value="${supplier?.id || ''}">
-          
           <div class="section-title" style="margin-top:0;">Základní údaje</div>
           <div class="field"><label>Název firmy / jméno OSVČ</label><input name="name" value="${escapeAttr(supplier?.name || '')}" required></div>
           <div class="field"><label>Podtitulek / obor činnosti</label><input name="tagline" value="${escapeAttr(supplier?.tagline || '')}" placeholder="např. Profesionální služby"></div>
@@ -3057,7 +3039,6 @@ function openSupplierModal(id){
             <div class="field"><label>Web</label><input name="website" value="${escapeAttr(supplier?.website || '')}" placeholder="www.firma.cz"></div>
             <div class="field"><label>Zápis v rejstříku (nepovinné)</label><input name="registration" value="${escapeAttr(supplier?.registration || '')}" placeholder="Zapsáno v OR vedeném..."></div>
           </div>
-
           <div class="section-title">Bankovní údaje</div>
           <div class="field-row">
             <div class="field"><label>Číslo účtu</label><input name="account" value="${escapeAttr(supplier?.account || '')}" placeholder="123456789/0300"></div>
@@ -3067,7 +3048,6 @@ function openSupplierModal(id){
             <div class="field"><label>IBAN (pro QR platbu)</label><input name="iban" value="${escapeAttr(supplier?.iban || '')}" placeholder="CZ..."></div>
             <div class="field"><label>SWIFT / BIC</label><input name="swift" value="${escapeAttr(supplier?.swift || '')}"></div>
           </div>
-
           <div style="display:flex; gap:10px; margin-top:24px;">
             <button type="submit" class="btn" style="flex:1;">Uložit další firmu</button>
             <button type="button" class="btn secondary" data-action="close-supplier-modal">Zrušit</button>
