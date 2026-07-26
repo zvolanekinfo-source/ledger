@@ -662,7 +662,7 @@ function renderInvoiceTable(list){
           <td class="num">${fmt(t.total)} Kč</td>
           <td><span class="pill ${s}">${statusLabel(s)}</span></td>
           <td>${escapeHtml(inv.createdBy||'—')}</td>
-          <td class="actions-cell no-print" onclick="event.stopPropagation()">
+          <td class="actions-cell no-print">
             <button class="iconbtn" data-action="edit-invoice" data-id="${inv.id}" title="Upravit">✎</button>
             <button class="iconbtn" data-action="delete-invoice" data-id="${inv.id}" title="Smazat">✕</button>
           </td>
@@ -879,7 +879,7 @@ function viewClients(){
             <td class="num">${escapeHtml(c.ico||'—')}</td>
             <td>${escapeHtml(c.email||'—')}</td>
             <td>${escapeHtml(c.phone||'—')}</td>
-            <td class="actions-cell no-print" onclick="event.stopPropagation()">
+            <td class="actions-cell no-print">
               <button class="iconbtn" data-action="edit-client" data-id="${c.id}" title="Upravit">✎</button>
               <button class="iconbtn" data-action="delete-client" data-id="${c.id}" title="Smazat">✕</button>
             </td>
@@ -1242,17 +1242,17 @@ function parseInvoiceText(text, lines){
 async function confirmImport(){
   const r = state.importResult;
   if(!r) return;
-  if(!state.company.name && r.company && r.company.name){
+  if(r.company){
     state.company = {
       ...state.company,
-      name: r.company.name || state.company.name,
-      address: r.company.address || state.company.address,
-      ico: r.company.ico || state.company.ico,
-      dic: r.company.dic || state.company.dic,
-      email: r.company.email || state.company.email,
-      phone: r.company.phone || state.company.phone,
-      account: r.company.account || state.company.account,
-      iban: r.company.iban || state.company.iban
+      name: state.company.name || r.company.name || '',
+      address: state.company.address || r.company.address || '',
+      ico: state.company.ico || r.company.ico || '',
+      dic: state.company.dic || r.company.dic || '',
+      email: state.company.email || r.company.email || '',
+      phone: state.company.phone || r.company.phone || '',
+      account: state.company.account || r.company.account || '',
+      iban: state.company.iban || r.company.iban || ''
     };
     await saveCompany();
   }
