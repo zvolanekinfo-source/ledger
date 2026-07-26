@@ -21,6 +21,9 @@
     --amber-soft:#F3E6CD;
     --red:#AE4530;
     --red-soft:#F3DCD4;
+    --inv-accent:#1F5C4D;
+    --inv-accent-soft:#DCE8E2;
+    --inv-accent-tint:rgba(31,92,77,0.06);
   }
   *{box-sizing:border-box;}
   html,body{margin:0;padding:0;}
@@ -212,38 +215,92 @@
   /* INVOICE PREVIEW */
   .preview-wrap{display:flex;gap:24px;align-items:flex-start;}
   .invoice-sheet{
-    background:var(--surface);width:720px;padding:48px 52px;border:1px solid var(--line);
-    position:relative;overflow:hidden;border-radius:2px;
+    background:var(--surface);width:760px;padding:0;border:1px solid var(--line);
+    position:relative;overflow:hidden;border-radius:8px;
     box-shadow:0 2px 18px rgba(24,36,32,0.06);
+    -webkit-print-color-adjust:exact;print-color-adjust:exact;color-adjust:exact;
   }
-  .invoice-sheet .top{display:flex;justify-content:space-between;margin-bottom:36px;}
-  .invoice-sheet .doctitle{font-size:26px;font-weight:600;}
-  .invoice-sheet .docnum{font-family:'IBM Plex Mono',monospace;color:var(--ink-soft);font-size:13px;margin-top:4px;}
-  .invoice-sheet .parties{display:flex;justify-content:space-between;margin-bottom:30px;gap:30px;}
-  .invoice-sheet .party{flex:1;font-size:13.5px;line-height:1.55;}
-  .invoice-sheet .party .k{font-size:10.5px;text-transform:uppercase;letter-spacing:1px;color:var(--ink-soft);margin-bottom:6px;}
-  .invoice-sheet .party .nm{font-weight:600;font-size:15px;margin-bottom:2px;}
-  .invoice-sheet .meta{display:flex;gap:28px;margin-bottom:26px;font-size:13px;}
-  .invoice-sheet .meta div .k{color:var(--ink-soft);font-size:10.5px;text-transform:uppercase;letter-spacing:1px;margin-bottom:3px;}
-  .invoice-sheet .meta div .v{font-family:'IBM Plex Mono',monospace;font-weight:600;}
-  .invoice-sheet table.lines{width:100%;border-collapse:collapse;margin-bottom:18px;}
-  .invoice-sheet table.lines th{text-align:left;font-size:10.5px;text-transform:uppercase;letter-spacing:0.6px;color:var(--ink-soft);border-bottom:1px solid var(--ink);padding:0 8px 8px 0;}
-  .invoice-sheet table.lines td{padding:9px 8px 9px 0;border-bottom:1px solid var(--line);font-size:13.5px;}
+  .invoice-sheet .inv-body{padding:40px 48px 48px 48px;}
+
+  /* header band */
+  .invoice-sheet .inv-header{
+    display:flex;justify-content:space-between;align-items:center;gap:20px;
+    background:var(--inv-accent);color:#fff;padding:32px 48px;
+  }
+  .invoice-sheet .inv-header-left{display:flex;align-items:center;gap:16px;min-width:0;}
+  .invoice-sheet .inv-logo{width:56px;height:56px;border-radius:10px;object-fit:cover;background:rgba(255,255,255,0.14);flex-shrink:0;}
+  .invoice-sheet .inv-logo-placeholder{
+    width:56px;height:56px;border-radius:10px;background:rgba(255,255,255,0.14);
+    border:1px dashed rgba(255,255,255,0.4);display:flex;align-items:center;justify-content:center;
+    font-size:10px;color:rgba(255,255,255,0.75);text-transform:uppercase;letter-spacing:0.5px;flex-shrink:0;text-align:center;
+  }
+  .invoice-sheet .inv-co-name{font-family:'Fraunces',serif;font-size:20px;font-weight:600;color:#fff;line-height:1.25;}
+  .invoice-sheet .inv-co-tagline{font-size:12.5px;color:rgba(255,255,255,0.78);margin-top:3px;}
+  .invoice-sheet .inv-header-right{text-align:right;flex-shrink:0;}
+  .invoice-sheet .inv-doctitle{font-family:'Fraunces',serif;font-size:26px;font-weight:600;color:#fff;letter-spacing:0.5px;}
+  .invoice-sheet .inv-docnum{font-family:'IBM Plex Mono',monospace;color:rgba(255,255,255,0.85);font-size:13px;margin-top:4px;}
+
+  /* meta strip under header */
+  .invoice-sheet .inv-meta{
+    display:grid;grid-template-columns:repeat(4,1fr);gap:14px;
+    background:var(--inv-accent-soft);padding:16px 48px;
+  }
+  .invoice-sheet .inv-meta .k{font-size:10px;text-transform:uppercase;letter-spacing:0.8px;color:var(--inv-accent);opacity:0.8;margin-bottom:3px;font-weight:600;}
+  .invoice-sheet .inv-meta .v{font-family:'IBM Plex Mono',monospace;font-weight:600;font-size:13px;color:var(--ink);}
+
+  /* parties */
+  .invoice-sheet .parties{display:flex;justify-content:space-between;margin:28px 0 26px 0;gap:24px;}
+  .invoice-sheet .party{flex:1;font-size:13.5px;line-height:1.55;background:var(--inv-accent-tint);border:1px solid var(--inv-accent-soft);border-radius:8px;padding:16px 18px;}
+  .invoice-sheet .party .k{font-size:10.5px;text-transform:uppercase;letter-spacing:1px;color:var(--inv-accent);font-weight:700;margin-bottom:8px;}
+  .invoice-sheet .party .nm{font-weight:700;font-size:15px;margin-bottom:3px;color:var(--ink);}
+
+  .invoice-sheet table.lines{width:100%;border-collapse:collapse;margin-bottom:18px;border-radius:6px;overflow:hidden;}
+  .invoice-sheet table.lines thead th{
+    text-align:left;font-size:10.5px;text-transform:uppercase;letter-spacing:0.6px;color:#fff;
+    background:var(--inv-accent);padding:10px 10px;font-weight:600;
+  }
+  .invoice-sheet table.lines th:first-child{border-top-left-radius:6px;}
+  .invoice-sheet table.lines th:last-child{border-top-right-radius:6px;}
+  .invoice-sheet table.lines td{padding:10px 10px;border-bottom:1px solid var(--line);font-size:13.5px;}
+  .invoice-sheet table.lines tbody tr:nth-child(even){background:var(--inv-accent-tint);}
   .invoice-sheet table.lines td.num,.invoice-sheet table.lines th.num{text-align:right;font-family:'IBM Plex Mono',monospace;}
-  .invoice-sheet .bottom{display:flex;justify-content:space-between;align-items:flex-start;margin-top:22px;}
-  .invoice-sheet .qrbox{text-align:center;font-size:11px;color:var(--ink-soft);}
-  .invoice-sheet .qrbox .qrimg{border:1px solid var(--line);padding:8px;background:#fff;display:inline-block;margin-bottom:6px;}
-  .invoice-sheet .totals{width:260px;}
-  .invoice-sheet .totals .trow{display:flex;justify-content:space-between;font-size:13.5px;padding:4px 0;color:var(--ink-soft);}
-  .invoice-sheet .totals .trow.grand{font-family:'IBM Plex Mono',monospace;font-size:20px;font-weight:700;color:var(--ink);border-top:1px solid var(--ink);margin-top:6px;padding-top:10px;}
-  .invoice-sheet .note{margin-top:26px;font-size:12px;color:var(--ink-soft);border-top:1px solid var(--line);padding-top:14px;}
-  .stamp{
-    position:absolute;top:120px;right:60px;
-    border:3px solid var(--accent);color:var(--accent);
-    font-family:'Fraunces',serif;font-weight:700;font-size:26px;
-    padding:8px 18px;border-radius:6px;transform:rotate(-9deg);
-    letter-spacing:2px;opacity:0.85;
+
+  .invoice-sheet .bottom{display:flex;justify-content:space-between;align-items:flex-start;margin-top:8px;gap:24px;}
+  .invoice-sheet .paybox{flex:1;font-size:12.5px;color:var(--ink-soft);background:var(--paper);border:1px solid var(--line);border-radius:8px;padding:16px 18px;}
+  .invoice-sheet .paybox .k{font-size:10.5px;text-transform:uppercase;letter-spacing:0.8px;color:var(--inv-accent);font-weight:700;margin-bottom:8px;}
+  .invoice-sheet .paybox .prow{display:flex;justify-content:space-between;padding:3px 0;gap:10px;}
+  .invoice-sheet .paybox .prow span:last-child{font-family:'IBM Plex Mono',monospace;color:var(--ink);}
+  .invoice-sheet .qrbox{text-align:center;font-size:11px;color:var(--ink-soft);flex-shrink:0;}
+  .invoice-sheet .qrbox .qrimg{border:1px solid var(--line);padding:8px;background:#fff;display:inline-block;margin-bottom:6px;border-radius:6px;}
+  .invoice-sheet .totals{width:250px;flex-shrink:0;}
+  .invoice-sheet .totals .trow{display:flex;justify-content:space-between;font-size:13.5px;padding:5px 0;color:var(--ink-soft);}
+  .invoice-sheet .totals .trow.grand{
+    font-family:'IBM Plex Mono',monospace;font-size:19px;font-weight:700;color:#fff;
+    background:var(--inv-accent);border-radius:6px;margin-top:8px;padding:12px 14px;
   }
+  .invoice-sheet .note{margin-top:22px;font-size:12px;color:var(--ink-soft);border-top:1px solid var(--line);padding-top:14px;white-space:pre-wrap;}
+
+  /* signature / stamp row */
+  .invoice-sheet .signoff{display:flex;justify-content:space-between;align-items:flex-end;margin-top:34px;gap:24px;}
+  .invoice-sheet .signoff-terms{flex:1;font-size:11px;color:var(--ink-soft);line-height:1.5;white-space:pre-wrap;}
+  .invoice-sheet .signbox{width:210px;flex-shrink:0;text-align:center;position:relative;min-height:92px;}
+  .invoice-sheet .signbox .sig-stack{position:relative;height:60px;display:flex;align-items:flex-end;justify-content:center;}
+  .invoice-sheet .signbox img.sig-img{max-height:56px;max-width:180px;object-fit:contain;position:relative;z-index:2;}
+  .invoice-sheet .signbox img.co-stamp-img{
+    max-height:82px;max-width:120px;object-fit:contain;position:absolute;left:50%;bottom:-6px;
+    transform:translateX(-50%) rotate(-6deg);opacity:0.85;z-index:1;mix-blend-mode:multiply;
+  }
+  .invoice-sheet .signbox .sig-line{border-top:1px solid var(--ink);margin-top:6px;padding-top:6px;font-size:10.5px;color:var(--ink-soft);text-transform:uppercase;letter-spacing:0.5px;}
+
+  .invoice-sheet .paid-ribbon{
+    position:absolute;top:250px;right:48px;z-index:5;
+    border:3px solid var(--inv-accent);color:var(--inv-accent);background:rgba(255,255,255,0.9);
+    font-family:'Fraunces',serif;font-weight:700;font-size:24px;
+    padding:7px 16px;border-radius:6px;transform:rotate(-9deg);
+    letter-spacing:2px;opacity:0.9;
+  }
+  .invoice-sheet .inv-footer{margin-top:26px;padding-top:14px;border-top:1px solid var(--line);display:flex;justify-content:space-between;font-size:10.5px;color:var(--ink-soft);}
+
   .preview-side{width:220px;display:flex;flex-direction:column;gap:8px;}
 
   /* LOGIN */
@@ -303,6 +360,23 @@
   .user-row{display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-bottom:1px solid var(--line);font-size:14px;}
   .user-row:last-child{border-bottom:none;}
 
+  /* BRANDING UPLOADS (logo / signature / stamp) */
+  .brand-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:6px;}
+  .brand-slot{border:1px solid var(--line);border-radius:8px;padding:16px;text-align:center;background:var(--paper);}
+  .brand-slot .bs-title{font-size:12px;font-weight:600;color:var(--ink);margin-bottom:2px;}
+  .brand-slot .bs-sub{font-size:11px;color:var(--ink-soft);margin-bottom:12px;}
+  .brand-slot .bs-preview{
+    height:88px;display:flex;align-items:center;justify-content:center;margin-bottom:12px;
+    background:#fff;border:1px dashed var(--line);border-radius:6px;overflow:hidden;
+  }
+  .brand-slot .bs-preview img{max-height:80px;max-width:100%;object-fit:contain;}
+  .brand-slot .bs-preview .bs-empty{font-size:11px;color:var(--ink-soft);}
+  .brand-slot .bs-actions{display:flex;gap:8px;justify-content:center;}
+  .color-row{display:flex;align-items:center;gap:12px;}
+  .color-row input[type="color"]{width:52px;height:38px;padding:2px;border:1px solid var(--line);border-radius:6px;background:#fff;cursor:pointer;}
+  .toggle-row{display:flex;align-items:center;gap:9px;padding:7px 0;font-size:13.5px;}
+  .toggle-row input{width:auto;}
+
   @media (max-width:860px){
     .login-wrap{flex-direction:column;}
     .login-side{
@@ -317,7 +391,8 @@
     .sidebar,.pagehead,.preview-side,.no-print{display:none !important;}
     body,.main{background:#fff;padding:0;margin:0;}
     .preview-wrap{display:block;}
-    .invoice-sheet{box-shadow:none;border:none;width:auto;}
+    .invoice-sheet{box-shadow:none;border:none;width:auto;border-radius:0;}
+    * { -webkit-print-color-adjust:exact !important;print-color-adjust:exact !important;color-adjust:exact !important; }
   }
 </style>
 </head>
@@ -358,6 +433,12 @@ function fmt(n){ return (Math.round((n+Number.EPSILON)*100)/100).toLocaleString(
 function todayISO(){ return new Date().toISOString().slice(0,10); }
 function addDays(dateStr, days){ const d = new Date(dateStr); d.setDate(d.getDate()+days); return d.toISOString().slice(0,10); }
 function stripDiacritics(s){ return (s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,''); }
+function hexToRgba(hex, alpha){
+  const h = (hex||'#1F5C4D').replace('#','');
+  const full = h.length===3 ? h.split('').map(c=>c+c).join('') : h;
+  const r = parseInt(full.substring(0,2),16)||0, g = parseInt(full.substring(2,4),16)||0, b = parseInt(full.substring(4,6),16)||0;
+  return `rgba(${r},${g},${b},${alpha})`;
+}
 
 /* ---------- SUPABASE STORAGE SHIM ----------
    Nahrazuje window.storage (dostupné jen v Claude artefaktech) vlastní
@@ -436,7 +517,22 @@ async function loadAll(){
   try{ const r = await window.storage.get('clients', true); state.clients = r ? JSON.parse(r.value) : []; }catch(e){ state.clients = []; }
   try{ const r = await window.storage.get('invoices', true); state.invoices = r ? JSON.parse(r.value) : []; }catch(e){ state.invoices = []; }
   if(!state.company){
-    state.company = { name:'', address:'', ico:'', dic:'', account:'', iban:'', email:'', phone:'', prefix: new Date().getFullYear().toString(), nextNumber:1, defaultDueDays:14, defaultNote:'Děkujeme za spolupráci.' };
+    state.company = {
+      name:'', tagline:'', address:'', ico:'', dic:'', account:'', bankName:'', iban:'', swift:'', email:'', phone:'', website:'',
+      registration:'', prefix: new Date().getFullYear().toString(), nextNumber:1, defaultDueDays:14, defaultNote:'Děkujeme za spolupráci.',
+      invoiceTerms:'Fakturovaná částka bude odečtena z uvedeného účtu. V případě prodlení s úhradou je odběratel povinen uhradit úrok z prodlení dle platné legislativy.',
+      defaultPaymentMethod:'Bankovním převodem', invoiceAccent:'#1F5C4D',
+      logo:'', signature:'', stamp:'', showLogo:true, showStamp:true, showSignature:true, showQr:true
+    };
+  } else {
+    // doplnění nových polí u dříve uložených firem, aby nic nechybělo
+    const defaults = {
+      tagline:'', bankName:'', swift:'', website:'', registration:'',
+      invoiceTerms:'Fakturovaná částka bude odečtena z uvedeného účtu. V případě prodlení s úhradou je odběratel povinen uhradit úrok z prodlení dle platné legislativy.',
+      defaultPaymentMethod:'Bankovním převodem', invoiceAccent:'#1F5C4D',
+      logo:'', signature:'', stamp:'', showLogo:true, showStamp:true, showSignature:true, showQr:true
+    };
+    state.company = { ...defaults, ...state.company };
   }
   state.backupDates = await loadBackupIndex();
   state.loaded = true;
@@ -882,7 +978,9 @@ function blankInvoice(){
   return {
     id:null, number:num, clientId: preselected,
     issueDate: todayISO(), taxDate: todayISO(), dueDate: addDays(todayISO(), c.defaultDueDays||14),
-    variableSymbol: num.replace(/\D/g,''), note: c.defaultNote||'', paid:false, paidDate:null
+    variableSymbol: num.replace(/\D/g,''), note: c.defaultNote||'', paid:false, paidDate:null,
+    paymentMethod: c.defaultPaymentMethod || 'Bankovním převodem',
+    includeStamp:true, includeSignature:true, includeQr:true
   };
 }
 
@@ -936,6 +1034,19 @@ function viewInvoiceForm(){
         <div class="field"><label>Datum zdanitelného plnění</label><input type="date" name="taxDate" value="${inv.taxDate}"></div>
         <div class="field"><label>Variabilní symbol</label><input name="variableSymbol" value="${inv.variableSymbol||''}"></div>
       </div>
+      <div class="field-row">
+        <div class="field"><label>Forma úhrady</label>
+          <select name="paymentMethod">
+            ${['Bankovním převodem','Hotově','Kartou'].map(m=>`<option value="${m}" ${(inv.paymentMethod||'Bankovním převodem')===m?'selected':''}>${m}</option>`).join('')}
+          </select>
+        </div>
+        <div class="field"></div>
+      </div>
+
+      <div class="section-title">Vzhled této faktury</div>
+      <div class="toggle-row"><input type="checkbox" name="includeStamp" id="chk-inc-stamp" value="1" ${inv.includeStamp!==false?'checked':''}><label for="chk-inc-stamp">Zobrazit razítko (pokud je nahrané v nastavení)</label></div>
+      <div class="toggle-row"><input type="checkbox" name="includeSignature" id="chk-inc-sig" value="1" ${inv.includeSignature!==false?'checked':''}><label for="chk-inc-sig">Zobrazit elektronický podpis (pokud je nahraný)</label></div>
+      <div class="toggle-row"><input type="checkbox" name="includeQr" id="chk-inc-qr" value="1" ${inv.includeQr!==false?'checked':''}><label for="chk-inc-qr">Zobrazit QR platbu (vyžaduje IBAN)</label></div>
 
       <div class="section-title">Položky</div>
       <div class="items-table-wrap">
@@ -997,7 +1108,14 @@ function viewInvoicePreview(){
   const t = invoiceTotals(inv);
   const status = invoiceStatus(inv);
 
-  const spayd = buildSpayd(co, inv, t.total);
+  const showQr = co.showQr!==false && inv.includeQr!==false;
+  const showStamp = co.showStamp!==false && inv.includeStamp!==false && !!co.stamp;
+  const showSignature = co.showSignature!==false && inv.includeSignature!==false && !!co.signature;
+  const showLogo = co.showLogo!==false && !!co.logo;
+  const spayd = showQr ? buildSpayd(co, inv, t.total) : null;
+
+  const accent = co.invoiceAccent || '#1F5C4D';
+  const sheetStyle = `--inv-accent:${accent};--inv-accent-soft:${hexToRgba(accent,0.12)};--inv-accent-tint:${hexToRgba(accent,0.05)};`;
 
   return `
     <div class="pagehead no-print">
@@ -1009,55 +1127,103 @@ function viewInvoicePreview(){
       </div>
     </div>
     <div class="preview-wrap">
-      <div class="invoice-sheet" id="invoice-sheet">
-        ${inv.paid ? `<div class="stamp">ZAPLACENO</div>` : ''}
-        <div class="top">
-          <div><div class="doctitle">Faktura – daňový doklad</div><div class="docnum">${inv.number}</div></div>
-        </div>
-        <div class="parties">
-          <div class="party">
-            <div class="k">Dodavatel</div>
-            <div class="nm">${escapeHtml(co.name||'—')}</div>
-            <div>${nl2br(co.address)}</div>
-            ${co.ico?`<div>IČO: ${escapeHtml(co.ico)}</div>`:''}
-            ${co.dic?`<div>DIČ: ${escapeHtml(co.dic)}</div>`:''}
-            ${co.email?`<div>${escapeHtml(co.email)}</div>`:''}
+      <div class="invoice-sheet" id="invoice-sheet" style="${sheetStyle}">
+        ${inv.paid ? `<div class="paid-ribbon">ZAPLACENO</div>` : ''}
+
+        <div class="inv-header">
+          <div class="inv-header-left">
+            ${showLogo ? `<img class="inv-logo" src="${co.logo}" alt="Logo">` : `<div class="inv-logo-placeholder">LOGO</div>`}
+            <div>
+              <div class="inv-co-name">${escapeHtml(co.name||'Vaše firma')}</div>
+              ${co.tagline?`<div class="inv-co-tagline">${escapeHtml(co.tagline)}</div>`:''}
+            </div>
           </div>
-          <div class="party">
-            <div class="k">Odběratel</div>
-            <div class="nm">${c?escapeHtml(c.name):'—'}</div>
-            <div>${c?nl2br(c.address):''}</div>
-            ${c&&c.ico?`<div>IČO: ${escapeHtml(c.ico)}</div>`:''}
-            ${c&&c.dic?`<div>DIČ: ${escapeHtml(c.dic)}</div>`:''}
+          <div class="inv-header-right">
+            <div class="inv-doctitle">FAKTURA</div>
+            <div class="inv-docnum">č. ${escapeHtml(inv.number)}</div>
           </div>
         </div>
-        <div class="meta">
+
+        <div class="inv-meta">
           <div><div class="k">Vystaveno</div><div class="v">${inv.issueDate||''}</div></div>
           <div><div class="k">Splatnost</div><div class="v">${inv.dueDate||''}</div></div>
           <div><div class="k">Zd. plnění</div><div class="v">${inv.taxDate||''}</div></div>
-          <div><div class="k">Var. symbol</div><div class="v">${inv.variableSymbol||''}</div></div>
+          <div><div class="k">Forma úhrady</div><div class="v" style="font-family:'Inter',sans-serif;">${escapeHtml(inv.paymentMethod||'Bankovním převodem')}</div></div>
         </div>
-        <table class="lines">
-          <thead><tr><th>Popis</th><th class="num">Množství</th><th class="num">Cena/ks</th><th class="num">DPH</th><th class="num">Celkem</th></tr></thead>
-          <tbody>
-            ${(inv.items||[]).map(it=>{
-              const lt=(it.qty||0)*(it.price||0)*(1+(it.vat||0)/100);
-              return `<tr><td>${escapeHtml(it.desc)}</td><td class="num">${it.qty} ${escapeHtml(it.unit||'')}</td><td class="num">${fmt(it.price)} Kč</td><td class="num">${it.vat}%</td><td class="num">${fmt(lt)} Kč</td></tr>`;
-            }).join('')}
-          </tbody>
-        </table>
-        <div class="bottom">
-          <div class="qrbox">
-            ${spayd ? `<div class="qrimg" id="qr-holder"></div><div>QR platba</div>` : `<div style="max-width:160px;color:var(--ink-soft);">Doplň IBAN v nastavení pro QR platbu</div>`}
+
+        <div class="inv-body">
+          <div class="parties">
+            <div class="party">
+              <div class="k">Dodavatel</div>
+              <div class="nm">${escapeHtml(co.name||'—')}</div>
+              <div>${nl2br(co.address)}</div>
+              ${co.ico?`<div>IČO: ${escapeHtml(co.ico)}</div>`:''}
+              ${co.dic?`<div>DIČ: ${escapeHtml(co.dic)}</div>`:''}
+              ${co.email?`<div>${escapeHtml(co.email)}</div>`:''}
+              ${co.phone?`<div>${escapeHtml(co.phone)}</div>`:''}
+              ${co.website?`<div>${escapeHtml(co.website)}</div>`:''}
+            </div>
+            <div class="party">
+              <div class="k">Odběratel</div>
+              <div class="nm">${c?escapeHtml(c.name):'—'}</div>
+              <div>${c?nl2br(c.address):''}</div>
+              ${c&&c.ico?`<div>IČO: ${escapeHtml(c.ico)}</div>`:''}
+              ${c&&c.dic?`<div>DIČ: ${escapeHtml(c.dic)}</div>`:''}
+              ${c&&c.email?`<div>${escapeHtml(c.email)}</div>`:''}
+              ${c&&c.phone?`<div>${escapeHtml(c.phone)}</div>`:''}
+            </div>
           </div>
-          <div class="totals">
-            <div class="trow"><span>Základ daně</span><span>${fmt(t.base)} Kč</span></div>
-            <div class="trow"><span>DPH</span><span>${fmt(t.vat)} Kč</span></div>
-            <div class="trow grand"><span>K úhradě</span><span>${fmt(t.total)} Kč</span></div>
+
+          <table class="lines">
+            <thead><tr><th>Popis</th><th class="num">Množství</th><th class="num">Cena/j</th><th class="num">DPH</th><th class="num">Celkem</th></tr></thead>
+            <tbody>
+              ${(inv.items||[]).map(it=>{
+                const lt=(it.qty||0)*(it.price||0)*(1+(it.vat||0)/100);
+                return `<tr><td>${escapeHtml(it.desc)}</td><td class="num">${it.qty} ${escapeHtml(it.unit||'')}</td><td class="num">${fmt(it.price)} Kč</td><td class="num">${it.vat}%</td><td class="num">${fmt(lt)} Kč</td></tr>`;
+              }).join('')}
+            </tbody>
+          </table>
+
+          <div class="bottom">
+            <div class="paybox">
+              <div class="k">Platební údaje</div>
+              ${co.account?`<div class="prow"><span>Číslo účtu</span><span>${escapeHtml(co.account)}</span></div>`:''}
+              ${co.bankName?`<div class="prow"><span>Banka</span><span>${escapeHtml(co.bankName)}</span></div>`:''}
+              ${co.iban?`<div class="prow"><span>IBAN</span><span>${escapeHtml(co.iban)}</span></div>`:''}
+              ${co.swift?`<div class="prow"><span>SWIFT/BIC</span><span>${escapeHtml(co.swift)}</span></div>`:''}
+              ${inv.variableSymbol?`<div class="prow"><span>Variabilní symbol</span><span>${escapeHtml(inv.variableSymbol)}</span></div>`:''}
+              ${!co.account && !co.iban ? `<div style="color:var(--ink-soft);">Doplň platební údaje v nastavení.</div>` : ''}
+            </div>
+            ${showQr ? `
+            <div class="qrbox">
+              <div class="qrimg" id="qr-holder"></div>
+              <div>QR platba</div>
+            </div>` : ''}
+            <div class="totals">
+              <div class="trow"><span>Základ daně</span><span>${fmt(t.base)} Kč</span></div>
+              <div class="trow"><span>DPH</span><span>${fmt(t.vat)} Kč</span></div>
+              <div class="trow grand"><span>K úhradě</span><span>${fmt(t.total)} Kč</span></div>
+            </div>
+          </div>
+
+          ${inv.note?`<div class="note">${escapeHtml(inv.note)}</div>`:''}
+
+          <div class="signoff">
+            <div class="signoff-terms">${co.invoiceTerms?escapeHtml(co.invoiceTerms):''}</div>
+            <div class="signbox">
+              <div class="sig-stack">
+                ${showSignature?`<img class="sig-img" src="${co.signature}" alt="Podpis">`:''}
+                ${showStamp?`<img class="co-stamp-img" src="${co.stamp}" alt="Razítko">`:''}
+              </div>
+              <div class="sig-line">Podpis a razítko</div>
+            </div>
+          </div>
+
+          <div class="inv-footer">
+            <span>${escapeHtml(co.name||'')}${co.ico?' · IČO '+escapeHtml(co.ico):''}</span>
+            <span>Strana 1/1</span>
           </div>
         </div>
-        ${co.account?`<div class="note">Bankovní účet: ${escapeHtml(co.account)}${co.iban?' · IBAN: '+escapeHtml(co.iban):''}</div>`:''}
-        ${inv.note?`<div class="note">${escapeHtml(inv.note)}</div>`:''}
       </div>
       <div class="preview-side no-print">
         <div class="card"><div class="label">Stav</div><span class="pill ${status}">${statusLabel(status)}</span></div>
@@ -1164,13 +1330,30 @@ function viewClientForm(){
 }
 
 /* ---------- SETTINGS ---------- */
+function brandSlot(field, title, sub, imgAlt){
+  const co = state.company;
+  const val = co[field];
+  return `
+    <div class="brand-slot">
+      <div class="bs-title">${title}</div>
+      <div class="bs-sub">${sub}</div>
+      <div class="bs-preview">${val ? `<img src="${val}" alt="${imgAlt}">` : `<span class="bs-empty">Zatím nic nenahráno</span>`}</div>
+      <div class="bs-actions">
+        <button type="button" class="btn secondary small" data-action="upload-branding" data-field="${field}">${val?'Nahradit':'Nahrát'}</button>
+        ${val?`<button type="button" class="btn danger small" data-action="remove-branding" data-field="${field}">Odebrat</button>`:''}
+      </div>
+    </div>
+  `;
+}
+
 function viewSettings(){
   const co = state.company;
   return `
-    <div class="pagehead"><div><h1>Nastavení</h1><p class="desc">Údaje o firmě a fakturaci.</p></div></div>
+    <div class="pagehead"><div><h1>Nastavení</h1><p class="desc">Údaje o firmě, fakturaci a vzhledu faktur — nic tu nemusí chybět.</p></div></div>
     <form id="settings-form" class="form-card">
       <div class="section-title">Firma</div>
       <div class="field"><label>Název firmy / jméno OSVČ</label><input name="name" value="${escapeAttr(co.name)}" required></div>
+      <div class="field"><label>Podtitulek / obor činnosti</label><input name="tagline" value="${escapeAttr(co.tagline)}" placeholder="např. Profesionální služby"></div>
       <div class="field"><label>Adresa</label><textarea name="address">${co.address||''}</textarea></div>
       <div class="field-row">
         <div class="field"><label>IČO</label><input name="ico" value="${escapeAttr(co.ico)}"></div>
@@ -1180,11 +1363,19 @@ function viewSettings(){
         <div class="field"><label>Email</label><input type="email" name="email" value="${escapeAttr(co.email)}"></div>
         <div class="field"><label>Telefon</label><input name="phone" value="${escapeAttr(co.phone)}"></div>
       </div>
+      <div class="field-row">
+        <div class="field"><label>Web</label><input name="website" value="${escapeAttr(co.website)}" placeholder="www.firma.cz"></div>
+        <div class="field"><label>Zápis v rejstříku (nepovinné)</label><input name="registration" value="${escapeAttr(co.registration)}" placeholder="Zapsáno v OR vedeném..."></div>
+      </div>
 
       <div class="section-title">Platby</div>
       <div class="field-row">
         <div class="field"><label>Číslo účtu</label><input name="account" value="${escapeAttr(co.account)}" placeholder="123456789/0300"></div>
+        <div class="field"><label>Banka</label><input name="bankName" value="${escapeAttr(co.bankName)}" placeholder="např. Fio banka"></div>
+      </div>
+      <div class="field-row">
         <div class="field"><label>IBAN (pro QR platbu)</label><input name="iban" value="${escapeAttr(co.iban)}" placeholder="CZ..."></div>
+        <div class="field"><label>SWIFT / BIC</label><input name="swift" value="${escapeAttr(co.swift)}"></div>
       </div>
 
       <div class="section-title">Fakturace</div>
@@ -1194,13 +1385,45 @@ function viewSettings(){
       </div>
       <div class="field-row">
         <div class="field"><label>Výchozí splatnost (dny)</label><input type="number" name="defaultDueDays" value="${co.defaultDueDays}"></div>
-        <div class="field"><label>Výchozí poznámka</label><input name="defaultNote" value="${escapeAttr(co.defaultNote)}"></div>
+        <div class="field"><label>Výchozí forma úhrady</label>
+          <select name="defaultPaymentMethod">
+            ${['Bankovním převodem','Hotově','Kartou'].map(m=>`<option value="${m}" ${co.defaultPaymentMethod===m?'selected':''}>${m}</option>`).join('')}
+          </select>
+        </div>
       </div>
+      <div class="field"><label>Výchozí poznámka (na fakturu)</label><input name="defaultNote" value="${escapeAttr(co.defaultNote)}"></div>
+      <div class="field"><label>Platební podmínky / patička faktury</label><textarea name="invoiceTerms" style="min-height:70px;">${co.invoiceTerms||''}</textarea></div>
+
+      <div class="section-title">Vzhled faktury</div>
+      <div class="field">
+        <label>Barva zvýraznění na faktuře</label>
+        <div class="color-row">
+          <input type="color" name="invoiceAccent" value="${co.invoiceAccent||'#1F5C4D'}">
+          <span style="font-size:12.5px;color:var(--ink-soft);">Výchozí je světle zelená stejná jako v appce — klidně uprav dle svého brandu.</span>
+        </div>
+      </div>
+      <div class="toggle-row"><input type="checkbox" name="showLogo" id="chk-showLogo" value="1" ${co.showLogo?'checked':''}><label for="chk-showLogo">Zobrazovat logo na fakturách</label></div>
+      <div class="toggle-row"><input type="checkbox" name="showStamp" id="chk-showStamp" value="1" ${co.showStamp?'checked':''}><label for="chk-showStamp">Zobrazovat razítko na fakturách</label></div>
+      <div class="toggle-row"><input type="checkbox" name="showSignature" id="chk-showSignature" value="1" ${co.showSignature?'checked':''}><label for="chk-showSignature">Zobrazovat elektronický podpis na fakturách</label></div>
+      <div class="toggle-row"><input type="checkbox" name="showQr" id="chk-showQr" value="1" ${co.showQr?'checked':''}><label for="chk-showQr">Zobrazovat QR platbu (vyžaduje vyplněný IBAN)</label></div>
 
       <div class="formfoot">
         <button type="submit" class="btn">Uložit nastavení</button>
       </div>
     </form>
+
+    <div class="section-title" style="margin-top:30px;">Logo, podpis a razítko</div>
+    <div class="form-card">
+      <p style="font-size:12.5px;color:var(--ink-soft);margin-top:0;">
+        Nahraj logo firmy, obrázek svého podpisu a fotku razítka — objeví se na fakturách přesně tak, jak si je nastavíš výše.
+      </p>
+      <div class="brand-grid">
+        ${brandSlot('logo','Logo firmy','Zobrazí se v hlavičce faktury.','Logo firmy')}
+        ${brandSlot('signature','Elektronický podpis','Foto nebo scan podpisu.','Podpis')}
+        ${brandSlot('stamp','Razítko','Foto razítka firmy.','Razítko')}
+      </div>
+      <input type="file" id="branding-file-input" accept="image/*" style="display:none;">
+    </div>
 
     <div class="section-title" style="margin-top:30px;">Kolegové s přístupem</div>
     <div class="form-card">
@@ -1610,6 +1833,13 @@ function afterRender(){
   if(restoreFileInput){
     restoreFileInput.addEventListener('change', ()=>{ if(restoreFileInput.files[0]) restoreFromUploadedFile(restoreFileInput.files[0]); });
   }
+  const brandingFileInput = document.getElementById('branding-file-input');
+  if(brandingFileInput){
+    brandingFileInput.addEventListener('change', ()=>{
+      const field = brandingFileInput.getAttribute('data-target-field');
+      if(field && brandingFileInput.files[0]) handleBrandingUpload(field, brandingFileInput.files[0]);
+    });
+  }
 
   // item input sync
   const itemsBody = document.getElementById('items-body');
@@ -1744,6 +1974,15 @@ document.addEventListener('click', async (e)=>{
   else if(action==='export-backup'){ exportBackupFile(); }
   else if(action==='trigger-restore-file'){ const fi=document.getElementById('restore-file-input'); if(fi) fi.click(); }
   else if(action==='restore-snapshot'){ const date=el.getAttribute('data-date'); await restoreFromSnapshot(date); }
+  else if(action==='upload-branding'){
+    const field = el.getAttribute('data-field');
+    const fi = document.getElementById('branding-file-input');
+    if(fi){ fi.setAttribute('data-target-field', field); fi.value=''; fi.click(); }
+  }
+  else if(action==='remove-branding'){
+    const field = el.getAttribute('data-field');
+    if(confirm('Odebrat tento obrázek?')) await removeBrandingImage(field);
+  }
 });
 
 async function onSubmitInvoice(e){
@@ -1777,6 +2016,10 @@ async function onSubmitInvoice(e){
     dueDate: fd.get('dueDate'),
     taxDate: fd.get('taxDate'),
     variableSymbol: fd.get('variableSymbol'),
+    paymentMethod: fd.get('paymentMethod') || 'Bankovním převodem',
+    includeStamp: fd.get('includeStamp')==='1',
+    includeSignature: fd.get('includeSignature')==='1',
+    includeQr: fd.get('includeQr')==='1',
     note: fd.get('note'),
     items: items,
     paid: fd.get('paid')==='1',
@@ -1815,11 +2058,62 @@ async function onSubmitSettings(e){
   const fd = new FormData(e.target);
   state.company = {
     ...state.company,
-    name: fd.get('name'), address: fd.get('address'), ico: fd.get('ico'), dic: fd.get('dic'),
-    email: fd.get('email'), phone: fd.get('phone'), account: fd.get('account'), iban: fd.get('iban'),
+    name: fd.get('name'), tagline: fd.get('tagline'), address: fd.get('address'), ico: fd.get('ico'), dic: fd.get('dic'),
+    email: fd.get('email'), phone: fd.get('phone'), website: fd.get('website'), registration: fd.get('registration'),
+    account: fd.get('account'), bankName: fd.get('bankName'), iban: fd.get('iban'), swift: fd.get('swift'),
     prefix: fd.get('prefix'), nextNumber: parseInt(fd.get('nextNumber'))||1,
-    defaultDueDays: parseInt(fd.get('defaultDueDays'))||14, defaultNote: fd.get('defaultNote')
+    defaultDueDays: parseInt(fd.get('defaultDueDays'))||14, defaultNote: fd.get('defaultNote'),
+    invoiceTerms: fd.get('invoiceTerms'), defaultPaymentMethod: fd.get('defaultPaymentMethod'),
+    invoiceAccent: fd.get('invoiceAccent') || '#1F5C4D',
+    showLogo: fd.get('showLogo')==='1', showStamp: fd.get('showStamp')==='1',
+    showSignature: fd.get('showSignature')==='1', showQr: fd.get('showQr')==='1'
   };
+  await saveCompany();
+  render();
+}
+
+/* ---------- BRANDING (logo / podpis / razítko) ---------- */
+function resizeImageFile(file, maxDim = 480, quality = 0.86){
+  return new Promise((resolve, reject)=>{
+    const reader = new FileReader();
+    reader.onerror = ()=> reject(new Error('Soubor se nepodařilo přečíst.'));
+    reader.onload = ()=>{
+      const img = new Image();
+      img.onerror = ()=> reject(new Error('Obrázek se nepodařilo zpracovat.'));
+      img.onload = ()=>{
+        let { width, height } = img;
+        if(width > maxDim || height > maxDim){
+          if(width >= height){ height = Math.round(height * (maxDim/width)); width = maxDim; }
+          else{ width = Math.round(width * (maxDim/height)); height = maxDim; }
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = width; canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL('image/png', quality));
+      };
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+async function handleBrandingUpload(field, file){
+  if(!file) return;
+  if(!file.type.startsWith('image/')){ alert('Vyber prosím obrázek (PNG, JPG apod.).'); return; }
+  try{
+    const dataUrl = await resizeImageFile(file, field==='stamp' ? 400 : 480);
+    state.company[field] = dataUrl;
+    await saveCompany();
+    render();
+  }catch(err){
+    console.error(err);
+    alert('Nahrání se nepovedlo, zkus to prosím znovu.');
+  }
+}
+
+async function removeBrandingImage(field){
+  state.company[field] = '';
   await saveCompany();
   render();
 }
