@@ -453,64 +453,32 @@ function hexToRgba(hex, alpha){
    implementací nad Supabase REST API, aby appka fungovala i po nahrání
    na GitHub Pages / kamkoliv jinam mimo Claude.
    Vyžaduje v Supabase tabulku "app_storage" (viz SQL v komentáři níže). */
-const SUPABASE_URL = 'https://jucphmkmujjhxymvguhc.supabase.co';
-const SUPABASE_KEY = 'sb_publishable_wk2kCIi0aM_wq-ZEAGF8OA_m9D4gGaG';
-const SUPABASE_REST = SUPABASE_URL + '/rest/v1';
-
-/*
-  SQL pro Supabase (SQL Editor -> New query -> spustit jednou):
-
-  create table if not exists app_storage (
-    key text primary key,
-    value text,
-    updated_at timestamptz default now()
-  );
-
-  alter table app_storage enable row level security;
-
-  create policy "public read/write app_storage"
-  on app_storage for all
-  using (true)
-  with check (true);
-*/
-
-async function sbRequest(path, options = {}){
-  const headers = {
-    'apikey': SUPABASE_KEY,
-    'Authorization': 'Bearer ' + SUPABASE_KEY,
-    'Content-Type': 'application/json',
-    ...(options.headers || {})
-  };
-  const res = await fetch(SUPABASE_REST + path, { ...options, headers });
-  if(!res.ok){
-    const text = await res.text().catch(()=> '');
-    throw new Error(`Supabase ${res.status}: ${text}`);
-  }
-  return res;
-}
+// Používáme jen localStorage - jednodušší a vždy funguje
 
 window.storage = {
-  async get(key){
-    const rows = await (await sbRequest(`/app_storage?key=eq.${encodeURIComponent(key)}&select=value`)).json();
-    if(!rows.length) return null;
-    return { key, value: rows[0].value };
+  async get(key, shared){
+    console.log('📖 storage.get:', key);
+    const val = localStorage.getItem(key);
+    if(!val) {
+      console.log('  → nic nenalezeno');
+      return null;
+    }
+    console.log('  ✓ nalezeno');
+    return { key, value: val };
   },
-  async set(key, value){
-    await sbRequest('/app_storage?on_conflict=key', {
-      method: 'POST',
-      headers: { 'Prefer': 'resolution=merge-duplicates,return=minimal' },
-      body: JSON.stringify({ key, value, updated_at: new Date().toISOString() })
-    });
+  async set(key, value, shared){
+    console.log('💾 storage.set:', key);
+    localStorage.setItem(key, value);
     return { key, value };
   },
-  async delete(key){
-    await sbRequest(`/app_storage?key=eq.${encodeURIComponent(key)}`, { method: 'DELETE' });
+  async delete(key, shared){
+    console.log('🗑️ storage.delete:', key);
+    localStorage.removeItem(key);
     return { key, deleted: true };
   },
   async list(prefix){
-    const filter = prefix ? `&key=like.${encodeURIComponent(prefix)}*` : '';
-    const rows = await (await sbRequest(`/app_storage?select=key${filter}`)).json();
-    return { keys: rows.map(r => r.key) };
+    const keys = Object.keys(localStorage).filter(k => !prefix || k.startsWith(prefix));
+    return { keys };
   }
 };
 
@@ -521,7 +489,10 @@ async function loadUsers(){
 async function saveUsers(){ try{ await window.storage.set('users', JSON.stringify(state.users), true); }catch(e){ console.error(e); } }
 
 async function loadAll(){
-  try{ const r = await window.storage.get('company', true); state.company = r ? JSON.parse(r.value) : null; }catch(e){ state.company = null; }
+  console.log('📥 loadAll() - začínám načítat data');
+  console.log('window.storage je dostupné?', !!window.storage);
+  try{ const r = await window.storage.get('users', true); state.users = r ? JSON.parse(r.value) : []; console.log('✓ users:', state.users); }catch(e){ console.error('✗ Error users:', e); state.users = []; }
+  try{ const r = await window.storage.get('company', true); state.company = r ? JSON.parse(r.value) : null; console.log('✓ company:', state.company); }catch(e){ console.error('✗ Error company:', e); state.company = null; }
   try{ const r = await window.storage.get('clients', true); state.clients = r ? JSON.parse(r.value) : []; }catch(e){ state.clients = []; }
   try{ const r = await window.storage.get('invoices', true); state.invoices = r ? JSON.parse(r.value) : []; }catch(e){ state.invoices = []; }
   try{ const r = await window.storage.get('suppliers', true); state.suppliers = r ? JSON.parse(r.value) : []; }catch(e){ state.suppliers = []; }
@@ -777,8 +748,16 @@ function statusOptions(selected){
 
 /* ---------- RENDER ROOT ---------- */
 function render(){
+  console.log('🎨 render() - překresluju UI');
   const app = document.getElementById('app');
+  console.log('Element #app:', app);
+  if(!app) {
+    console.error('✗ Element #app nenalezen!');
+    return;
+  }
+  console.log('currentUser:', state.currentUser, '| authView:', state.authView);
   if(!state.currentUser){
+    console.log('→ Renderuju auth formulář');
     app.innerHTML = renderAuth();
     afterRenderAuth();
     return;
@@ -846,7 +825,7 @@ function renderLoginForm(){
         <datalist id="login-users-list">${state.users.map(u=>`<option value="${escapeAttr(u.name)}">`).join('')}</datalist>
       </div>
       <div class="field"><label>Heslo</label><input name="password" type="password" required></div>
-      <button type="submit" class="btn" style="width:100%;">Přihlásit se</button>
+      <button type="submit" class="btn" style="width:100%;" onclick="handleLoginClick(event)">Přihlásit se</button>
     </form>
   `;
 }
@@ -858,23 +837,35 @@ function renderRegisterForm(hasUsers){
       <div class="field"><label>Jméno</label><input name="name" required autofocus></div>
       <div class="field"><label>Heslo</label><input name="password" type="password" required minlength="4"></div>
       <div class="field"><label>Heslo znovu</label><input name="password2" type="password" required minlength="4"></div>
-      <button type="submit" class="btn" style="width:100%;">Vytvořit a přihlásit</button>
+      <button type="submit" class="btn" style="width:100%;" onclick="handleRegisterClick(event)">Vytvořit a přihlásit</button>
     </form>
   `;
 }
 
 function afterRenderAuth(){
+  console.log('🔨 afterRenderAuth se volá');
   setTimeout(() => {
+    console.log('🔨 setTimeout - hledám formuláře...');
     const lf = document.getElementById('login-form');
-    if(lf) lf.addEventListener('submit', onSubmitLogin);
+    console.log('Login formulář:', lf);
+    if(lf) {
+      console.log('Přidávám listener na login formulář');
+      lf.addEventListener('submit', onSubmitLogin);
+    }
     const rf = document.getElementById('register-form');
-    if(rf) rf.addEventListener('submit', onSubmitRegister);
-  }, 0);
+    console.log('Register formulář:', rf);
+    if(rf) {
+      console.log('Přidávám listener na register formulář');
+      rf.addEventListener('submit', onSubmitRegister);
+    }
+  }, 100);
 }
 
 async function onSubmitLogin(e){
+  console.log('🔐 onSubmitLogin volána', e);
   e.preventDefault();
   const fd = new FormData(e.target);
+  console.log('FormData:', {name: fd.get('name'), password: fd.get('password')});
   const name = (fd.get('name')||'').trim();
   const password = fd.get('password');
   state.lastLoginName = name;
@@ -892,8 +883,10 @@ async function onSubmitLogin(e){
 }
 
 async function onSubmitRegister(e){
+  console.log('📝 onSubmitRegister volána', e);
   e.preventDefault();
   const fd = new FormData(e.target);
+  console.log('FormData:', {name: fd.get('name'), password: fd.get('password')});
   const name = (fd.get('name')||'').trim();
   const password = fd.get('password');
   const password2 = fd.get('password2');
@@ -3154,10 +3147,41 @@ async function onSubmitSupplier(e){
 
 
 
+
+function handleLoginClick(e) {
+  console.log('🖱️ handleLoginClick - tlačítko kliknutí!', e);
+  e.preventDefault();
+  const form = e.target.closest('form');
+  console.log('Formulář:', form);
+  if(form) {
+    console.log('Volám onSubmitLogin...');
+    onSubmitLogin({preventDefault: ()=>{}, target: form});
+  }
+}
+
+function handleRegisterClick(e) {
+  console.log('🖱️ handleRegisterClick - tlačítko kliknutí!', e);
+  e.preventDefault();
+  const form = e.target.closest('form');
+  console.log('Formulář:', form);
+  if(form) {
+    console.log('Volám onSubmitRegister...');
+    onSubmitRegister({preventDefault: ()=>{}, target: form});
+  }
+}
+
 // Inicializace aplikace
 (async () => {
-  await loadAll();
-  render();
+  console.log('🚀 Inicializace Ledger aplikace');
+  try {
+    await loadAll();
+    console.log('✓ loadAll() skončila úspěšně');
+    console.log('state.users:', state.users);
+    render();
+    console.log('✓ render() skončil úspěšně');
+  } catch(err) {
+    console.error('✗ Chyba při inicializaci:', err);
+  }
 })();
 </script>
 </body>
