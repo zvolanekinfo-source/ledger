@@ -846,7 +846,7 @@ function renderLoginForm(){
         <datalist id="login-users-list">${state.users.map(u=>`<option value="${escapeAttr(u.name)}">`).join('')}</datalist>
       </div>
       <div class="field"><label>Heslo</label><input name="password" type="password" required></div>
-      <button type="submit" class="btn" style="width:100%;" data-action="submit-login">Přihlásit se</button>
+      <button type="submit" class="btn" style="width:100%;">Přihlásit se</button>
     </form>
   `;
 }
@@ -858,16 +858,18 @@ function renderRegisterForm(hasUsers){
       <div class="field"><label>Jméno</label><input name="name" required autofocus></div>
       <div class="field"><label>Heslo</label><input name="password" type="password" required minlength="4"></div>
       <div class="field"><label>Heslo znovu</label><input name="password2" type="password" required minlength="4"></div>
-      <button type="submit" class="btn" style="width:100%;" data-action="submit-register">Vytvořit a přihlásit</button>
+      <button type="submit" class="btn" style="width:100%;">Vytvořit a přihlásit</button>
     </form>
   `;
 }
 
 function afterRenderAuth(){
-  const lf = document.getElementById('login-form');
-  if(lf) lf.addEventListener('submit', onSubmitLogin);
-  const rf = document.getElementById('register-form');
-  if(rf) rf.addEventListener('submit', onSubmitRegister);
+  setTimeout(() => {
+    const lf = document.getElementById('login-form');
+    if(lf) lf.addEventListener('submit', onSubmitLogin);
+    const rf = document.getElementById('register-form');
+    if(rf) rf.addEventListener('submit', onSubmitRegister);
+  }, 0);
 }
 
 async function onSubmitLogin(e){
@@ -2364,14 +2366,6 @@ document.addEventListener('click', async (e)=>{
   const id = el.getAttribute('data-id');
 
   if(action==='auth-switch'){ state.authView = el.getAttribute('data-view'); state.authError=''; render(); }
-  else if(action==='submit-login'){ 
-    const form = el.closest('form');
-    if(form) await onSubmitLogin({preventDefault: ()=>{}, target: form});
-  }
-  else if(action==='submit-register'){ 
-    const form = el.closest('form');
-    if(form) await onSubmitRegister({preventDefault: ()=>{}, target: form});
-  }
   else if(action==='logout'){ state.currentUser=null; state.authView='login'; state.view='dashboard'; render(); }
   else if(action==='nav'){ state.view = el.getAttribute('data-view'); state.editingInvoiceId=null; state.editingClientId=null; state.clientDetailId=null; state.formItems=[]; render(); }
   else if(action==='new-invoice'){ state.view='invoice-form'; state.editingInvoiceId=null; state.formItems=[]; render(); }
@@ -3158,6 +3152,13 @@ async function onSubmitSupplier(e){
   render();
 }
 
+
+
+// Inicializace aplikace
+(async () => {
+  await loadAll();
+  render();
+})();
 </script>
 </body>
 </html>
