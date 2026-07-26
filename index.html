@@ -1067,7 +1067,7 @@ function blankInvoice(){
   const preselected = state.preselectClientId && clientById(state.preselectClientId) ? state.preselectClientId : (state.clients[0]?state.clients[0].id:null);
   state.preselectClientId = null;
   return {
-    id:null, number:num, clientId: preselected, supplierId: null, supplier: null,
+    id:null, number:num, clientId: preselected, supplierId: '__company__', supplier: {name: c.name, ico: c.ico, account: c.account, iban: c.iban, bankName: c.bankName, swift: c.swift, showLogo: c.showLogo, showStamp: c.showStamp, showSignature: c.showSignature, showQr: c.showQr},
     issueDate: todayISO(), taxDate: todayISO(), dueDate: addDays(todayISO(), c.defaultDueDays||14),
     variableSymbol: num.replace(/\D/g,''), note: c.defaultNote||'', paid:false, paidDate:null,
     paymentMethod: c.defaultPaymentMethod || 'Bankovním převodem',
@@ -1105,8 +1105,8 @@ function viewInvoiceForm(){
       </div>
       <div class="field-row">
         <div class="field combo-field">
-          <label>Dodavatel</label>
-          <input type="text" id="supplier-combo-input" placeholder="Vybrat nebo napsatdodavatele…" autocomplete="off" value="${inv.supplier?escapeAttr(inv.supplier.name||''):''}">
+          <label>Firma</label>
+          <input type="text" id="supplier-combo-input" placeholder="Vybrat nebo napsat další firmu…" autocomplete="off" value="${inv.supplier?escapeAttr(inv.supplier.name||''):''}">
           <input type="hidden" name="supplierId" id="supplier-combo-value" value="${inv.supplierId||''}">
           <div class="combo-list" id="supplier-combo-list"></div>
         </div>
@@ -1210,14 +1210,18 @@ function viewInvoicePreview(){
   if(!inv) return emptyState('Faktura nenalezena','');
   const c = clientById(inv.clientId);
   const co = state.company;
+  
+  // Use invoice's supplier data if available, otherwise company data
+  const supplier = inv.supplier || co;
+  
   const t = invoiceTotals(inv);
   const status = invoiceStatus(inv);
 
-  const showQr = co.showQr!==false && inv.includeQr!==false;
-  const showStamp = co.showStamp!==false && inv.includeStamp!==false && !!co.stamp;
-  const showSignature = co.showSignature!==false && inv.includeSignature!==false && !!co.signature;
-  const showLogo = co.showLogo!==false && !!co.logo;
-  const spayd = showQr ? buildSpayd(co, inv, t.total) : null;
+  const showQr = (supplier.showQr!==false) && inv.includeQr!==false;
+  const showStamp = (supplier.showStamp!==false) && inv.includeStamp!==false && !!co.stamp;
+  const showSignature = (supplier.showSignature!==false) && inv.includeSignature!==false && !!co.signature;
+  const showLogo = (supplier.showLogo!==false) && !!co.logo;
+  const spayd = showQr ? buildSpayd(supplier, inv, t.total) : null;
 
   const accent = co.invoiceAccent || '#1F5C4D';
   const sheetStyle = `--inv-accent:${accent};--inv-accent-soft:${hexToRgba(accent,0.12)};--inv-accent-tint:${hexToRgba(accent,0.05)};`;
@@ -1253,11 +1257,11 @@ function viewInvoicePreview(){
           <div class="info-grid">
             <div class="info-card">
               <div class="k">Dodavatel</div>
-              <div class="nm">${escapeHtml(co.name||'—')}</div>
-              <div>${nl2br(co.address)}</div>
-              ${co.ico?`<div>IČO: ${escapeHtml(co.ico)}</div>`:''}
-              ${co.dic?`<div>DIČ: ${escapeHtml(co.dic)}</div>`:''}
-              ${co.email?`<div>${escapeHtml(co.email)}</div>`:''}
+              <div class="nm">${escapeHtml(supplier.name||'—')}</div>
+              <div>${nl2br(supplier.address)}</div>
+              ${supplier.ico?`<div>IČO: ${escapeHtml(supplier.ico)}</div>`:''}
+              ${supplier.dic?`<div>DIČ: ${escapeHtml(supplier.dic)}</div>`:''}
+              ${supplier.email?`<div>${escapeHtml(supplier.email)}</div>`:''}
               ${co.phone?`<div>${escapeHtml(co.phone)}</div>`:''}
               ${co.website?`<div>${escapeHtml(co.website)}</div>`:''}
               <div class="divider">
@@ -1484,6 +1488,12 @@ function viewSettings(){
         <div class="field"><label>SWIFT / BIC</label><input name="swift" value="${escapeAttr(co.swift)}"></div>
       </div>
 
+      <div class="section-title">Vzhled mojí firmy (logo, razítko, podpis)</div>
+      <div class="toggle-row"><input type="checkbox" name="showLogo" id="chk-showLogo" value="1" ${co.showLogo?'checked':''}><label for="chk-showLogo">Zobrazovat logo na fakturách</label></div>
+      <div class="toggle-row"><input type="checkbox" name="showStamp" id="chk-showStamp" value="1" ${co.showStamp?'checked':''}><label for="chk-showStamp">Zobrazovat razítko na fakturách</label></div>
+      <div class="toggle-row"><input type="checkbox" name="showSignature" id="chk-showSignature" value="1" ${co.showSignature?'checked':''}><label for="chk-showSignature">Zobrazovat elektronický podpis na fakturách</label></div>
+      <div class="toggle-row"><input type="checkbox" name="showQr" id="chk-showQr" value="1" ${co.showQr?'checked':''}><label for="chk-showQr">Zobrazovat QR platbu (vyžaduje vyplněný IBAN)</label></div>
+
       <div class="section-title">Fakturace</div>
       <div class="field-row">
         <div class="field"><label>Prefix čísla faktury</label><input name="prefix" value="${escapeAttr(co.prefix)}"></div>
@@ -1499,12 +1509,6 @@ function viewSettings(){
       </div>
       <div class="field"><label>Výchozí poznámka (na fakturu)</label><input name="defaultNote" value="${escapeAttr(co.defaultNote)}"></div>
       <div class="field"><label>Platební podmínky / patička faktury</label><textarea name="invoiceTerms" style="min-height:70px;">${co.invoiceTerms||''}</textarea></div>
-
-      <div class="section-title">Vzhled faktury</div>
-      <div class="toggle-row"><input type="checkbox" name="showLogo" id="chk-showLogo" value="1" ${co.showLogo?'checked':''}><label for="chk-showLogo">Zobrazovat logo na fakturách</label></div>
-      <div class="toggle-row"><input type="checkbox" name="showStamp" id="chk-showStamp" value="1" ${co.showStamp?'checked':''}><label for="chk-showStamp">Zobrazovat razítko na fakturách</label></div>
-      <div class="toggle-row"><input type="checkbox" name="showSignature" id="chk-showSignature" value="1" ${co.showSignature?'checked':''}><label for="chk-showSignature">Zobrazovat elektronický podpis na fakturách</label></div>
-      <div class="toggle-row"><input type="checkbox" name="showQr" id="chk-showQr" value="1" ${co.showQr?'checked':''}><label for="chk-showQr">Zobrazovat QR platbu (vyžaduje vyplněný IBAN)</label></div>
 
       <div class="formfoot">
         <button type="submit" class="btn">Uložit nastavení</button>
@@ -1524,12 +1528,12 @@ function viewSettings(){
       <input type="file" id="branding-file-input" accept="image/*" style="display:none;">
     </div>
 
-    <div class="section-title" style="margin-top:30px;">Dodavatelé</div>
+    <div class="section-title" style="margin-top:30px;">Další firmy</div>
     <div class="form-card">
       ${state.suppliers.length === 0 ? `
-        <p style="color:var(--ink-soft);margin:0;">Zatím nemáš žádné uložené dodavatele.</p>
+        <p style="color:var(--ink-soft);margin:0;">Zatím nemáš žádné uložené další firmu.</p>
         <div class="formfoot">
-          <button type="button" class="btn btn-primary" data-action="open-supplier-modal">+ Přidat prvního dodavatele</button>
+          <button type="button" class="btn btn-primary" data-action="open-supplier-modal">+ Přidat prvního další firmu</button>
         </div>
       ` : `
         <div style="display:flex; flex-direction:column; gap:8px; margin-bottom:16px;">
@@ -1543,6 +1547,9 @@ function viewSettings(){
                   </div>
                   ${s.account || s.iban ? `
                     <div style="font-size:0.8rem; color:var(--ink-soft); margin-top:6px;">
+                  <div style="font-size:0.8rem; color:var(--ink-soft); margin-top:6px;">
+                    Vzhled: ${s.showLogo?"🎨 Logo":""}${s.showStamp?" 🔖 Razítko":""}${s.showSignature?" ✍️ Podpis":""}${s.showQr?" 📱 QR":""}${!s.showLogo&&!s.showStamp&&!s.showSignature&&!s.showQr?"(vypnuto)":""}
+                  </div>
                       ${s.iban ? '💳 ' + escapeHtml(s.iban) : '💳 ' + escapeHtml(s.account || '')}
                     </div>
                   ` : ''}
@@ -1555,7 +1562,7 @@ function viewSettings(){
             </div>
           `).join('')}
         </div>
-        <button type="button" class="btn btn-primary btn-sm" data-action="open-supplier-modal">+ Nový dodavatel</button>
+        <button type="button" class="btn btn-primary btn-sm" data-action="open-supplier-modal">+ Nová další firma</button>
       `}
     </div>
 
@@ -2295,27 +2302,35 @@ function setupSupplierCombo(){
   const list = document.getElementById('supplier-combo-list');
   if(!input || !hidden || !list) return;
 
-  // Auto-select first supplier if none selected
-  if(!hidden.value && state.suppliers.length > 0){
-    const firstSupplier = state.suppliers[0];
-    input.value = firstSupplier.name;
-    hidden.value = firstSupplier.id;
+  // Auto-select "Moje firma" if none selected
+  if(!hidden.value){
+    input.value = state.company.name;
+    hidden.value = '__company__';
   }
 
   let addingNew = false;
 
   function renderList(query){
     const q = stripDiacritics(query||'').toLowerCase().trim();
+    
+    // Vždy přidej "Moje firmu" na začátek
+    let html = `
+      <div class="combo-item" data-id="__company__" style="font-weight:600;background:var(--accent-soft);">
+        <strong>⭐ Moje firma (${state.company.name})</strong>
+        <div class="sub" style="font-weight:normal;">Tvoje primární firma</div>
+      </div>
+    `;
+
+    // Filtruj ostatní suppliers
     const matches = state.suppliers.filter(s=>{
       if(!q) return true;
       return stripDiacritics(`${s.name} ${s.ico||''}`).toLowerCase().includes(q);
     }).slice(0,20);
 
-    let html = '';
     if(q && q.length>0 && !state.suppliers.find(s=>s.name.toLowerCase()===q)){
       html += `
         <div class="combo-item" data-action="create-supplier" data-name="${escapeAttr(q)}">
-          <strong>+ Nový dodavatel: ${escapeHtml(q)}</strong>
+          <strong>+ Nová další firma: ${escapeHtml(q)}</strong>
         </div>
       `;
     }
@@ -2327,7 +2342,7 @@ function setupSupplierCombo(){
         </div>
       `).join('');
     } else if(!q || q.length<1) {
-      html += `<div class="combo-empty">Žádní dodavatelé. Napiš jméno a vytvoř nového.</div>`;
+      html += `<div class="combo-empty">Žádné další firmy. Napiš jméno a vytvoř novou.</div>`;
     }
     list.innerHTML = html;
     list.classList.add('open');
@@ -2346,7 +2361,7 @@ function setupSupplierCombo(){
     if(!item) return;
 
     if(item.getAttribute('data-action')==='create-supplier'){
-      // Vytvoř nového dodavatele
+      // Vytvoř nového další firmu
       const name = item.getAttribute('data-name');
       if(!name) return;
       const newSupplier = { id: uid(), name: name, address: '', ico: '', dic: '', email: '', phone: '' };
@@ -2358,8 +2373,14 @@ function setupSupplierCombo(){
       renderList('');
     } else {
       // Vyber existujícího
-      const s = supplierById(item.getAttribute('data-id'));
-      if(s){ input.value = s.name; hidden.value = s.id; }
+      const id = item.getAttribute('data-id');
+      if(id === '__company__'){
+        input.value = state.company.name;
+        hidden.value = '__company__';
+      } else {
+        const s = supplierById(id);
+        if(s){ input.value = s.name; hidden.value = s.id; }
+      }
       list.classList.remove('open');
     }
   });
@@ -2491,10 +2512,34 @@ async function onSubmitInvoice(e){
     await saveClients();
   }
   const items = state.formItems.filter(it=> (it.desc||'').trim()!=='' || (it.qty||0)!==0 );
+  
+  // Get supplier data
+  const supplierId = fd.get('supplierId') || '__company__';
+  let supplier = null;
+  if(supplierId === '__company__'){
+    supplier = {
+      name: state.company.name,
+      ico: state.company.ico,
+      account: state.company.account,
+      iban: state.company.iban,
+      bankName: state.company.bankName,
+      swift: state.company.swift,
+      showLogo: state.company.showLogo,
+      showStamp: state.company.showStamp,
+      showSignature: state.company.showSignature,
+      showQr: state.company.showQr
+    };
+  } else {
+    const s = supplierById(supplierId);
+    if(s) supplier = s;
+  }
+
   const invoice = {
     id: id || uid(),
     number: fd.get('number'),
     clientId: clientId,
+    supplierId: supplierId,
+    supplier: supplier,
     issueDate: fd.get('issueDate'),
     dueDate: fd.get('dueDate'),
     taxDate: fd.get('taxDate'),
@@ -2537,7 +2582,7 @@ async function onSubmitClient(e){
   render();
 }
 
-// Dodavatelé
+// Další firmy
 function openSupplierModal(id){
   const supplier = id ? supplierById(id) : null;
   const modalHtml = `
@@ -2573,8 +2618,14 @@ function openSupplierModal(id){
             <div class="field"><label>SWIFT/BIC</label><input name="swift" value="${escapeAttr(supplier?.swift || '')}"></div>
           </div>
 
+          <div class="section-title">Vzhled faktury (když je tato firma dodavatel)</div>
+          <div class="toggle-row"><input type="checkbox" name="showLogo" value="1" ${supplier?.showLogo!==false?'checked':''}><label>Zobrazovat logo</label></div>
+          <div class="toggle-row"><input type="checkbox" name="showStamp" value="1" ${supplier?.showStamp!==false?'checked':''}><label>Zobrazovat razítko</label></div>
+          <div class="toggle-row"><input type="checkbox" name="showSignature" value="1" ${supplier?.showSignature!==false?'checked':''}><label>Zobrazovat podpis</label></div>
+          <div class="toggle-row"><input type="checkbox" name="showQr" value="1" ${supplier?.showQr!==false?'checked':''}><label>Zobrazovat QR platbu</label></div>
+
           <div style="display:flex; gap:10px; margin-top:24px;">
-            <button type="submit" class="btn" style="flex:1;">Uložit dodavatele</button>
+            <button type="submit" class="btn" style="flex:1;">Uložit další firmu</button>
             <button type="button" class="btn secondary" data-action="close-supplier-modal">Zrušit</button>
           </div>
         </form>
@@ -2615,7 +2666,11 @@ async function onSubmitSupplier(e){
     account: fd.get('account'),
     bankName: fd.get('bankName'),
     iban: fd.get('iban'),
-    swift: fd.get('swift')
+    swift: fd.get('swift'),
+    showLogo: fd.get('showLogo')==='1',
+    showStamp: fd.get('showStamp')==='1',
+    showSignature: fd.get('showSignature')==='1',
+    showQr: fd.get('showQr')==='1'
   };
   if(id){ const idx = state.suppliers.findIndex(s=>s.id===id); state.suppliers[idx]=supplier; }
   else{ state.suppliers.push(supplier); }
@@ -2626,7 +2681,7 @@ async function onSubmitSupplier(e){
 }
 
 async function deleteSupplier(id){
-  if(!confirm('Opravdu smazat tohoto dodavatele?')) return;
+  if(!confirm('Opravdu smazat tohoto další firmu?')) return;
   state.suppliers = state.suppliers.filter(s => s.id !== id);
   await saveSuppliers();
   render();
