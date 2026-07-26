@@ -173,11 +173,6 @@
   .formfoot{display:flex;gap:10px;margin-top:22px;align-items:center;}
   .btn-link{background:none;border:none;color:var(--ink-soft);text-decoration:underline;font-size:14px;padding:10px 4px;}
   .btn-link:hover{color:var(--ink);}
-  
-  /* MODALS */
-  .modal-overlay{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;z-index:1000;}
-  .modal-card{background:var(--surface);border-radius:8px;padding:28px;max-width:500px;width:90%;box-shadow:0 10px 40px rgba(0,0,0,0.15);}
-  .modal-card h2{margin:0 0 20px 0;font-size:20px;font-weight:600;}
 
   /* SEARCH */
   .search-row{margin-bottom:16px;}
@@ -399,34 +394,11 @@
 <div id="app"></div>
 
 <script>
-// ⚠️ FALLBACK NA LOCALSTORAGE - MUSÍ BÝT NA ZAČÁTKU!
-if (!window.storage) {
-  window.storage = {
-    async get(key, shared) {
-      const val = localStorage.getItem(key);
-      return val ? { key, value: val, shared } : null;
-    },
-    async set(key, value, shared) {
-      localStorage.setItem(key, value);
-      return { key, value, shared };
-    },
-    async delete(key, shared) {
-      localStorage.removeItem(key);
-      return { key, deleted: true, shared };
-    },
-    async list(prefix, shared) {
-      const keys = Object.keys(localStorage).filter(k => !prefix || k.startsWith(prefix));
-      return { keys, prefix, shared };
-    }
-  };
-}
-
 /* ---------- STATE ---------- */
 let state = {
   view: 'dashboard',
   company: null,
   clients: [],
-  suppliers: [],
   invoices: [],
   users: [],
   currentUser: null,
@@ -439,8 +411,6 @@ let state = {
   loaded: false,
   clientSearch: '',
   preselectClientId: null,
-  supplierSearch: '',
-  preselectSupplierId: null,
   importBusy: false,
   importError: '',
   importResult: null, // { company, client, matchedClientId, invoice }
@@ -537,10 +507,8 @@ async function loadUsers(){
 async function saveUsers(){ try{ await window.storage.set('users', JSON.stringify(state.users), true); }catch(e){ console.error(e); } }
 
 async function loadAll(){
-  await loadUsers();
   try{ const r = await window.storage.get('company', true); state.company = r ? JSON.parse(r.value) : null; }catch(e){ state.company = null; }
   try{ const r = await window.storage.get('clients', true); state.clients = r ? JSON.parse(r.value) : []; }catch(e){ state.clients = []; }
-  try{ const r = await window.storage.get('suppliers', true); state.suppliers = r ? JSON.parse(r.value) : []; }catch(e){ state.suppliers = []; }
   try{ const r = await window.storage.get('invoices', true); state.invoices = r ? JSON.parse(r.value) : []; }catch(e){ state.invoices = []; }
   if(!state.company){
     state.company = {
@@ -565,7 +533,6 @@ async function loadAll(){
 }
 async function saveCompany(){ try{ await window.storage.set('company', JSON.stringify(state.company), true); }catch(e){ console.error(e); } saveSnapshotBackup(); }
 async function saveClients(){ try{ await window.storage.set('clients', JSON.stringify(state.clients), true); }catch(e){ console.error(e); } saveSnapshotBackup(); }
-async function saveSuppliers(){ try{ await window.storage.set('suppliers', JSON.stringify(state.suppliers), true); }catch(e){ console.error(e); } saveSnapshotBackup(); }
 async function saveInvoices(){ try{ await window.storage.set('invoices', JSON.stringify(state.invoices), true); }catch(e){ console.error(e); } saveSnapshotBackup(); }
 
 /* ---------- BACKUP / SNAPSHOTS ---------- */
@@ -575,7 +542,7 @@ async function loadBackupIndex(){
 async function saveSnapshotBackup(){
   try{
     const date = todayISO();
-    const payload = JSON.stringify({ savedAt: new Date().toISOString(), company: state.company, clients: state.clients, suppliers: state.suppliers, invoices: state.invoices });
+    const payload = JSON.stringify({ savedAt: new Date().toISOString(), company: state.company, clients: state.clients, invoices: state.invoices });
     await window.storage.set('backup:'+date, payload, true);
     let dates = await loadBackupIndex();
     if(!dates.includes(date)) dates.push(date);
@@ -590,7 +557,7 @@ async function saveSnapshotBackup(){
 }
 
 function exportBackupFile(){
-  const payload = { exportedAt: new Date().toISOString(), company: state.company, clients: state.clients, suppliers: state.suppliers, invoices: state.invoices };
+  const payload = { exportedAt: new Date().toISOString(), company: state.company, clients: state.clients, invoices: state.invoices };
   const blob = new Blob([JSON.stringify(payload, null, 2)], { type:'application/json' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -607,7 +574,6 @@ async function restoreFromBackupObject(data, label){
   try{
     if(data.company){ state.company = data.company; await saveCompany(); }
     if(Array.isArray(data.clients)){ state.clients = data.clients; await saveClients(); }
-    if(Array.isArray(data.suppliers)){ state.suppliers = data.suppliers; await saveSuppliers(); }
     if(Array.isArray(data.invoices)){ state.invoices = data.invoices; await saveInvoices(); }
     alert('Data byla obnovena ze zálohy.');
     render();
@@ -719,7 +685,6 @@ function invoiceStatus(inv){
 }
 function statusLabel(s){ return s==='paid'?'Zaplaceno':(s==='overdue'?'Po splatnosti':'Čeká na platbu'); }
 function clientById(id){ return state.clients.find(c=>c.id===id); }
-function supplierById(id){ return state.suppliers.find(s=>s.id===id); }
 
 function applyDateRangeFromPreset(preset){
   const today = todayISO();
@@ -1067,11 +1032,11 @@ function blankInvoice(){
   const preselected = state.preselectClientId && clientById(state.preselectClientId) ? state.preselectClientId : (state.clients[0]?state.clients[0].id:null);
   state.preselectClientId = null;
   return {
-    id:null, number:num, clientId: preselected, supplierId: '__company__', supplier: {name: c.name, ico: c.ico, account: c.account, iban: c.iban, bankName: c.bankName, swift: c.swift, showLogo: c.showLogo, showStamp: c.showStamp, showSignature: c.showSignature, showQr: c.showQr, logo: c.logo, signature: c.signature, stamp: c.stamp},
+    id:null, number:num, clientId: preselected,
     issueDate: todayISO(), taxDate: todayISO(), dueDate: addDays(todayISO(), c.defaultDueDays||14),
     variableSymbol: num.replace(/\D/g,''), note: c.defaultNote||'', paid:false, paidDate:null,
     paymentMethod: c.defaultPaymentMethod || 'Bankovním převodem',
-    includeStamp:true, includeSignature:true, includeQr:true, colorScheme:'color'
+    includeStamp:true, includeSignature:true, includeQr:true
   };
 }
 
@@ -1092,7 +1057,6 @@ function viewInvoiceForm(){
   return `
     <div class="pagehead"><div><h1>${editing?'Upravit fakturu':'Nová faktura'}</h1></div></div>
     <form id="invoice-form" class="form-card">
-      <input type="hidden" name="colorScheme" id="invoice-color-scheme" value="${inv.colorScheme||'color'}">
       <div class="section-title">Základní údaje</div>
       <div class="field-row">
         <div class="field"><label>Číslo faktury</label><input name="number" value="${inv.number}" required></div>
@@ -1101,14 +1065,6 @@ function viewInvoiceForm(){
           <input type="text" id="client-combo-input" placeholder="Hledat odběratele podle názvu, IČO… (nebo najít v ARES)" autocomplete="off" value="${escapeAttr(selClient?selClient.name:'')}">
           <input type="hidden" name="clientId" id="client-combo-value" value="${inv.clientId||''}">
           <div class="combo-list" id="client-combo-list"></div>
-        </div>
-      </div>
-      <div class="field-row">
-        <div class="field combo-field">
-          <label>Firma</label>
-          <input type="text" id="supplier-combo-input" placeholder="Vybrat nebo napsat další firmu…" autocomplete="off" value="${inv.supplier?escapeAttr(inv.supplier.name||''):''}">
-          <input type="hidden" name="supplierId" id="supplier-combo-value" value="${inv.supplierId||''}">
-          <div class="combo-list" id="supplier-combo-list"></div>
         </div>
       </div>
       <div class="client-detail-box" id="client-detail-box" style="${selClient?'':'display:none;'}">
@@ -1147,11 +1103,6 @@ function viewInvoiceForm(){
       <div class="toggle-row"><input type="checkbox" name="includeStamp" id="chk-inc-stamp" value="1" ${inv.includeStamp!==false?'checked':''}><label for="chk-inc-stamp">Zobrazit razítko (pokud je nahrané v nastavení)</label></div>
       <div class="toggle-row"><input type="checkbox" name="includeSignature" id="chk-inc-sig" value="1" ${inv.includeSignature!==false?'checked':''}><label for="chk-inc-sig">Zobrazit elektronický podpis (pokud je nahraný)</label></div>
       <div class="toggle-row"><input type="checkbox" name="includeQr" id="chk-inc-qr" value="1" ${inv.includeQr!==false?'checked':''}><label for="chk-inc-qr">Zobrazit QR platbu (vyžaduje IBAN)</label></div>
-      
-      <div style="display:flex; gap:10px; margin-top:16px;">
-        <button type="button" class="btn" style="flex:1;" data-action="set-scheme" data-scheme="color">🎨 Barevně</button>
-        <button type="button" class="btn secondary" style="flex:1;" data-action="set-scheme" data-scheme="bw">⬜ Černobílé</button>
-      </div>
 
       <div class="section-title">Položky</div>
       <div class="items-table-wrap">
@@ -1210,18 +1161,14 @@ function viewInvoicePreview(){
   if(!inv) return emptyState('Faktura nenalezena','');
   const c = clientById(inv.clientId);
   const co = state.company;
-  
-  // Use invoice's supplier data if available, otherwise company data
-  const supplier = inv.supplier || co;
-  
   const t = invoiceTotals(inv);
   const status = invoiceStatus(inv);
 
-  const showQr = (supplier.showQr!==false) && inv.includeQr!==false;
-  const showStamp = (supplier.showStamp!==false) && inv.includeStamp!==false && !!supplier.stamp;
-  const showSignature = (supplier.showSignature!==false) && inv.includeSignature!==false && !!supplier.signature;
-  const showLogo = (supplier.showLogo!==false) && !!co.logo;
-  const spayd = showQr ? buildSpayd(supplier, inv, t.total) : null;
+  const showQr = co.showQr!==false && inv.includeQr!==false;
+  const showStamp = co.showStamp!==false && inv.includeStamp!==false && !!co.stamp;
+  const showSignature = co.showSignature!==false && inv.includeSignature!==false && !!co.signature;
+  const showLogo = co.showLogo!==false && !!co.logo;
+  const spayd = showQr ? buildSpayd(co, inv, t.total) : null;
 
   const accent = co.invoiceAccent || '#1F5C4D';
   const sheetStyle = `--inv-accent:${accent};--inv-accent-soft:${hexToRgba(accent,0.12)};--inv-accent-tint:${hexToRgba(accent,0.05)};`;
@@ -1241,7 +1188,7 @@ function viewInvoicePreview(){
         <div class="inv-body">
         <div class="inv-header">
           <div class="inv-header-left">
-            ${showLogo ? `<img class="inv-logo" src="${supplier.logo}" alt="Logo">` : `<div class="inv-logo-placeholder">LOGO</div>`}
+            ${showLogo ? `<img class="inv-logo" src="${co.logo}" alt="Logo">` : `<div class="inv-logo-placeholder">LOGO</div>`}
             <div>
               <div class="inv-co-name">${escapeHtml(co.name||'Vaše firma')}</div>
               ${co.tagline?`<div class="inv-co-tagline">${escapeHtml(co.tagline)}</div>`:''}
@@ -1257,11 +1204,11 @@ function viewInvoicePreview(){
           <div class="info-grid">
             <div class="info-card">
               <div class="k">Dodavatel</div>
-              <div class="nm">${escapeHtml(supplier.name||'—')}</div>
-              <div>${nl2br(supplier.address)}</div>
-              ${supplier.ico?`<div>IČO: ${escapeHtml(supplier.ico)}</div>`:''}
-              ${supplier.dic?`<div>DIČ: ${escapeHtml(supplier.dic)}</div>`:''}
-              ${supplier.email?`<div>${escapeHtml(supplier.email)}</div>`:''}
+              <div class="nm">${escapeHtml(co.name||'—')}</div>
+              <div>${nl2br(co.address)}</div>
+              ${co.ico?`<div>IČO: ${escapeHtml(co.ico)}</div>`:''}
+              ${co.dic?`<div>DIČ: ${escapeHtml(co.dic)}</div>`:''}
+              ${co.email?`<div>${escapeHtml(co.email)}</div>`:''}
               ${co.phone?`<div>${escapeHtml(co.phone)}</div>`:''}
               ${co.website?`<div>${escapeHtml(co.website)}</div>`:''}
               <div class="divider">
@@ -1316,8 +1263,8 @@ function viewInvoicePreview(){
             <div class="signoff-terms">${co.invoiceTerms?escapeHtml(co.invoiceTerms):''}</div>
             <div class="signbox">
               <div class="sig-stack">
-                ${showSignature?`<img class="sig-img" src="${supplier.signature}" alt="Podpis">`:''}
-                ${showStamp?`<img class="co-stamp-img" src="${supplier.stamp}" alt="Razítko">`:''}
+                ${showSignature?`<img class="sig-img" src="${co.signature}" alt="Podpis">`:''}
+                ${showStamp?`<img class="co-stamp-img" src="${co.stamp}" alt="Razítko">`:''}
               </div>
               <div class="sig-line">Podpis a razítko</div>
             </div>
@@ -1456,20 +1403,6 @@ function brandSlot(field, title, sub, imgAlt){
   `;
 }
 
-function brandSlotSupplier(supplier, field, title, imgAlt){
-  const val = supplier?.[field];
-  return `
-    <div class="brand-slot" style="min-width:120px;">
-      <div class="bs-title">${title}</div>
-      <div class="bs-preview" style="height:60px; overflow:hidden;">${val ? `<img src="${val}" alt="${imgAlt}" style="width:100%; height:100%; object-fit:cover;">` : `<span class="bs-empty" style="font-size:11px;">Zatím nic</span>`}</div>
-      <div class="bs-actions" style="margin-top:6px;">
-        <button type="button" class="btn secondary small" data-action="upload-supplier-branding" data-field="${field}" style="font-size:11px;padding:4px 8px;">${val?'Změnit':'Nahrát'}</button>
-        ${val?`<button type="button" class="btn danger small" data-action="remove-supplier-branding" data-field="${field}" style="font-size:11px;padding:4px 8px;">Smazat</button>`:''}
-      </div>
-    </div>
-  `;
-}
-
 function viewSettings(){
   const co = state.company;
   return `
@@ -1492,7 +1425,7 @@ function viewSettings(){
         <div class="field"><label>Zápis v rejstříku (nepovinné)</label><input name="registration" value="${escapeAttr(co.registration)}" placeholder="Zapsáno v OR vedeném..."></div>
       </div>
 
-      <div class="section-title">Moje bankovní údaje</div>
+      <div class="section-title">Platby</div>
       <div class="field-row">
         <div class="field"><label>Číslo účtu</label><input name="account" value="${escapeAttr(co.account)}" placeholder="123456789/0300"></div>
         <div class="field"><label>Banka</label><input name="bankName" value="${escapeAttr(co.bankName)}" placeholder="např. Fio banka"></div>
@@ -1500,25 +1433,6 @@ function viewSettings(){
       <div class="field-row">
         <div class="field"><label>IBAN (pro QR platbu)</label><input name="iban" value="${escapeAttr(co.iban)}" placeholder="CZ..."></div>
         <div class="field"><label>SWIFT / BIC</label><input name="swift" value="${escapeAttr(co.swift)}"></div>
-      </div>
-
-      <div class="section-title">Vzhled mojí firmy</div>
-      <div class="form-card">
-        <div class="toggle-row"><input type="checkbox" name="showLogo" id="chk-showLogo" value="1" ${co.showLogo?'checked':''}><label for="chk-showLogo">Zobrazovat logo na fakturách</label></div>
-        <div class="toggle-row"><input type="checkbox" name="showStamp" id="chk-showStamp" value="1" ${co.showStamp?'checked':''}><label for="chk-showStamp">Zobrazovat razítko na fakturách</label></div>
-        <div class="toggle-row"><input type="checkbox" name="showSignature" id="chk-showSignature" value="1" ${co.showSignature?'checked':''}><label for="chk-showSignature">Zobrazovat elektronický podpis na fakturách</label></div>
-        <div class="toggle-row"><input type="checkbox" name="showQr" id="chk-showQr" value="1" ${co.showQr?'checked':''}><label for="chk-showQr">Zobrazovat QR platbu (vyžaduje vyplněný IBAN)</label></div>
-      </div>
-
-      <div class="section-title">Logo, podpis a razítko</div>
-      <div class="form-card">
-        <p style="font-size:12.5px;color:var(--ink-soft);margin-top:0;">Nahraj logo firmy, obrázek svého podpisu a fotku razítka — objeví se na fakturách přesně tak, jak si je nastavíš.</p>
-        <div class="brand-grid">
-          ${brandSlot('logo','Logo firmy','Zobrazí se v hlavičce faktury.','Logo firmy')}
-          ${brandSlot('signature','Elektronický podpis','Foto nebo scan podpisu.','Podpis')}
-          ${brandSlot('stamp','Razítko','Foto razítka firmy.','Razítko')}
-        </div>
-        <input type="file" id="branding-file-input" accept="image/*" style="display:none;">
       </div>
 
       <div class="section-title">Fakturace</div>
@@ -1532,6 +1446,32 @@ function viewSettings(){
           <select name="defaultPaymentMethod">
             ${['Bankovním převodem','Hotově','Kartou'].map(m=>`<option value="${m}" ${co.defaultPaymentMethod===m?'selected':''}>${m}</option>`).join('')}
           </select>
+        </div>
+      </div>
+      <div class="field"><label>Výchozí poznámka (na fakturu)</label><input name="defaultNote" value="${escapeAttr(co.defaultNote)}"></div>
+      <div class="field"><label>Platební podmínky / patička faktury</label><textarea name="invoiceTerms" style="min-height:70px;">${co.invoiceTerms||''}</textarea></div>
+
+      <div class="section-title">Vzhled faktury</div>
+      <div class="field">
+        <label>Barva zvýraznění na faktuře</label>
+        <div class="color-row">
+          <input type="color" name="invoiceAccent" value="${co.invoiceAccent||'#1F5C4D'}">
+          <span style="font-size:12.5px;color:var(--ink-soft);">Výchozí je světle zelená stejná jako v appce — klidně uprav dle svého brandu.</span>
+        </div>
+      </div>
+      <div class="toggle-row"><input type="checkbox" name="showLogo" id="chk-showLogo" value="1" ${co.showLogo?'checked':''}><label for="chk-showLogo">Zobrazovat logo na fakturách</label></div>
+      <div class="toggle-row"><input type="checkbox" name="showStamp" id="chk-showStamp" value="1" ${co.showStamp?'checked':''}><label for="chk-showStamp">Zobrazovat razítko na fakturách</label></div>
+      <div class="toggle-row"><input type="checkbox" name="showSignature" id="chk-showSignature" value="1" ${co.showSignature?'checked':''}><label for="chk-showSignature">Zobrazovat elektronický podpis na fakturách</label></div>
+      <div class="toggle-row"><input type="checkbox" name="showQr" id="chk-showQr" value="1" ${co.showQr?'checked':''}><label for="chk-showQr">Zobrazovat QR platbu (vyžaduje vyplněný IBAN)</label></div>
+
+      <div class="formfoot">
+        <button type="submit" class="btn">Uložit nastavení</button>
+      </div>
+    </form>
+
+    <div class="section-title" style="margin-top:30px;">Logo, podpis a razítko</div>
+    <div class="form-card">
+      <p style="font-size:12.5px;color:var(--ink-soft);margin-top:0;">
         Nahraj logo firmy, obrázek svého podpisu a fotku razítka — objeví se na fakturách přesně tak, jak si je nastavíš výše.
       </p>
       <div class="brand-grid">
@@ -1540,44 +1480,6 @@ function viewSettings(){
         ${brandSlot('stamp','Razítko','Foto razítka firmy.','Razítko')}
       </div>
       <input type="file" id="branding-file-input" accept="image/*" style="display:none;">
-    </div>
-
-    <div class="section-title" style="margin-top:30px;">Další firmy</div>
-    <div class="form-card">
-      ${state.suppliers.length === 0 ? `
-        <p style="color:var(--ink-soft);margin:0;">Zatím nemáš žádné uložené další firmu.</p>
-        <div class="formfoot">
-          <button type="button" class="btn btn-primary" data-action="open-supplier-modal">+ Přidat prvního další firmu</button>
-        </div>
-      ` : `
-        <div style="display:flex; flex-direction:column; gap:8px; margin-bottom:16px;">
-          ${state.suppliers.map(s => `
-            <div class="card" style="padding:12px 16px;">
-              <div style="display:flex; justify-content:space-between; align-items:start;">
-                <div style="flex:1;">
-                  <div style="font-weight:600; color:var(--ink);">${escapeHtml(s.name)}</div>
-                  <div style="font-size:0.85rem; color:var(--ink-soft); margin-top:4px;">
-                    IČ: ${escapeHtml(s.ico || '—')} · ${escapeHtml(s.email || '')}
-                  </div>
-                  ${s.account || s.iban ? `
-                    <div style="font-size:0.8rem; color:var(--ink-soft); margin-top:6px;">
-                      💳 ${s.iban ? escapeHtml(s.iban) : escapeHtml(s.account || '')}
-                    </div>
-                  ` : ''}
-                  <div style="font-size:0.8rem; color:var(--ink-soft); margin-top:6px;">
-                    Vzhled: ${s.showLogo?'🎨 Logo':''}${s.showStamp?' 🔖 Razítko':''}${s.showSignature?' ✍️ Podpis':''}${s.showQr?' 📱 QR':''}${!s.showLogo&&!s.showStamp&&!s.showSignature&&!s.showQr?'(vypnuto)':''}
-                  </div>
-                </div>
-                <div style="display:flex; gap:6px;">
-                  <button type="button" class="btn btn-small secondary" data-action="edit-supplier" data-id="${escapeAttr(s.id)}">Upravit</button>
-                  <button type="button" class="btn btn-small danger" data-action="delete-supplier" data-id="${escapeAttr(s.id)}">Smazat</button>
-                </div>
-              </div>
-            </div>
-          `).join('')}
-        </div>
-        <button type="button" class="btn btn-primary btn-sm" data-action="open-supplier-modal">+ Nová další firma</button>
-      `}
     </div>
 
     <div class="section-title" style="margin-top:30px;">Kolegové s přístupem</div>
@@ -1945,7 +1847,6 @@ function afterRender(){
     if(state.clientSearch) filterClientRows(state.clientSearch);
   }
   setupClientCombo();
-  setupSupplierCombo();
   setupClientFormAres();
   setupImportDropzone();
 
@@ -1994,12 +1895,7 @@ function afterRender(){
   if(brandingFileInput){
     brandingFileInput.addEventListener('change', ()=>{
       const field = brandingFileInput.getAttribute('data-target-field');
-      const supplierField = state.uploadBrandingSupplierField;
-      if(field && brandingFileInput.files[0]){ 
-        handleBrandingUpload(field, brandingFileInput.files[0]);
-      } else if(supplierField && brandingFileInput.files[0]){
-        handleSupplierBrandingUpload(supplierField, brandingFileInput.files[0]);
-      }
+      if(field && brandingFileInput.files[0]) handleBrandingUpload(field, brandingFileInput.files[0]);
     });
   }
 
@@ -2121,97 +2017,6 @@ function setupClientFormAres(){
   dicInput.addEventListener('blur', lookupDic);
 }
 
-/* ---------- ARES LOOKUP FOR SUPPLIERS ---------- */
-function setupSupplierFormAres(){
-  const nameInput = document.getElementById('supplier-form-name');
-  const icoInput = document.getElementById('supplier-form-ico');
-  const dicInput = document.getElementById('supplier-form-dic');
-  const addressInput = document.getElementById('supplier-form-address');
-  const list = document.getElementById('supplier-form-ares-list');
-  const status = document.getElementById('supplier-form-ares-status');
-  if(!nameInput || !icoInput || !list) return;
-
-  function setStatus(html){ if(status) status.innerHTML = html; }
-
-  function fillFromAres(d){
-    if(!d) return;
-    if(d.name) nameInput.value = d.name;
-    if(d.ico) icoInput.value = d.ico;
-    if(d.dic) dicInput.value = d.dic;
-    if(d.address && addressInput) addressInput.value = d.address;
-    list.classList.remove('open');
-    setStatus(`<span style="color:var(--accent);">✓ Doplněno z ARES</span>`);
-  }
-
-  function renderAresList(items){
-    if(!items.length){
-      list.classList.remove('open');
-      return;
-    }
-    list.innerHTML = `<div class="combo-group-label">Nalezeno v ARES</div>` + items.map((it,i)=>`
-      <div class="combo-item ares-item" data-ares-index="${i}">
-        <div>${escapeHtml(it.name||'—')}</div>
-        <div class="sub">IČO: ${escapeHtml(it.ico||'—')}${it.address?' · '+escapeHtml(it.address):''}</div>
-      </div>
-    `).join('');
-    list._aresItems = items;
-    list.classList.add('open');
-  }
-
-  list.addEventListener('mousedown', (e)=>{
-    const item = e.target.closest('.combo-item[data-ares-index]');
-    if(!item) return;
-    const idx = parseInt(item.getAttribute('data-ares-index'));
-    const d = (list._aresItems||[])[idx];
-    fillFromAres(d);
-  });
-
-  document.addEventListener('click', (e)=>{
-    if(e.target!==nameInput && !list.contains(e.target)) list.classList.remove('open');
-  });
-
-  let nameTimer = null;
-  nameInput.addEventListener('input', ()=>{
-    clearTimeout(nameTimer);
-    const q = nameInput.value.trim();
-    if(q.length<3){ list.classList.remove('open'); setStatus(''); return; }
-    setStatus(`<span class="ares-spinner"></span> Hledám v ARES…`);
-    nameTimer = setTimeout(async ()=>{
-      try{
-        const results = await aresSearchByName(q);
-        renderAresList(results);
-        setStatus(results.length ? `Nalezeno ${results.length} shod v ARES — vyber ze seznamu.` : 'V ARES nic nenalezeno, vyplň prosím ručně.');
-      }catch(err){
-        setStatus(`<span style="color:var(--red);">${escapeHtml(err.message||'ARES nelze kontaktovat.')}</span>`);
-      }
-    }, 450);
-  });
-
-  async function lookupIco(){
-    const val = icoInput.value.trim();
-    if(!/^\d{6,9}$/.test(val)) return;
-    setStatus(`<span class="ares-spinner"></span> Hledám IČO ${escapeHtml(val)} v ARES…`);
-    try{
-      const d = await aresLookupByIco(val);
-      fillFromAres(d);
-    }catch(err){
-      setStatus(`<span style="color:var(--red);">${escapeHtml(err.message||'ARES nelze kontaktovat.')}</span>`);
-    }
-  }
-  icoInput.addEventListener('blur', lookupIco);
-  icoInput.addEventListener('keydown', (e)=>{ if(e.key==='Enter'){ e.preventDefault(); lookupIco(); } });
-
-  async function lookupDic(){
-    const val = dicInput.value.trim();
-    if(val.length<8) return;
-    setStatus(`<span class="ares-spinner"></span> Hledám DIČ ${escapeHtml(val)} v ARES…`);
-    const results = await aresSearchByDic(val).catch(()=>[]);
-    if(results.length){ fillFromAres(results[0]); }
-    else { setStatus('V ARES nic nenalezeno pro toto DIČ.'); }
-  }
-  dicInput.addEventListener('blur', lookupDic);
-}
-
 /* ---------- CLIENT COMBO BOX (searchable client picker in invoice form) ---------- */
 function setupClientCombo(){
   const input = document.getElementById('client-combo-input');
@@ -2314,101 +2119,6 @@ function setupClientCombo(){
   });
 }
 
-/* ---------- SUPPLIER COMBO BOX (searchable supplier picker in invoice form) ---------- */
-function setupSupplierCombo(){
-  const input = document.getElementById('supplier-combo-input');
-  const hidden = document.getElementById('supplier-combo-value');
-  const list = document.getElementById('supplier-combo-list');
-  if(!input || !hidden || !list) return;
-
-  // Auto-select "Moje firma" if none selected
-  if(!hidden.value){
-    input.value = state.company.name;
-    hidden.value = '__company__';
-  }
-
-  let addingNew = false;
-
-  function renderList(query){
-    const q = stripDiacritics(query||'').toLowerCase().trim();
-    
-    // Vždy přidej "Moje firmu" na začátek
-    let html = `
-      <div class="combo-item" data-id="__company__" style="font-weight:600;background:var(--accent-soft);">
-        <strong>⭐ Moje firma (${state.company.name})</strong>
-        <div class="sub" style="font-weight:normal;">Tvoje primární firma</div>
-      </div>
-    `;
-
-    // Filtruj ostatní suppliers
-    const matches = state.suppliers.filter(s=>{
-      if(!q) return true;
-      return stripDiacritics(`${s.name} ${s.ico||''}`).toLowerCase().includes(q);
-    }).slice(0,20);
-
-    if(q && q.length>0 && !state.suppliers.find(s=>s.name.toLowerCase()===q)){
-      html += `
-        <div class="combo-item" data-action="create-supplier" data-name="${escapeAttr(q)}">
-          <strong>+ Nová další firma: ${escapeHtml(q)}</strong>
-        </div>
-      `;
-    }
-    if(matches.length){
-      html += matches.map(s=>`
-        <div class="combo-item" data-id="${s.id}">
-          <div>${escapeHtml(s.name)}</div>
-          ${s.ico?`<div class="sub">IČO: ${escapeHtml(s.ico)}</div>`:''}
-        </div>
-      `).join('');
-    } else if(!q || q.length<1) {
-      html += `<div class="combo-empty">Žádné další firmy. Napiš jméno a vytvoř novou.</div>`;
-    }
-    list.innerHTML = html;
-    list.classList.add('open');
-  }
-
-  input.addEventListener('input', (e)=>{
-    renderList(e.target.value);
-  });
-
-  input.addEventListener('focus', ()=>{
-    renderList(input.value);
-  });
-
-  list.addEventListener('click', async (e)=>{
-    const item = e.target.closest('.combo-item[data-id], .combo-item[data-action="create-supplier"]');
-    if(!item) return;
-
-    if(item.getAttribute('data-action')==='create-supplier'){
-      // Vytvoř nového další firmu
-      const name = item.getAttribute('data-name');
-      if(!name) return;
-      const newSupplier = { id: uid(), name: name, address: '', ico: '', dic: '', email: '', phone: '' };
-      state.suppliers.push(newSupplier);
-      await saveSuppliers();
-      input.value = newSupplier.name;
-      hidden.value = newSupplier.id;
-      list.classList.remove('open');
-      renderList('');
-    } else {
-      // Vyber existujícího
-      const id = item.getAttribute('data-id');
-      if(id === '__company__'){
-        input.value = state.company.name;
-        hidden.value = '__company__';
-      } else {
-        const s = supplierById(id);
-        if(s){ input.value = s.name; hidden.value = s.id; }
-      }
-      list.classList.remove('open');
-    }
-  });
-
-  document.addEventListener('click', (e)=>{
-    if(e.target!==input && !list.contains(e.target)) list.classList.remove('open');
-  });
-}
-
 document.addEventListener('click', async (e)=>{
   const el = e.target.closest('[data-action]');
   if(!el) return;
@@ -2446,9 +2156,6 @@ document.addEventListener('click', async (e)=>{
   else if(action==='new-client'){ state.view='client-form'; state.editingClientId=null; render(); }
   else if(action==='edit-client'){ state.view='client-form'; state.editingClientId=id; render(); }
   else if(action==='delete-client'){ if(confirm('Smazat tohoto odběratele?')){ state.clients = state.clients.filter(c=>c.id!==id); await saveClients(); render(); } }
-  else if(action==='open-supplier-modal'){ openSupplierModal(); }
-  else if(action==='edit-supplier'){ openSupplierModal(id); }
-  else if(action==='delete-supplier'){ await deleteSupplier(id); }
   else if(action==='client-to-invoice'){ state.preselectClientId=id; state.view='invoice-form'; state.editingInvoiceId=null; state.formItems=[]; render(); }
   else if(action==='add-item'){ state.formItems.push({desc:'',qty:1,unit:'ks',price:0,vat:21}); render(); }
   else if(action==='remove-item'){ const idx = parseInt(el.getAttribute('data-index')); state.formItems.splice(idx,1); if(!state.formItems.length) state.formItems.push({desc:'',qty:1,unit:'ks',price:0,vat:21}); render(); }
@@ -2473,29 +2180,6 @@ document.addEventListener('click', async (e)=>{
   else if(action==='remove-branding'){
     const field = el.getAttribute('data-field');
     if(confirm('Odebrat tento obrázek?')) await removeBrandingImage(field);
-  }
-  else if(action==='upload-supplier-branding'){
-    const field = el.getAttribute('data-field');
-    state.uploadBrandingSupplierField = field;
-    const fi = document.getElementById('branding-file-input');
-    if(fi){ fi.value=''; fi.click(); }
-  }
-  else if(action==='remove-supplier-branding'){
-    const field = el.getAttribute('data-field');
-    // This will need special handling - we'll update the modal
-    state.pendingRemoveSupplierBrandingField = field;
-    if(confirm('Odebrat tento obrázek?')) {
-      // Handler będzie v afterRender když je modal otevřen
-    }
-  }
-  else if(action==='set-scheme'){
-    const scheme = el.getAttribute('data-scheme');
-    const field = document.getElementById('invoice-color-scheme');
-    if(field) field.value = scheme;
-    // Visual feedback - update button states
-    document.querySelectorAll('[data-action="set-scheme"]').forEach(btn => {
-      btn.classList.toggle('secondary', btn.getAttribute('data-scheme') !== scheme);
-    });
   }
 });
 
@@ -2545,37 +2229,10 @@ async function onSubmitInvoice(e){
     await saveClients();
   }
   const items = state.formItems.filter(it=> (it.desc||'').trim()!=='' || (it.qty||0)!==0 );
-  
-  // Get supplier data
-  const supplierId = fd.get('supplierId') || '__company__';
-  let supplier = null;
-  if(supplierId === '__company__'){
-    supplier = {
-      name: state.company.name,
-      ico: state.company.ico,
-      account: state.company.account,
-      iban: state.company.iban,
-      bankName: state.company.bankName,
-      swift: state.company.swift,
-      showLogo: state.company.showLogo,
-      showStamp: state.company.showStamp,
-      showSignature: state.company.showSignature,
-      showQr: state.company.showQr,
-      logo: state.company.logo,
-      signature: state.company.signature,
-      stamp: state.company.stamp
-    };
-  } else {
-    const s = supplierById(supplierId);
-    if(s) supplier = s;
-  }
-
   const invoice = {
     id: id || uid(),
     number: fd.get('number'),
     clientId: clientId,
-    supplierId: supplierId,
-    supplier: supplier,
     issueDate: fd.get('issueDate'),
     dueDate: fd.get('dueDate'),
     taxDate: fd.get('taxDate'),
@@ -2588,7 +2245,6 @@ async function onSubmitInvoice(e){
     items: items,
     paid: fd.get('paid')==='1',
     paidDate: fd.get('paidDate')||null,
-    colorScheme: fd.get('colorScheme')||'color',
     createdBy: id ? (state.invoices.find(i=>i.id===id)||{}).createdBy || state.currentUser : state.currentUser
   };
   if(id){
@@ -2615,126 +2271,6 @@ async function onSubmitClient(e){
   else{ state.clients.push(client); }
   await saveClients();
   state.view='clients';
-  render();
-}
-
-// Další firmy
-function openSupplierModal(id){
-  const supplier = id ? supplierById(id) : null;
-  state.editingSupplier = id; // Store for branding upload
-  const modalHtml = `
-    <div class="modal-overlay" id="supplier-modal-overlay">
-      <div class="modal-card">
-        <h2>${id ? 'Upravit' : 'Nový'} dodavatel</h2>
-        <form id="supplier-form" style="max-height:70vh;overflow-y:auto;">
-          <input type="hidden" name="id" value="${supplier?.id || ''}">
-          
-          <div class="section-title" style="margin-top:0;">Základní údaje</div>
-          <div class="field"><label>Název firmy / jméno</label><input name="name" id="supplier-form-name" value="${escapeAttr(supplier?.name || '')}" required></div>
-          <div class="field combo-field">
-            <label>IČO</label>
-            <input name="ico" id="supplier-form-ico" value="${escapeAttr(supplier?.ico || '')}" placeholder="Zadej a doplní se z ARES">
-            <div class="combo-list" id="supplier-form-ares-list"></div>
-            <div id="supplier-form-ares-status" style="font-size:11px;margin-top:4px;"></div>
-          </div>
-          <div class="field"><label>DIČ</label><input name="dic" id="supplier-form-dic" value="${escapeAttr(supplier?.dic || '')}"></div>
-          <div class="field"><label>Adresa</label><textarea name="address" id="supplier-form-address">${escapeAttr(supplier?.address || '')}</textarea></div>
-          <div class="field-row">
-            <div class="field"><label>Email</label><input type="email" name="email" value="${escapeAttr(supplier?.email || '')}"></div>
-            <div class="field"><label>Telefon</label><input name="phone" value="${escapeAttr(supplier?.phone || '')}"></div>
-          </div>
-          <p style="font-size:11.5px;color:var(--ink-soft);margin:6px 0 14px 0;">Napiš název firmy nebo IČO — údaje z veřejného rejstříku ARES se doplní automaticky.</p>
-
-          <div class="section-title">Bankovní údaje</div>
-          <div class="field-row">
-            <div class="field"><label>Číslo účtu</label><input name="account" value="${escapeAttr(supplier?.account || '')}" placeholder="123456789/0300"></div>
-            <div class="field"><label>Banka</label><input name="bankName" value="${escapeAttr(supplier?.bankName || '')}" placeholder="např. Fio banka"></div>
-          </div>
-          <div class="field-row">
-            <div class="field"><label>IBAN</label><input name="iban" value="${escapeAttr(supplier?.iban || '')}" placeholder="CZ..."></div>
-            <div class="field"><label>SWIFT/BIC</label><input name="swift" value="${escapeAttr(supplier?.swift || '')}"></div>
-          </div>
-
-          <div class="section-title">Vzhled faktury (když je tato firma dodavatel)</div>
-          <div class="toggle-row"><input type="checkbox" name="showLogo" value="1" ${supplier?.showLogo!==false?'checked':''}><label>Zobrazovat logo</label></div>
-          <div class="toggle-row"><input type="checkbox" name="showStamp" value="1" ${supplier?.showStamp!==false?'checked':''}><label>Zobrazovat razítko</label></div>
-          <div class="toggle-row"><input type="checkbox" name="showSignature" value="1" ${supplier?.showSignature!==false?'checked':''}><label>Zobrazovat podpis</label></div>
-          <div class="toggle-row"><input type="checkbox" name="showQr" value="1" ${supplier?.showQr!==false?'checked':''}><label>Zobrazovat QR platbu</label></div>
-
-          <div style="margin-top:16px; padding-top:16px; border-top:1px solid var(--border);">
-            <p style="font-size:12px;color:var(--ink-soft);margin:0 0 12px 0;">Logo, podpis a razítko pro tuto firmu:</p>
-            <div class="brand-grid" style="gap:10px;">
-              ${brandSlotSupplier(supplier, 'logo','Logo','Logo firmy')}
-              ${brandSlotSupplier(supplier, 'signature','Podpis','Podpis')}
-              ${brandSlotSupplier(supplier, 'stamp','Razítko','Razítko')}
-            </div>
-          </div>
-
-          <div style="display:flex; gap:10px; margin-top:24px;">
-            <button type="submit" class="btn" style="flex:1;">Uložit další firmu</button>
-            <button type="button" class="btn secondary" data-action="close-supplier-modal">Zrušit</button>
-          </div>
-        </form>
-      </div>
-    </div>
-  `;
-  document.body.insertAdjacentHTML('beforeend', modalHtml);
-  const overlay = document.getElementById('supplier-modal-overlay');
-  const form = document.getElementById('supplier-form');
-  
-  form.addEventListener('submit', onSubmitSupplier);
-  overlay.addEventListener('click', (e) => {
-    if(e.target === overlay) closeSupplerModal();
-  });
-  document.querySelectorAll('[data-action="close-supplier-modal"]').forEach(btn => {
-    btn.addEventListener('click', closeSupplerModal);
-  });
-  setupSupplierFormAres();
-}
-
-function closeSupplerModal(){
-  const modal = document.getElementById('supplier-modal-overlay');
-  state.editingSupplier = null; // Clear editing state
-  if(modal) modal.remove();
-}
-
-async function onSubmitSupplier(e){
-  e.preventDefault();
-  const fd = new FormData(e.target);
-  const id = fd.get('id');
-  const existingSupplier = id ? state.suppliers.find(s=>s.id===id) : null;
-  const supplier = { 
-    id: id || uid(), 
-    name: fd.get('name'), 
-    address: fd.get('address'), 
-    ico: fd.get('ico'), 
-    dic: fd.get('dic'), 
-    email: fd.get('email'), 
-    phone: fd.get('phone'),
-    account: fd.get('account'),
-    bankName: fd.get('bankName'),
-    iban: fd.get('iban'),
-    swift: fd.get('swift'),
-    showLogo: fd.get('showLogo')==='1',
-    showStamp: fd.get('showStamp')==='1',
-    showSignature: fd.get('showSignature')==='1',
-    showQr: fd.get('showQr')==='1',
-    logo: existingSupplier?.logo || '',
-    signature: existingSupplier?.signature || '',
-    stamp: existingSupplier?.stamp || ''
-  };
-  if(id){ const idx = state.suppliers.findIndex(s=>s.id===id); state.suppliers[idx]=supplier; }
-  else{ state.suppliers.push(supplier); }
-  await saveSuppliers();
-  closeSupplerModal();
-  state.view='settings';
-  render();
-}
-
-async function deleteSupplier(id){
-  if(!confirm('Opravdu smazat tohoto další firmu?')) return;
-  state.suppliers = state.suppliers.filter(s => s.id !== id);
-  await saveSuppliers();
   render();
 }
 
@@ -2803,45 +2339,14 @@ async function removeBrandingImage(field){
   render();
 }
 
-async function handleSupplierBrandingUpload(field, file){
-  if(!file) return;
-  if(!file.type.startsWith('image/')){ alert('Vyber prosím obrázek (PNG, JPG apod.).'); return; }
-  try{
-    const dataUrl = await resizeImageFile(file, field==='stamp' ? 400 : 480);
-    state.uploadBrandingSupplierField = null;
-    // Najdi editovaného supplieru
-    if(state.editingSupplier){
-      const supplierIndex = state.suppliers.findIndex(s => s.id === state.editingSupplier);
-      if(supplierIndex >= 0){
-        state.suppliers[supplierIndex][field] = dataUrl;
-        await saveSuppliers();
-      }
-    }
-    render();
-  }catch(err){
-    console.error(err);
-    alert('Nahrání se nepovedlo, zkus to prosím znovu.');
-  }
-}
-
 /* ---------- INIT ---------- */
 (async function(){
-  try {
-    if(window.pdfjsLib){
-      pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
-    }
-    document.getElementById('app').innerHTML = '<div style="padding:60px;font-family:Inter,sans-serif;color:#5C6B66;">Načítám…</div>';
-    await loadAll();
-    render();
-  } catch(err) {
-    console.error('Init error:', err);
-    document.getElementById('app').innerHTML = `
-      <div style="padding:60px;font-family:Inter,sans-serif;background:#fee;color:#c33;">
-        <strong>Chyba při spuštění aplikace:</strong><br>${escapeHtml(err.message)}<br><br>
-        <button onclick="location.reload()" style="padding:10px 20px;background:#c33;color:#fff;border:none;cursor:pointer;border-radius:4px;">Zkusit znovu</button>
-      </div>
-    `;
+  if(window.pdfjsLib){
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
   }
+  document.getElementById('app').innerHTML = '<div style="padding:60px;font-family:Inter,sans-serif;color:#5C6B66;">Načítám…</div>';
+  await loadUsers();
+  render();
 })();
 /* ---------- ADDRESS AUTOCOMPLETE (Nominatim / OpenStreetMap) ---------- */
 let addressDebounceTimer = null;
@@ -2960,6 +2465,138 @@ document.addEventListener('focusin', (e) => {
       });
     }
   }
+});/* ---------- AUTOMATICKÉ NAŠEPTÁVÁNÍ ADRES (Nominatim) ---------- */
+let addressDebounceTimer = null;
+
+async function searchAddressSuggestions(query, callback) {
+  if (!query || query.length < 3) {
+    callback([]);
+    return;
+  }
+  try {
+    const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&addressdetails=1&countrycodes=cz,sk&limit=5`;
+    const res = await fetch(url, { headers: { 'User-Agent': 'LedgerApp/1.0' } });
+    const data = await res.json();
+
+    const results = data.map(item => {
+      const addr = item.address || {};
+      const street = addr.road || addr.pedestrian || addr.suburb || '';
+      const houseNumber = addr.house_number || '';
+      const city = addr.city || addr.town || addr.village || addr.municipality || '';
+      const postcode = addr.postcode || '';
+
+      const formattedStreet = houseNumber ? `${street} ${houseNumber}`.trim() : street;
+
+      return {
+        label: item.display_name,
+        street: formattedStreet || query,
+        city: city,
+        postcode: postcode
+      };
+    });
+    callback(results);
+  } catch (err) {
+    console.error('Chyba při vyhledávání adresy:', err);
+    callback([]);
+  }
+}
+
+function attachAddressAutocomplete(inputEl, onSelect) {
+  if (!inputEl) return;
+
+  let wrapper = inputEl.parentElement;
+  if (!wrapper.classList.contains('combo-field')) {
+    wrapper = document.createElement('div');
+    wrapper.className = 'combo-field';
+    inputEl.parentNode.insertBefore(wrapper, inputEl);
+    wrapper.appendChild(inputEl);
+  }
+
+  let listEl = wrapper.querySelector('.combo-list.address-list');
+  if (!listEl) {
+    listEl = document.createElement('div');
+    listEl.className = 'combo-list address-list';
+    wrapper.appendChild(listEl);
+  }
+
+  inputEl.addEventListener('input', (e) => {
+    const query = e.target.value;
+    clearTimeout(addressDebounceTimer);
+
+    addressDebounceTimer = setTimeout(() => {
+      searchAddressSuggestions(query, (items) => {
+        if (!items.length) {
+          listEl.classList.remove('open');
+          listEl.innerHTML = '';
+          return;
+        }
+
+        listEl.innerHTML = items.map((item, idx) => `
+          <div class="combo-item" data-idx="${idx}">
+            <strong>${item.street}</strong>
+            <div class="sub">${item.city} ${item.postcode}</div>
+          </div>
+        `).join('');
+
+        listEl.classList.add('open');
+
+        listEl.querySelectorAll('.combo-item').forEach(el => {
+          el.addEventListener('click', () => {
+            const selected = items[parseInt(el.dataset.idx)];
+            onSelect(selected);
+            listEl.classList.remove('open');
+          });
+        });
+      });
+    }, 300);
+  });
+
+  document.addEventListener('click', (e) => {
+    if (!wrapper.contains(e.target)) {
+      listEl.classList.remove('open');
+    }
+  });
+}
+
+// Propojení s formuláři v aplikaci Ledger
+document.addEventListener('focusin', (e) => {
+  const target = e.target;
+  if (!target) return;
+
+  // Kontrola, zda jde o políčko ulice/adresy
+  const isAddressField = target.id === 'f-street' || 
+                         target.id === 'f-address' || 
+                         target.name === 'street' || 
+                         target.name === 'address' || 
+                         target.placeholder?.toLowerCase().includes('ulice') ||
+                         target.placeholder?.toLowerCase().includes('adresa');
+
+  if (isAddressField && !target.dataset.hasAddressAutocomplete) {
+    target.dataset.hasAddressAutocomplete = 'true';
+
+    attachAddressAutocomplete(target, (selected) => {
+      // 1. Vyplní ulici a číslo
+      target.value = selected.street;
+      target.dispatchEvent(new Event('input', { bubbles: true }));
+
+      // 2. Najde nejbližší formulář nebo obalovací kontejner
+      const container = target.closest('form') || target.closest('.form-card') || document;
+
+      // 3. Najde políčka pro město a PSČ a automaticky je doplní
+      const cityInput = container.querySelector('#f-city, [name="city"], input[placeholder*="Město"], input[placeholder*="město"]');
+      const zipInput = container.querySelector('#f-zip, #f-postcode, [name="zip"], [name="postcode"], input[placeholder*="PSČ"], input[placeholder*="psč"]');
+
+      if (cityInput && selected.city) {
+        cityInput.value = selected.city;
+        cityInput.dispatchEvent(new Event('input', { bubbles: true }));
+      }
+
+      if (zipInput && selected.postcode) {
+        zipInput.value = selected.postcode;
+        zipInput.dispatchEvent(new Event('input', { bubbles: true }));
+      }
+    });
+  }
 });
 /* ---------- ZOBRAZENÍ FAKTUR U ODBĚRATELE ---------- */
 
@@ -3064,8 +2701,6 @@ function renderClients() {
     </div>
   `;
 }
-
-// 🚀 APLIKACE INICIALIZOVÁNA VÝŠE
 </script>
 </body>
 </html>
