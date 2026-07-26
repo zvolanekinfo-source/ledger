@@ -10,6 +10,7 @@
 
 function openSupplierModal(id){
   const supplier = id ? supplierById(id) : null;
+  
   const html = `
     <div class="modal-overlay" id="supplier-modal-overlay">
       <div class="modal-card">
@@ -41,6 +42,32 @@ function openSupplierModal(id){
             <div class="field"><label>IBAN (pro QR platbu)</label><input name="iban" value="${escapeAttr(supplier?.iban || '')}" placeholder="CZ..."></div>
             <div class="field"><label>SWIFT / BIC</label><input name="swift" value="${escapeAttr(supplier?.swift || '')}"></div>
           </div>
+          
+          <div class="section-title">Logo, podpis a razítko</div>
+          <p style="font-size:12.5px;color:var(--ink-soft);">Nahraj logo firmy, obrázek svého podpisu a fotku razítka — objeví se na fakturách.</p>
+          
+          <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:16px;">
+            <div>
+              <div style="text-align:center; padding:12px; border:1px solid var(--line); border-radius:4px; cursor:pointer;" onclick="document.getElementById('supplier-brand-input').dataset.field='logo'; document.getElementById('supplier-brand-input').click();">
+                ${supplier?.logo ? `<img src="${supplier.logo}" style="max-width:100%; max-height:80px; display:block; margin:0 auto;">` : `<div style="font-size:32px;">📸</div>`}
+                <div style="font-size:12px; margin-top:4px; color:var(--ink-soft);">Logo firmy</div>
+              </div>
+            </div>
+            <div>
+              <div style="text-align:center; padding:12px; border:1px solid var(--line); border-radius:4px; cursor:pointer;" onclick="document.getElementById('supplier-brand-input').dataset.field='signature'; document.getElementById('supplier-brand-input').click();">
+                ${supplier?.signature ? `<img src="${supplier.signature}" style="max-width:100%; max-height:80px; display:block; margin:0 auto;">` : `<div style="font-size:32px;">✍️</div>`}
+                <div style="font-size:12px; margin-top:4px; color:var(--ink-soft);">Podpis</div>
+              </div>
+            </div>
+            <div>
+              <div style="text-align:center; padding:12px; border:1px solid var(--line); border-radius:4px; cursor:pointer;" onclick="document.getElementById('supplier-brand-input').dataset.field='stamp'; document.getElementById('supplier-brand-input').click();">
+                ${supplier?.stamp ? `<img src="${supplier.stamp}" style="max-width:100%; max-height:80px; display:block; margin:0 auto;">` : `<div style="font-size:32px;">⭕</div>`}
+                <div style="font-size:12px; margin-top:4px; color:var(--ink-soft);">Razítko</div>
+              </div>
+            </div>
+          </div>
+          <input type="file" id="supplier-brand-input" accept="image/*" style="display:none;">
+          
           <div style="display:flex; gap:10px; margin-top:24px;">
             <button type="submit" class="btn" style="flex:1;">Uložit další firmu</button>
             <button type="button" class="btn secondary" data-action="close-supplier-modal">Zrušit</button>
@@ -57,6 +84,28 @@ function openSupplierModal(id){
   document.getElementById('supplier-modal-overlay').addEventListener('click', (e) => {
     if(e.target.id === 'supplier-modal-overlay') closeSupplerModal();
   });
+  
+  const brandInput = document.getElementById('supplier-brand-input');
+  if(brandInput){
+    brandInput.addEventListener('change', async (e) => {
+      const field = e.target.dataset.field;
+      const file = e.target.files[0];
+      if(field && file && state.editingSupplier){
+        const reader = new FileReader();
+        reader.onload = async (ev) => {
+          const supplier = supplierById(state.editingSupplier);
+          if(supplier){
+            supplier[field] = ev.target.result;
+            await saveSuppliers();
+            // Refresh modal
+            closeSupplerModal();
+            openSupplierModal(state.editingSupplier);
+          }
+        };
+        reader.readAsDataURL(file);
+      }
+    });
+  }
 }
 
 function closeSupplerModal(){
@@ -85,8 +134,15 @@ async function onSubmitSupplier(e){
     swift: fd.get('swift')
   };
   if(id){ 
-    const idx = state.suppliers.findIndex(s=>s.id===id); 
-    if(idx >= 0) state.suppliers[idx] = supplier;
+    const idx = state.suppliers.findIndex(s=>s.id===id);
+    if(idx >= 0){
+      // Zachov branding z původního supplieru
+      const existing = state.suppliers[idx];
+      supplier.logo = supplier.logo || existing.logo;
+      supplier.signature = supplier.signature || existing.signature;
+      supplier.stamp = supplier.stamp || existing.stamp;
+      state.suppliers[idx] = supplier;
+    }
   } else {
     state.suppliers.push(supplier);
   }
@@ -100,6 +156,7 @@ async function onSubmitSupplier(e){
 
 function openSupplierModal(id){
   const supplier = id ? supplierById(id) : null;
+  
   const html = `
     <div class="modal-overlay" id="supplier-modal-overlay">
       <div class="modal-card">
@@ -131,6 +188,32 @@ function openSupplierModal(id){
             <div class="field"><label>IBAN (pro QR platbu)</label><input name="iban" value="${escapeAttr(supplier?.iban || '')}" placeholder="CZ..."></div>
             <div class="field"><label>SWIFT / BIC</label><input name="swift" value="${escapeAttr(supplier?.swift || '')}"></div>
           </div>
+          
+          <div class="section-title">Logo, podpis a razítko</div>
+          <p style="font-size:12.5px;color:var(--ink-soft);">Nahraj logo firmy, obrázek svého podpisu a fotku razítka — objeví se na fakturách.</p>
+          
+          <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:16px;">
+            <div>
+              <div style="text-align:center; padding:12px; border:1px solid var(--line); border-radius:4px; cursor:pointer;" onclick="document.getElementById('supplier-brand-input').dataset.field='logo'; document.getElementById('supplier-brand-input').click();">
+                ${supplier?.logo ? `<img src="${supplier.logo}" style="max-width:100%; max-height:80px; display:block; margin:0 auto;">` : `<div style="font-size:32px;">📸</div>`}
+                <div style="font-size:12px; margin-top:4px; color:var(--ink-soft);">Logo firmy</div>
+              </div>
+            </div>
+            <div>
+              <div style="text-align:center; padding:12px; border:1px solid var(--line); border-radius:4px; cursor:pointer;" onclick="document.getElementById('supplier-brand-input').dataset.field='signature'; document.getElementById('supplier-brand-input').click();">
+                ${supplier?.signature ? `<img src="${supplier.signature}" style="max-width:100%; max-height:80px; display:block; margin:0 auto;">` : `<div style="font-size:32px;">✍️</div>`}
+                <div style="font-size:12px; margin-top:4px; color:var(--ink-soft);">Podpis</div>
+              </div>
+            </div>
+            <div>
+              <div style="text-align:center; padding:12px; border:1px solid var(--line); border-radius:4px; cursor:pointer;" onclick="document.getElementById('supplier-brand-input').dataset.field='stamp'; document.getElementById('supplier-brand-input').click();">
+                ${supplier?.stamp ? `<img src="${supplier.stamp}" style="max-width:100%; max-height:80px; display:block; margin:0 auto;">` : `<div style="font-size:32px;">⭕</div>`}
+                <div style="font-size:12px; margin-top:4px; color:var(--ink-soft);">Razítko</div>
+              </div>
+            </div>
+          </div>
+          <input type="file" id="supplier-brand-input" accept="image/*" style="display:none;">
+          
           <div style="display:flex; gap:10px; margin-top:24px;">
             <button type="submit" class="btn" style="flex:1;">Uložit další firmu</button>
             <button type="button" class="btn secondary" data-action="close-supplier-modal">Zrušit</button>
@@ -147,6 +230,28 @@ function openSupplierModal(id){
   document.getElementById('supplier-modal-overlay').addEventListener('click', (e) => {
     if(e.target.id === 'supplier-modal-overlay') closeSupplerModal();
   });
+  
+  const brandInput = document.getElementById('supplier-brand-input');
+  if(brandInput){
+    brandInput.addEventListener('change', async (e) => {
+      const field = e.target.dataset.field;
+      const file = e.target.files[0];
+      if(field && file && state.editingSupplier){
+        const reader = new FileReader();
+        reader.onload = async (ev) => {
+          const supplier = supplierById(state.editingSupplier);
+          if(supplier){
+            supplier[field] = ev.target.result;
+            await saveSuppliers();
+            // Refresh modal
+            closeSupplerModal();
+            openSupplierModal(state.editingSupplier);
+          }
+        };
+        reader.readAsDataURL(file);
+      }
+    });
+  }
 }
 
 function closeSupplerModal(){
@@ -175,8 +280,15 @@ async function onSubmitSupplier(e){
     swift: fd.get('swift')
   };
   if(id){ 
-    const idx = state.suppliers.findIndex(s=>s.id===id); 
-    if(idx >= 0) state.suppliers[idx] = supplier;
+    const idx = state.suppliers.findIndex(s=>s.id===id);
+    if(idx >= 0){
+      // Zachov branding z původního supplieru
+      const existing = state.suppliers[idx];
+      supplier.logo = supplier.logo || existing.logo;
+      supplier.signature = supplier.signature || existing.signature;
+      supplier.stamp = supplier.stamp || existing.stamp;
+      state.suppliers[idx] = supplier;
+    }
   } else {
     state.suppliers.push(supplier);
   }
@@ -190,6 +302,7 @@ async function onSubmitSupplier(e){
 
 function openSupplierModal(id){
   const supplier = id ? supplierById(id) : null;
+  
   const html = `
     <div class="modal-overlay" id="supplier-modal-overlay">
       <div class="modal-card">
@@ -221,6 +334,32 @@ function openSupplierModal(id){
             <div class="field"><label>IBAN (pro QR platbu)</label><input name="iban" value="${escapeAttr(supplier?.iban || '')}" placeholder="CZ..."></div>
             <div class="field"><label>SWIFT / BIC</label><input name="swift" value="${escapeAttr(supplier?.swift || '')}"></div>
           </div>
+          
+          <div class="section-title">Logo, podpis a razítko</div>
+          <p style="font-size:12.5px;color:var(--ink-soft);">Nahraj logo firmy, obrázek svého podpisu a fotku razítka — objeví se na fakturách.</p>
+          
+          <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:16px;">
+            <div>
+              <div style="text-align:center; padding:12px; border:1px solid var(--line); border-radius:4px; cursor:pointer;" onclick="document.getElementById('supplier-brand-input').dataset.field='logo'; document.getElementById('supplier-brand-input').click();">
+                ${supplier?.logo ? `<img src="${supplier.logo}" style="max-width:100%; max-height:80px; display:block; margin:0 auto;">` : `<div style="font-size:32px;">📸</div>`}
+                <div style="font-size:12px; margin-top:4px; color:var(--ink-soft);">Logo firmy</div>
+              </div>
+            </div>
+            <div>
+              <div style="text-align:center; padding:12px; border:1px solid var(--line); border-radius:4px; cursor:pointer;" onclick="document.getElementById('supplier-brand-input').dataset.field='signature'; document.getElementById('supplier-brand-input').click();">
+                ${supplier?.signature ? `<img src="${supplier.signature}" style="max-width:100%; max-height:80px; display:block; margin:0 auto;">` : `<div style="font-size:32px;">✍️</div>`}
+                <div style="font-size:12px; margin-top:4px; color:var(--ink-soft);">Podpis</div>
+              </div>
+            </div>
+            <div>
+              <div style="text-align:center; padding:12px; border:1px solid var(--line); border-radius:4px; cursor:pointer;" onclick="document.getElementById('supplier-brand-input').dataset.field='stamp'; document.getElementById('supplier-brand-input').click();">
+                ${supplier?.stamp ? `<img src="${supplier.stamp}" style="max-width:100%; max-height:80px; display:block; margin:0 auto;">` : `<div style="font-size:32px;">⭕</div>`}
+                <div style="font-size:12px; margin-top:4px; color:var(--ink-soft);">Razítko</div>
+              </div>
+            </div>
+          </div>
+          <input type="file" id="supplier-brand-input" accept="image/*" style="display:none;">
+          
           <div style="display:flex; gap:10px; margin-top:24px;">
             <button type="submit" class="btn" style="flex:1;">Uložit další firmu</button>
             <button type="button" class="btn secondary" data-action="close-supplier-modal">Zrušit</button>
@@ -237,6 +376,28 @@ function openSupplierModal(id){
   document.getElementById('supplier-modal-overlay').addEventListener('click', (e) => {
     if(e.target.id === 'supplier-modal-overlay') closeSupplerModal();
   });
+  
+  const brandInput = document.getElementById('supplier-brand-input');
+  if(brandInput){
+    brandInput.addEventListener('change', async (e) => {
+      const field = e.target.dataset.field;
+      const file = e.target.files[0];
+      if(field && file && state.editingSupplier){
+        const reader = new FileReader();
+        reader.onload = async (ev) => {
+          const supplier = supplierById(state.editingSupplier);
+          if(supplier){
+            supplier[field] = ev.target.result;
+            await saveSuppliers();
+            // Refresh modal
+            closeSupplerModal();
+            openSupplierModal(state.editingSupplier);
+          }
+        };
+        reader.readAsDataURL(file);
+      }
+    });
+  }
 }
 
 function closeSupplerModal(){
@@ -265,8 +426,15 @@ async function onSubmitSupplier(e){
     swift: fd.get('swift')
   };
   if(id){ 
-    const idx = state.suppliers.findIndex(s=>s.id===id); 
-    if(idx >= 0) state.suppliers[idx] = supplier;
+    const idx = state.suppliers.findIndex(s=>s.id===id);
+    if(idx >= 0){
+      // Zachov branding z původního supplieru
+      const existing = state.suppliers[idx];
+      supplier.logo = supplier.logo || existing.logo;
+      supplier.signature = supplier.signature || existing.signature;
+      supplier.stamp = supplier.stamp || existing.stamp;
+      state.suppliers[idx] = supplier;
+    }
   } else {
     state.suppliers.push(supplier);
   }
@@ -667,12 +835,14 @@ let state = {
   company: null,
   clients: [],
   invoices: [],
+  suppliers: [],
   users: [],
   currentUser: null,
   authView: 'login', // 'login' | 'register'
   authError: '',
   editingInvoiceId: null,
   editingClientId: null,
+  editingSupplier: null,
   previewId: null,
   formItems: [],
   loaded: false,
@@ -3017,6 +3187,7 @@ function renderClients() {
 
 function openSupplierModal(id){
   const supplier = id ? supplierById(id) : null;
+  
   const html = `
     <div class="modal-overlay" id="supplier-modal-overlay">
       <div class="modal-card">
@@ -3048,6 +3219,32 @@ function openSupplierModal(id){
             <div class="field"><label>IBAN (pro QR platbu)</label><input name="iban" value="${escapeAttr(supplier?.iban || '')}" placeholder="CZ..."></div>
             <div class="field"><label>SWIFT / BIC</label><input name="swift" value="${escapeAttr(supplier?.swift || '')}"></div>
           </div>
+          
+          <div class="section-title">Logo, podpis a razítko</div>
+          <p style="font-size:12.5px;color:var(--ink-soft);">Nahraj logo firmy, obrázek svého podpisu a fotku razítka — objeví se na fakturách.</p>
+          
+          <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:16px;">
+            <div>
+              <div style="text-align:center; padding:12px; border:1px solid var(--line); border-radius:4px; cursor:pointer;" onclick="document.getElementById('supplier-brand-input').dataset.field='logo'; document.getElementById('supplier-brand-input').click();">
+                ${supplier?.logo ? `<img src="${supplier.logo}" style="max-width:100%; max-height:80px; display:block; margin:0 auto;">` : `<div style="font-size:32px;">📸</div>`}
+                <div style="font-size:12px; margin-top:4px; color:var(--ink-soft);">Logo firmy</div>
+              </div>
+            </div>
+            <div>
+              <div style="text-align:center; padding:12px; border:1px solid var(--line); border-radius:4px; cursor:pointer;" onclick="document.getElementById('supplier-brand-input').dataset.field='signature'; document.getElementById('supplier-brand-input').click();">
+                ${supplier?.signature ? `<img src="${supplier.signature}" style="max-width:100%; max-height:80px; display:block; margin:0 auto;">` : `<div style="font-size:32px;">✍️</div>`}
+                <div style="font-size:12px; margin-top:4px; color:var(--ink-soft);">Podpis</div>
+              </div>
+            </div>
+            <div>
+              <div style="text-align:center; padding:12px; border:1px solid var(--line); border-radius:4px; cursor:pointer;" onclick="document.getElementById('supplier-brand-input').dataset.field='stamp'; document.getElementById('supplier-brand-input').click();">
+                ${supplier?.stamp ? `<img src="${supplier.stamp}" style="max-width:100%; max-height:80px; display:block; margin:0 auto;">` : `<div style="font-size:32px;">⭕</div>`}
+                <div style="font-size:12px; margin-top:4px; color:var(--ink-soft);">Razítko</div>
+              </div>
+            </div>
+          </div>
+          <input type="file" id="supplier-brand-input" accept="image/*" style="display:none;">
+          
           <div style="display:flex; gap:10px; margin-top:24px;">
             <button type="submit" class="btn" style="flex:1;">Uložit další firmu</button>
             <button type="button" class="btn secondary" data-action="close-supplier-modal">Zrušit</button>
@@ -3064,6 +3261,28 @@ function openSupplierModal(id){
   document.getElementById('supplier-modal-overlay').addEventListener('click', (e) => {
     if(e.target.id === 'supplier-modal-overlay') closeSupplerModal();
   });
+  
+  const brandInput = document.getElementById('supplier-brand-input');
+  if(brandInput){
+    brandInput.addEventListener('change', async (e) => {
+      const field = e.target.dataset.field;
+      const file = e.target.files[0];
+      if(field && file && state.editingSupplier){
+        const reader = new FileReader();
+        reader.onload = async (ev) => {
+          const supplier = supplierById(state.editingSupplier);
+          if(supplier){
+            supplier[field] = ev.target.result;
+            await saveSuppliers();
+            // Refresh modal
+            closeSupplerModal();
+            openSupplierModal(state.editingSupplier);
+          }
+        };
+        reader.readAsDataURL(file);
+      }
+    });
+  }
 }
 
 function closeSupplerModal(){
@@ -3092,8 +3311,15 @@ async function onSubmitSupplier(e){
     swift: fd.get('swift')
   };
   if(id){ 
-    const idx = state.suppliers.findIndex(s=>s.id===id); 
-    if(idx >= 0) state.suppliers[idx] = supplier;
+    const idx = state.suppliers.findIndex(s=>s.id===id);
+    if(idx >= 0){
+      // Zachov branding z původního supplieru
+      const existing = state.suppliers[idx];
+      supplier.logo = supplier.logo || existing.logo;
+      supplier.signature = supplier.signature || existing.signature;
+      supplier.stamp = supplier.stamp || existing.stamp;
+      state.suppliers[idx] = supplier;
+    }
   } else {
     state.suppliers.push(supplier);
   }
