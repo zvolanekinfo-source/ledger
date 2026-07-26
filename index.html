@@ -6,9 +6,207 @@
 <title>Ledger — fakturační kniha</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js">
+function openSupplierModal(id){
+  const supplier = id ? supplierById(id) : null;
+  const html = `
+    <div class="modal-overlay" id="supplier-modal-overlay">
+      <div class="modal-card">
+        <h2>${id ? 'Upravit' : 'Nový'} dodavatel</h2>
+        <form id="supplier-form" style="max-height:70vh;overflow-y:auto;">
+          <input type="hidden" name="id" value="${supplier?.id || ''}">
+          <div class="field"><label>Název firmy</label><input name="name" value="${escapeAttr(supplier?.name || '')}" required></div>
+          <div class="field"><label>IČO</label><input name="ico" value="${escapeAttr(supplier?.ico || '')}"></div>
+          <div class="field"><label>DIČ</label><input name="dic" value="${escapeAttr(supplier?.dic || '')}"></div>
+          <div class="field"><label>Adresa</label><textarea name="address">${escapeAttr(supplier?.address || '')}</textarea></div>
+          <div class="field"><label>Email</label><input type="email" name="email" value="${escapeAttr(supplier?.email || '')}"></div>
+          <div class="field"><label>Telefon</label><input name="phone" value="${escapeAttr(supplier?.phone || '')}"></div>
+          <div class="field"><label>Číslo účtu</label><input name="account" value="${escapeAttr(supplier?.account || '')}"></div>
+          <div class="field"><label>IBAN</label><input name="iban" value="${escapeAttr(supplier?.iban || '')}"></div>
+          <div style="display:flex; gap:10px; margin-top:20px;">
+            <button type="submit" class="btn" style="flex:1;">Uložit</button>
+            <button type="button" class="btn secondary" data-action="close-supplier-modal">Zrušit</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  `;
+  document.body.insertAdjacentHTML('beforeend', html);
+  document.getElementById('supplier-form').addEventListener('submit', onSubmitSupplier);
+  document.querySelectorAll('[data-action="close-supplier-modal"]').forEach(btn => {
+    btn.addEventListener('click', closeSupplerModal);
+  });
+  document.getElementById('supplier-modal-overlay').addEventListener('click', (e) => {
+    if(e.target.id === 'supplier-modal-overlay') closeSupplerModal();
+  });
+}
+
+function closeSupplerModal(){
+  const modal = document.getElementById('supplier-modal-overlay');
+  if(modal) modal.remove();
+}
+
+async function onSubmitSupplier(e){
+  e.preventDefault();
+  const fd = new FormData(e.target);
+  const id = fd.get('id');
+  const supplier = {
+    id: id || uid(),
+    name: fd.get('name'),
+    ico: fd.get('ico'),
+    dic: fd.get('dic'),
+    address: fd.get('address'),
+    email: fd.get('email'),
+    phone: fd.get('phone'),
+    account: fd.get('account'),
+    iban: fd.get('iban')
+  };
+  if(id){ 
+    const idx = state.suppliers.findIndex(s=>s.id===id); 
+    if(idx >= 0) state.suppliers[idx] = supplier;
+  } else {
+    state.suppliers.push(supplier);
+  }
+  await saveSuppliers();
+  closeSupplerModal();
+  render();
+}
+
+</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js">
+function openSupplierModal(id){
+  const supplier = id ? supplierById(id) : null;
+  const html = `
+    <div class="modal-overlay" id="supplier-modal-overlay">
+      <div class="modal-card">
+        <h2>${id ? 'Upravit' : 'Nový'} dodavatel</h2>
+        <form id="supplier-form" style="max-height:70vh;overflow-y:auto;">
+          <input type="hidden" name="id" value="${supplier?.id || ''}">
+          <div class="field"><label>Název firmy</label><input name="name" value="${escapeAttr(supplier?.name || '')}" required></div>
+          <div class="field"><label>IČO</label><input name="ico" value="${escapeAttr(supplier?.ico || '')}"></div>
+          <div class="field"><label>DIČ</label><input name="dic" value="${escapeAttr(supplier?.dic || '')}"></div>
+          <div class="field"><label>Adresa</label><textarea name="address">${escapeAttr(supplier?.address || '')}</textarea></div>
+          <div class="field"><label>Email</label><input type="email" name="email" value="${escapeAttr(supplier?.email || '')}"></div>
+          <div class="field"><label>Telefon</label><input name="phone" value="${escapeAttr(supplier?.phone || '')}"></div>
+          <div class="field"><label>Číslo účtu</label><input name="account" value="${escapeAttr(supplier?.account || '')}"></div>
+          <div class="field"><label>IBAN</label><input name="iban" value="${escapeAttr(supplier?.iban || '')}"></div>
+          <div style="display:flex; gap:10px; margin-top:20px;">
+            <button type="submit" class="btn" style="flex:1;">Uložit</button>
+            <button type="button" class="btn secondary" data-action="close-supplier-modal">Zrušit</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  `;
+  document.body.insertAdjacentHTML('beforeend', html);
+  document.getElementById('supplier-form').addEventListener('submit', onSubmitSupplier);
+  document.querySelectorAll('[data-action="close-supplier-modal"]').forEach(btn => {
+    btn.addEventListener('click', closeSupplerModal);
+  });
+  document.getElementById('supplier-modal-overlay').addEventListener('click', (e) => {
+    if(e.target.id === 'supplier-modal-overlay') closeSupplerModal();
+  });
+}
+
+function closeSupplerModal(){
+  const modal = document.getElementById('supplier-modal-overlay');
+  if(modal) modal.remove();
+}
+
+async function onSubmitSupplier(e){
+  e.preventDefault();
+  const fd = new FormData(e.target);
+  const id = fd.get('id');
+  const supplier = {
+    id: id || uid(),
+    name: fd.get('name'),
+    ico: fd.get('ico'),
+    dic: fd.get('dic'),
+    address: fd.get('address'),
+    email: fd.get('email'),
+    phone: fd.get('phone'),
+    account: fd.get('account'),
+    iban: fd.get('iban')
+  };
+  if(id){ 
+    const idx = state.suppliers.findIndex(s=>s.id===id); 
+    if(idx >= 0) state.suppliers[idx] = supplier;
+  } else {
+    state.suppliers.push(supplier);
+  }
+  await saveSuppliers();
+  closeSupplerModal();
+  render();
+}
+
+</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js">
+function openSupplierModal(id){
+  const supplier = id ? supplierById(id) : null;
+  const html = `
+    <div class="modal-overlay" id="supplier-modal-overlay">
+      <div class="modal-card">
+        <h2>${id ? 'Upravit' : 'Nový'} dodavatel</h2>
+        <form id="supplier-form" style="max-height:70vh;overflow-y:auto;">
+          <input type="hidden" name="id" value="${supplier?.id || ''}">
+          <div class="field"><label>Název firmy</label><input name="name" value="${escapeAttr(supplier?.name || '')}" required></div>
+          <div class="field"><label>IČO</label><input name="ico" value="${escapeAttr(supplier?.ico || '')}"></div>
+          <div class="field"><label>DIČ</label><input name="dic" value="${escapeAttr(supplier?.dic || '')}"></div>
+          <div class="field"><label>Adresa</label><textarea name="address">${escapeAttr(supplier?.address || '')}</textarea></div>
+          <div class="field"><label>Email</label><input type="email" name="email" value="${escapeAttr(supplier?.email || '')}"></div>
+          <div class="field"><label>Telefon</label><input name="phone" value="${escapeAttr(supplier?.phone || '')}"></div>
+          <div class="field"><label>Číslo účtu</label><input name="account" value="${escapeAttr(supplier?.account || '')}"></div>
+          <div class="field"><label>IBAN</label><input name="iban" value="${escapeAttr(supplier?.iban || '')}"></div>
+          <div style="display:flex; gap:10px; margin-top:20px;">
+            <button type="submit" class="btn" style="flex:1;">Uložit</button>
+            <button type="button" class="btn secondary" data-action="close-supplier-modal">Zrušit</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  `;
+  document.body.insertAdjacentHTML('beforeend', html);
+  document.getElementById('supplier-form').addEventListener('submit', onSubmitSupplier);
+  document.querySelectorAll('[data-action="close-supplier-modal"]').forEach(btn => {
+    btn.addEventListener('click', closeSupplerModal);
+  });
+  document.getElementById('supplier-modal-overlay').addEventListener('click', (e) => {
+    if(e.target.id === 'supplier-modal-overlay') closeSupplerModal();
+  });
+}
+
+function closeSupplerModal(){
+  const modal = document.getElementById('supplier-modal-overlay');
+  if(modal) modal.remove();
+}
+
+async function onSubmitSupplier(e){
+  e.preventDefault();
+  const fd = new FormData(e.target);
+  const id = fd.get('id');
+  const supplier = {
+    id: id || uid(),
+    name: fd.get('name'),
+    ico: fd.get('ico'),
+    dic: fd.get('dic'),
+    address: fd.get('address'),
+    email: fd.get('email'),
+    phone: fd.get('phone'),
+    account: fd.get('account'),
+    iban: fd.get('iban')
+  };
+  if(id){ 
+    const idx = state.suppliers.findIndex(s=>s.id===id); 
+    if(idx >= 0) state.suppliers[idx] = supplier;
+  } else {
+    state.suppliers.push(supplier);
+  }
+  await saveSuppliers();
+  closeSupplerModal();
+  render();
+}
+
+</script>
 <style>
   :root{
     --ink:#182420;
@@ -144,6 +342,8 @@
 
   /* FORMS */
   .form-card{background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:26px 28px;max-width:840px;}
+  .modal-overlay{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;z-index:1000;}
+  .modal-card{background:var(--surface);border-radius:8px;box-shadow:0 10px 40px rgba(0,0,0,0.2);padding:32px;max-width:500px;width:90%;max-height:90vh;overflow-y:auto;}
   .field-row{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:14px;}
   .field{margin-bottom:14px;}
   .field label{display:block;font-size:12px;color:var(--ink-soft);margin-bottom:5px;font-weight:500;}
@@ -510,6 +710,7 @@ async function loadAll(){
   try{ const r = await window.storage.get('company', true); state.company = r ? JSON.parse(r.value) : null; }catch(e){ state.company = null; }
   try{ const r = await window.storage.get('clients', true); state.clients = r ? JSON.parse(r.value) : []; }catch(e){ state.clients = []; }
   try{ const r = await window.storage.get('invoices', true); state.invoices = r ? JSON.parse(r.value) : []; }catch(e){ state.invoices = []; }
+  try{ const r = await window.storage.get('suppliers', true); state.suppliers = r ? JSON.parse(r.value) : []; }catch(e){ state.suppliers = []; }
   if(!state.company){
     state.company = {
       name:'', tagline:'', address:'', ico:'', dic:'', account:'', bankName:'', iban:'', swift:'', email:'', phone:'', website:'',
@@ -534,6 +735,7 @@ async function loadAll(){
 async function saveCompany(){ try{ await window.storage.set('company', JSON.stringify(state.company), true); }catch(e){ console.error(e); } saveSnapshotBackup(); }
 async function saveClients(){ try{ await window.storage.set('clients', JSON.stringify(state.clients), true); }catch(e){ console.error(e); } saveSnapshotBackup(); }
 async function saveInvoices(){ try{ await window.storage.set('invoices', JSON.stringify(state.invoices), true); }catch(e){ console.error(e); } saveSnapshotBackup(); }
+async function saveSuppliers(){ try{ await window.storage.set('suppliers', JSON.stringify(state.suppliers), true); }catch(e){ console.error(e); } saveSnapshotBackup(); }
 
 /* ---------- BACKUP / SNAPSHOTS ---------- */
 async function loadBackupIndex(){
@@ -542,7 +744,7 @@ async function loadBackupIndex(){
 async function saveSnapshotBackup(){
   try{
     const date = todayISO();
-    const payload = JSON.stringify({ savedAt: new Date().toISOString(), company: state.company, clients: state.clients, invoices: state.invoices });
+    const payload = JSON.stringify({ savedAt: new Date().toISOString(), company: state.company, clients: state.clients, invoices: state.invoices, suppliers: state.suppliers });
     await window.storage.set('backup:'+date, payload, true);
     let dates = await loadBackupIndex();
     if(!dates.includes(date)) dates.push(date);
@@ -557,7 +759,7 @@ async function saveSnapshotBackup(){
 }
 
 function exportBackupFile(){
-  const payload = { exportedAt: new Date().toISOString(), company: state.company, clients: state.clients, invoices: state.invoices };
+  const payload = { exportedAt: new Date().toISOString(), company: state.company, clients: state.clients, invoices: state.invoices, suppliers: state.suppliers };
   const blob = new Blob([JSON.stringify(payload, null, 2)], { type:'application/json' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -575,6 +777,7 @@ async function restoreFromBackupObject(data, label){
     if(data.company){ state.company = data.company; await saveCompany(); }
     if(Array.isArray(data.clients)){ state.clients = data.clients; await saveClients(); }
     if(Array.isArray(data.invoices)){ state.invoices = data.invoices; await saveInvoices(); }
+    if(Array.isArray(data.suppliers)){ state.suppliers = data.suppliers; await saveSuppliers(); }
     alert('Data byla obnovena ze zálohy.');
     render();
   }catch(e){
@@ -685,6 +888,7 @@ function invoiceStatus(inv){
 }
 function statusLabel(s){ return s==='paid'?'Zaplaceno':(s==='overdue'?'Po splatnosti':'Čeká na platbu'); }
 function clientById(id){ return state.clients.find(c=>c.id===id); }
+function supplierById(id){ return state.suppliers.find(s=>s.id===id); }
 
 function applyDateRangeFromPreset(preset){
   const today = todayISO();
@@ -1104,6 +1308,12 @@ function viewInvoiceForm(){
       <div class="toggle-row"><input type="checkbox" name="includeSignature" id="chk-inc-sig" value="1" ${inv.includeSignature!==false?'checked':''}><label for="chk-inc-sig">Zobrazit elektronický podpis (pokud je nahraný)</label></div>
       <div class="toggle-row"><input type="checkbox" name="includeQr" id="chk-inc-qr" value="1" ${inv.includeQr!==false?'checked':''}><label for="chk-inc-qr">Zobrazit QR platbu (vyžaduje IBAN)</label></div>
 
+      <div style="margin-top:16px; display:flex; gap:10px;">
+        <button type="button" class="btn ${(inv.colorScheme||'color')==='color'?'':'secondary'}" data-action="set-scheme" data-scheme="color">🎨 Barevně</button>
+        <button type="button" class="btn ${(inv.colorScheme||'color')==='bw'?'':'secondary'}" data-action="set-scheme" data-scheme="bw">⬜ Černobílé</button>
+      </div>
+      <input type="hidden" name="colorScheme" id="invoice-color-scheme" value="${inv.colorScheme||'color'}"
+
       <div class="section-title">Položky</div>
       <div class="items-table-wrap">
       <table class="items-table">
@@ -1452,34 +1662,59 @@ function viewSettings(){
       <div class="field"><label>Platební podmínky / patička faktury</label><textarea name="invoiceTerms" style="min-height:70px;">${co.invoiceTerms||''}</textarea></div>
 
       <div class="section-title">Vzhled faktury</div>
-      <div class="field">
-        <label>Barva zvýraznění na faktuře</label>
-        <div class="color-row">
-          <input type="color" name="invoiceAccent" value="${co.invoiceAccent||'#1F5C4D'}">
-          <span style="font-size:12.5px;color:var(--ink-soft);">Výchozí je světle zelená stejná jako v appce — klidně uprav dle svého brandu.</span>
-        </div>
-      </div>
       <div class="toggle-row"><input type="checkbox" name="showLogo" id="chk-showLogo" value="1" ${co.showLogo?'checked':''}><label for="chk-showLogo">Zobrazovat logo na fakturách</label></div>
       <div class="toggle-row"><input type="checkbox" name="showStamp" id="chk-showStamp" value="1" ${co.showStamp?'checked':''}><label for="chk-showStamp">Zobrazovat razítko na fakturách</label></div>
       <div class="toggle-row"><input type="checkbox" name="showSignature" id="chk-showSignature" value="1" ${co.showSignature?'checked':''}><label for="chk-showSignature">Zobrazovat elektronický podpis na fakturách</label></div>
       <div class="toggle-row"><input type="checkbox" name="showQr" id="chk-showQr" value="1" ${co.showQr?'checked':''}><label for="chk-showQr">Zobrazovat QR platbu (vyžaduje vyplněný IBAN)</label></div>
+
+      <div style="margin-top:20px; padding-top:20px; border-top:1px solid var(--border);">
+        <p style="font-size:12.5px;color:var(--ink-soft);margin-top:0;">Nahraj logo firmy, obrázek svého podpisu a fotku razítka — objeví se na fakturách.</p>
+        <div class="brand-grid">
+          ${brandSlot('logo','Logo firmy','Zobrazí se v hlavičce faktury.','Logo firmy')}
+          ${brandSlot('signature','Elektronický podpis','Foto nebo scan podpisu.','Podpis')}
+          ${brandSlot('stamp','Razítko','Foto razítka firmy.','Razítko')}
+        </div>
+        <input type="file" id="branding-file-input" accept="image/*" style="display:none;">
+      </div>
 
       <div class="formfoot">
         <button type="submit" class="btn">Uložit nastavení</button>
       </div>
     </form>
 
-    <div class="section-title" style="margin-top:30px;">Logo, podpis a razítko</div>
+    <div class="section-title" style="margin-top:30px;">Další firmy</div>
     <div class="form-card">
-      <p style="font-size:12.5px;color:var(--ink-soft);margin-top:0;">
-        Nahraj logo firmy, obrázek svého podpisu a fotku razítka — objeví se na fakturách přesně tak, jak si je nastavíš výše.
-      </p>
-      <div class="brand-grid">
-        ${brandSlot('logo','Logo firmy','Zobrazí se v hlavičce faktury.','Logo firmy')}
-        ${brandSlot('signature','Elektronický podpis','Foto nebo scan podpisu.','Podpis')}
-        ${brandSlot('stamp','Razítko','Foto razítka firmy.','Razítko')}
-      </div>
-      <input type="file" id="branding-file-input" accept="image/*" style="display:none;">
+      ${state.suppliers.length === 0 ? `
+        <p style="color:var(--ink-soft);margin:0;">Zatím nemáš žádné uložené další firmy.</p>
+        <div class="formfoot">
+          <button type="button" class="btn btn-primary" data-action="open-supplier-modal">+ Přidat první další firmu</button>
+        </div>
+      ` : `
+        <div style="display:flex; flex-direction:column; gap:8px; margin-bottom:16px;">
+          ${state.suppliers.map(s => `
+            <div class="card" style="padding:12px 16px;">
+              <div style="display:flex; justify-content:space-between; align-items:start;">
+                <div style="flex:1;">
+                  <div style="font-weight:600; color:var(--ink);">${escapeHtml(s.name)}</div>
+                  <div style="font-size:0.85rem; color:var(--ink-soft); margin-top:4px;">
+                    IČ: ${escapeHtml(s.ico || '—')} · ${escapeHtml(s.email || '')}
+                  </div>
+                  ${s.account || s.iban ? `
+                    <div style="font-size:0.8rem; color:var(--ink-soft); margin-top:6px;">
+                      💳 ${s.iban ? escapeHtml(s.iban) : escapeHtml(s.account || '')}
+                    </div>
+                  ` : ''}
+                </div>
+                <div style="display:flex; gap:6px;">
+                  <button type="button" class="btn btn-small secondary" data-action="edit-supplier" data-id="${escapeAttr(s.id)}">Upravit</button>
+                  <button type="button" class="btn btn-small danger" data-action="delete-supplier" data-id="${escapeAttr(s.id)}">Smazat</button>
+                </div>
+              </div>
+            </div>
+          `).join('')}
+        </div>
+        <button type="button" class="btn btn-primary btn-sm" data-action="open-supplier-modal">+ Nová další firma</button>
+      `}
     </div>
 
     <div class="section-title" style="margin-top:30px;">Kolegové s přístupem</div>
@@ -2156,9 +2391,21 @@ document.addEventListener('click', async (e)=>{
   else if(action==='new-client'){ state.view='client-form'; state.editingClientId=null; render(); }
   else if(action==='edit-client'){ state.view='client-form'; state.editingClientId=id; render(); }
   else if(action==='delete-client'){ if(confirm('Smazat tohoto odběratele?')){ state.clients = state.clients.filter(c=>c.id!==id); await saveClients(); render(); } }
+  else if(action==='open-supplier-modal'){ openSupplierModal(); }
+  else if(action==='edit-supplier'){ openSupplierModal(id); }
+  else if(action==='delete-supplier'){ if(confirm('Smazat tuto další firmu?')){ state.suppliers = state.suppliers.filter(s=>s.id!==id); await saveSuppliers(); render(); } }
   else if(action==='client-to-invoice'){ state.preselectClientId=id; state.view='invoice-form'; state.editingInvoiceId=null; state.formItems=[]; render(); }
   else if(action==='add-item'){ state.formItems.push({desc:'',qty:1,unit:'ks',price:0,vat:21}); render(); }
   else if(action==='remove-item'){ const idx = parseInt(el.getAttribute('data-index')); state.formItems.splice(idx,1); if(!state.formItems.length) state.formItems.push({desc:'',qty:1,unit:'ks',price:0,vat:21}); render(); }
+  else if(action==='set-scheme'){
+    const scheme = el.getAttribute('data-scheme');
+    const field = document.getElementById('invoice-color-scheme');
+    if(field) field.value = scheme;
+    // Update button states
+    document.querySelectorAll('[data-action="set-scheme"]').forEach(btn => {
+      btn.classList.toggle('secondary', btn.getAttribute('data-scheme') !== scheme);
+    });
+  }
   else if(action==='goto-import'){ state.view='invoice-import'; state.importError=''; state.importResult=null; render(); }
   else if(action==='dash-preset'){
     const preset = el.getAttribute('data-preset');
@@ -2245,6 +2492,7 @@ async function onSubmitInvoice(e){
     items: items,
     paid: fd.get('paid')==='1',
     paidDate: fd.get('paidDate')||null,
+    colorScheme: fd.get('colorScheme')||'color',
     createdBy: id ? (state.invoices.find(i=>i.id===id)||{}).createdBy || state.currentUser : state.currentUser
   };
   if(id){
@@ -2700,7 +2948,72 @@ function renderClients() {
     </div>
   `;
 }
+
+function openSupplierModal(id){
+  const supplier = id ? supplierById(id) : null;
+  const html = `
+    <div class="modal-overlay" id="supplier-modal-overlay">
+      <div class="modal-card">
+        <h2>${id ? 'Upravit' : 'Nový'} dodavatel</h2>
+        <form id="supplier-form" style="max-height:70vh;overflow-y:auto;">
+          <input type="hidden" name="id" value="${supplier?.id || ''}">
+          <div class="field"><label>Název firmy</label><input name="name" value="${escapeAttr(supplier?.name || '')}" required></div>
+          <div class="field"><label>IČO</label><input name="ico" value="${escapeAttr(supplier?.ico || '')}"></div>
+          <div class="field"><label>DIČ</label><input name="dic" value="${escapeAttr(supplier?.dic || '')}"></div>
+          <div class="field"><label>Adresa</label><textarea name="address">${escapeAttr(supplier?.address || '')}</textarea></div>
+          <div class="field"><label>Email</label><input type="email" name="email" value="${escapeAttr(supplier?.email || '')}"></div>
+          <div class="field"><label>Telefon</label><input name="phone" value="${escapeAttr(supplier?.phone || '')}"></div>
+          <div class="field"><label>Číslo účtu</label><input name="account" value="${escapeAttr(supplier?.account || '')}"></div>
+          <div class="field"><label>IBAN</label><input name="iban" value="${escapeAttr(supplier?.iban || '')}"></div>
+          <div style="display:flex; gap:10px; margin-top:20px;">
+            <button type="submit" class="btn" style="flex:1;">Uložit</button>
+            <button type="button" class="btn secondary" data-action="close-supplier-modal">Zrušit</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  `;
+  document.body.insertAdjacentHTML('beforeend', html);
+  document.getElementById('supplier-form').addEventListener('submit', onSubmitSupplier);
+  document.querySelectorAll('[data-action="close-supplier-modal"]').forEach(btn => {
+    btn.addEventListener('click', closeSupplerModal);
+  });
+  document.getElementById('supplier-modal-overlay').addEventListener('click', (e) => {
+    if(e.target.id === 'supplier-modal-overlay') closeSupplerModal();
+  });
+}
+
+function closeSupplerModal(){
+  const modal = document.getElementById('supplier-modal-overlay');
+  if(modal) modal.remove();
+}
+
+async function onSubmitSupplier(e){
+  e.preventDefault();
+  const fd = new FormData(e.target);
+  const id = fd.get('id');
+  const supplier = {
+    id: id || uid(),
+    name: fd.get('name'),
+    ico: fd.get('ico'),
+    dic: fd.get('dic'),
+    address: fd.get('address'),
+    email: fd.get('email'),
+    phone: fd.get('phone'),
+    account: fd.get('account'),
+    iban: fd.get('iban')
+  };
+  if(id){ 
+    const idx = state.suppliers.findIndex(s=>s.id===id); 
+    if(idx >= 0) state.suppliers[idx] = supplier;
+  } else {
+    state.suppliers.push(supplier);
+  }
+  await saveSuppliers();
+  closeSupplerModal();
+  render();
+}
+
 </script>
 </body>
-<!-- v20260726 -->
 </html>
