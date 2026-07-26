@@ -119,6 +119,25 @@
   .pill.pending{background:var(--amber-soft);color:var(--amber);}
   .pill.overdue{background:var(--red-soft);color:var(--red);}
 
+  /* FILTER BAR */
+  .filter-bar{background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:16px 18px;margin-bottom:20px;}
+  .filter-presets{display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;}
+  .chip{border:1px solid var(--line);background:transparent;color:var(--ink-soft);padding:6px 14px;border-radius:20px;font-size:12.5px;font-weight:500;}
+  .chip:hover{background:var(--paper);}
+  .chip.active{background:var(--ink);color:#fff;border-color:var(--ink);}
+  .filter-row{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;}
+  .filter-row .field{margin-bottom:0;}
+  .filter-row .field label{display:block;font-size:11px;color:var(--ink-soft);margin-bottom:5px;font-weight:500;text-transform:uppercase;letter-spacing:0.5px;}
+  .filter-row input,.filter-row select{width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:4px;font-size:13.5px;background:#fff;color:var(--ink);}
+  .filter-row input:focus,.filter-row select:focus{outline:none;border-color:var(--accent);}
+  .filter-clear{background:none;border:none;color:var(--ink-soft);text-decoration:underline;font-size:12.5px;padding:0;margin-top:12px;}
+
+  /* CHART */
+  .chart-card{background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:20px 22px;margin-bottom:24px;}
+  .chart-card .chart-head{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:14px;}
+  .chart-card .chart-head .display{font-size:16px;font-weight:600;}
+  .chart-card .chart-head .chart-total{font-family:'IBM Plex Mono',monospace;font-weight:700;font-size:18px;color:var(--accent);}
+
   /* FORMS */
   .form-card{background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:26px 28px;max-width:840px;}
   .field-row{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:14px;}
@@ -326,7 +345,10 @@ let state = {
   importBusy: false,
   importError: '',
   importResult: null, // { company, client, matchedClientId, invoice }
-  backupDates: []
+  backupDates: [],
+  dashboardFilter: { preset:'all', from:'', to:'', clientId:'', status:'' },
+  invoiceFilter: { search:'', from:'', to:'', clientId:'', status:'' },
+  lastLoginName: ''
 };
 
 const VAT_RATES = [21, 12, 0];
@@ -512,6 +534,80 @@ function invoiceStatus(inv){
 function statusLabel(s){ return s==='paid'?'Zaplaceno':(s==='overdue'?'Po splatnosti':'Čeká na platbu'); }
 function clientById(id){ return state.clients.find(c=>c.id===id); }
 
+function applyDateRangeFromPreset(preset){
+  const today = todayISO();
+  if(preset==='month'){
+    return { from: today.slice(0,7)+'-01', to: today };
+  }
+  if(preset==='year'){
+    return { from: today.slice(0,4)+'-01-01', to: today };
+  }
+  if(preset==='12m'){
+    const d = new Date(today); d.setMonth(d.getMonth()-11); d.setDate(1);
+    return { from: d.toISOString().slice(0,10), to: today };
+  }
+  return { from:'', to:'' }; // 'all'
+}
+
+function applyInvoiceFilters(list, f){
+  return list.filter(inv=>{
+    if(f.from && (inv.issueDate||'') < f.from) return false;
+    if(f.to && (inv.issueDate||'') > f.to) return false;
+    if(f.clientId && inv.clientId !== f.clientId) return false;
+    if(f.status){ if(invoiceStatus(inv) !== f.status) return false; }
+    return true;
+  });
+}
+
+const MONTH_SHORT = ['led','úno','bře','dub','kvě','čvn','čvc','srp','zář','říj','lis','pro'];
+
+function buildRevenueChart(list){
+  const map = new Map();
+  list.forEach(inv=>{
+    const key = (inv.issueDate||'').slice(0,7);
+    if(!key || key.length!==7) return;
+    map.set(key, (map.get(key)||0) + invoiceTotals(inv).total);
+  });
+  const months = [...map.keys()].sort();
+  if(!months.length){
+    return '<div class="empty" style="padding:34px 20px;"><div class="display" style="font-size:15px;">Pro vybrané období nejsou žádná data</div><div>Zkus rozšířit rozsah dat nebo zrušit filtr.</div></div>';
+  }
+  const max = Math.max(...months.map(m=>map.get(m)), 1);
+  const w = 780, h = 230, padL = 56, padR = 12, padT = 12, padB = 32;
+  const chartW = w - padL - padR;
+  const gap = 12;
+  const barW = Math.max(6, chartW/months.length - gap);
+  let grid = '';
+  [0, 0.5, 1].forEach(frac=>{
+    const y = h - padB - Math.round(frac*(h-padT-padB));
+    grid += `<line x1="${padL}" y1="${y}" x2="${w-padR}" y2="${y}" stroke="var(--line)" stroke-width="1"/>`;
+    grid += `<text x="${padL-8}" y="${y+3}" text-anchor="end" font-size="10" style="fill:var(--ink-soft);font-family:'IBM Plex Mono',monospace;">${fmt(frac*max)}</text>`;
+  });
+  let bars = '';
+  months.forEach((m,i)=>{
+    const val = map.get(m);
+    const bh = Math.max(1, Math.round((val/max)*(h-padT-padB)));
+    const x = padL + i*(barW+gap);
+    const y = h - padB - bh;
+    const [yy,mo] = m.split('-');
+    const label = `${MONTH_SHORT[parseInt(mo,10)-1]} ${yy.slice(2)}`;
+    bars += `<rect x="${x}" y="${y}" width="${barW}" height="${bh}" rx="3" style="fill:var(--accent);opacity:0.88;"><title>${label}: ${fmt(val)} Kč</title></rect>`;
+    bars += `<text x="${x+barW/2}" y="${h-padB+16}" text-anchor="middle" font-size="10.5" style="fill:var(--ink-soft);font-family:Inter,sans-serif;">${label}</text>`;
+  });
+  return `<svg viewBox="0 0 ${w} ${h}" style="width:100%;height:220px;display:block;">${grid}${bars}</svg>`;
+}
+
+function clientOptions(selectedId){
+  return `<option value="">Všichni klienti</option>` + state.clients.map(c=>
+    `<option value="${c.id}" ${selectedId===c.id?'selected':''}>${escapeHtml(c.name)}</option>`
+  ).join('');
+}
+
+function statusOptions(selected){
+  const opts = [['','Všechny stavy'],['paid','Zaplaceno'],['pending','Čeká na platbu'],['overdue','Po splatnosti']];
+  return opts.map(([v,l])=>`<option value="${v}" ${selected===v?'selected':''}>${l}</option>`).join('');
+}
+
 /* ---------- RENDER ROOT ---------- */
 function render(){
   const app = document.getElementById('app');
@@ -579,9 +675,10 @@ function renderLoginForm(){
   return `
     <form id="login-form">
       <div class="field"><label>Jméno</label>
-        <select name="name">${state.users.map(u=>`<option value="${escapeAttr(u.name)}">${escapeHtml(u.name)}</option>`).join('')}</select>
+        <input name="name" list="login-users-list" placeholder="Napiš nebo vyber jméno" autocomplete="off" value="${escapeAttr(state.lastLoginName||'')}" autofocus>
+        <datalist id="login-users-list">${state.users.map(u=>`<option value="${escapeAttr(u.name)}">`).join('')}</datalist>
       </div>
-      <div class="field"><label>Heslo</label><input name="password" type="password" required autofocus></div>
+      <div class="field"><label>Heslo</label><input name="password" type="password" required></div>
       <button type="submit" class="btn" style="width:100%;">Přihlásit se</button>
     </form>
   `;
@@ -609,8 +706,9 @@ function afterRenderAuth(){
 async function onSubmitLogin(e){
   e.preventDefault();
   const fd = new FormData(e.target);
-  const name = fd.get('name');
+  const name = (fd.get('name')||'').trim();
   const password = fd.get('password');
+  state.lastLoginName = name;
   const user = state.users.find(u=>u.name===name);
   if(!user || user.password!==password){
     state.authError = 'Nesedí jméno nebo heslo.';
@@ -665,25 +763,50 @@ function renderView(){
 
 /* ---------- DASHBOARD ---------- */
 function viewDashboard(){
-  const withStatus = state.invoices.map(i=>({...i, status: invoiceStatus(i), t: invoiceTotals(i)}));
-  const unpaidSum = withStatus.filter(i=>i.status!=='paid').reduce((s,i)=>s+i.t.total,0);
-  const overdueCount = withStatus.filter(i=>i.status==='overdue').length;
-  const thisMonth = withStatus.filter(i=> (i.issueDate||'').slice(0,7)===todayISO().slice(0,7)).reduce((s,i)=>s+i.t.total,0);
-  const recent = [...state.invoices].sort((a,b)=> (b.issueDate||'').localeCompare(a.issueDate||'')).slice(0,6);
+  const f = state.dashboardFilter;
+  const filtered = applyInvoiceFilters(state.invoices, f).map(i=>({...i, status: invoiceStatus(i), t: invoiceTotals(i)}));
+  const revenue = filtered.reduce((s,i)=>s+i.t.total,0);
+  const unpaidSum = filtered.filter(i=>i.status!=='paid').reduce((s,i)=>s+i.t.total,0);
+  const overdueCount = filtered.filter(i=>i.status==='overdue').length;
+  const sorted = [...filtered].sort((a,b)=> (b.issueDate||'').localeCompare(a.issueDate||''));
+
+  const presets = [['month','Tento měsíc'],['year','Tento rok'],['12m','Posledních 12 měsíců'],['all','Vše']];
 
   return `
     <div class="pagehead">
-      <div><h1>Přehled</h1><p class="desc">Stav fakturace na jeden pohled.</p></div>
+      <div><h1>Přehled</h1><p class="desc">Stav fakturace za vybrané období.</p></div>
       <button class="btn no-print" data-action="new-invoice">+ Nová faktura</button>
     </div>
+
+    <div class="filter-bar no-print">
+      <div class="filter-presets">
+        ${presets.map(([v,l])=>`<button type="button" class="chip ${f.preset===v?'active':''}" data-action="dash-preset" data-preset="${v}">${l}</button>`).join('')}
+      </div>
+      <div class="filter-row">
+        <div class="field"><label>Od</label><input type="date" id="dash-from" value="${f.from||''}"></div>
+        <div class="field"><label>Do</label><input type="date" id="dash-to" value="${f.to||''}"></div>
+        <div class="field"><label>Klient</label><select id="dash-client">${clientOptions(f.clientId)}</select></div>
+        <div class="field"><label>Stav</label><select id="dash-status">${statusOptions(f.status)}</select></div>
+      </div>
+    </div>
+
     <div class="cards">
-      <div class="card"><div class="label">Faktur celkem</div><div class="value">${state.invoices.length}</div></div>
+      <div class="card"><div class="label">Faktur ve výběru</div><div class="value">${filtered.length}</div></div>
+      <div class="card"><div class="label">Fakturováno celkem</div><div class="value accent num">${fmt(revenue)} Kč</div></div>
       <div class="card"><div class="label">Nezaplaceno</div><div class="value amber num">${fmt(unpaidSum)} Kč</div></div>
       <div class="card"><div class="label">Po splatnosti</div><div class="value red num">${overdueCount}</div></div>
-      <div class="card"><div class="label">Fakturováno tento měsíc</div><div class="value accent num">${fmt(thisMonth)} Kč</div></div>
     </div>
-    <div class="section-title">Poslední faktury</div>
-    ${recent.length ? renderInvoiceTable(recent) : emptyState('Zatím žádné faktury','Vystav svou první fakturu a uvidíš ji tady.')}
+
+    <div class="chart-card">
+      <div class="chart-head">
+        <div class="display">Výnos podle měsíce</div>
+        <div class="chart-total">${fmt(revenue)} Kč</div>
+      </div>
+      ${buildRevenueChart(filtered)}
+    </div>
+
+    <div class="section-title">Faktury ve výběru (${filtered.length})</div>
+    ${sorted.length ? renderInvoiceTable(sorted) : emptyState('Žádné faktury pro tento filtr','Zkus zmenšit rozsah filtru nebo zvolit „Vše“.')}
   `;
 }
 
@@ -693,31 +816,47 @@ function emptyState(title, sub){
 
 /* ---------- INVOICES ---------- */
 function viewInvoices(){
-  const sorted = [...state.invoices].sort((a,b)=> (b.number||'').localeCompare(a.number||''));
+  const f = state.invoiceFilter;
+  const filtered = applyInvoiceFilters(state.invoices, f);
+  const sorted = [...filtered].sort((a,b)=> (b.number||'').localeCompare(a.number||''));
+  const anyFilterActive = f.search || f.from || f.to || f.clientId || f.status;
   return `
     <div class="pagehead">
-      <div><h1>Faktury</h1><p class="desc">${state.invoices.length} vystavených faktur.</p></div>
+      <div><h1>Faktury</h1><p class="desc">${filtered.length} z ${state.invoices.length} faktur.</p></div>
       <div style="display:flex;gap:10px;">
         <button class="btn secondary" data-action="goto-import">⇧ Nahrát starou fakturu</button>
         <button class="btn" data-action="new-invoice">+ Nová faktura</button>
       </div>
     </div>
-    ${sorted.length ? renderInvoiceTable(sorted) : emptyState('Žádné faktury', 'Klikni na „Nová faktura“ a vystav první doklad.')}
+    <div class="filter-bar no-print">
+      <div class="search-row" style="margin-bottom:14px;">
+        <input type="text" id="inv-search" class="search-input" placeholder="Hledat podle čísla faktury nebo klienta…" value="${escapeAttr(f.search)}">
+      </div>
+      <div class="filter-row">
+        <div class="field"><label>Od</label><input type="date" id="inv-from" value="${f.from||''}"></div>
+        <div class="field"><label>Do</label><input type="date" id="inv-to" value="${f.to||''}"></div>
+        <div class="field"><label>Klient</label><select id="inv-client">${clientOptions(f.clientId)}</select></div>
+        <div class="field"><label>Stav</label><select id="inv-status">${statusOptions(f.status)}</select></div>
+      </div>
+      ${anyFilterActive?`<button type="button" class="filter-clear" data-action="inv-clear-filters">Zrušit filtry</button>`:''}
+    </div>
+    ${sorted.length ? renderInvoiceTable(sorted, 'invoices-tbody') : emptyState(state.invoices.length?'Žádné faktury pro tento filtr':'Žádné faktury', state.invoices.length?'Zkus upravit nebo zrušit filtr.':'Klikni na „Nová faktura“ a vystav první doklad.')}
   `;
 }
 
-function renderInvoiceTable(list){
+function renderInvoiceTable(list, tbodyId){
   return `
   <table>
     <thead><tr>
       <th>Číslo</th><th>Klient</th><th>Vystaveno</th><th>Splatnost</th><th>Částka</th><th>Stav</th><th>Vytvořil</th><th></th>
     </tr></thead>
-    <tbody>
+    <tbody ${tbodyId?`id="${tbodyId}"`:''}>
       ${list.map(inv=>{
         const c = clientById(inv.clientId);
         const t = invoiceTotals(inv);
         const s = invoiceStatus(inv);
-        return `<tr class="rowlink" data-action="preview-invoice" data-id="${inv.id}">
+        const searchKey = stripDiacritics(`${inv.number||''} ${c?c.name:''}`).toLowerCase();
+        return `<tr class="rowlink" data-action="preview-invoice" data-id="${inv.id}" data-search="${escapeAttr(searchKey)}">
           <td class="num">${inv.number}</td>
           <td>${c ? escapeHtml(c.name) : '—'}</td>
           <td class="num">${inv.issueDate||''}</td>
@@ -731,6 +870,7 @@ function renderInvoiceTable(list){
           </td>
         </tr>`;
       }).join('')}
+      ${tbodyId?`<tr id="invoices-empty-row" style="display:none;"><td colspan="8" style="text-align:center;color:var(--ink-soft);padding:24px;">Žádná faktura neodpovídá hledání.</td></tr>`:''}
     </tbody>
   </table>`;
 }
@@ -982,6 +1122,20 @@ function filterClientRows(query){
     if(match) visibleCount++;
   });
   const emptyRow = document.getElementById('clients-empty-row');
+  if(emptyRow) emptyRow.style.display = visibleCount===0 ? '' : 'none';
+}
+
+function filterInvoiceRows(query){
+  const q = stripDiacritics(query||'').toLowerCase().trim();
+  const tbody = document.getElementById('invoices-tbody');
+  if(!tbody) return;
+  let visibleCount = 0;
+  tbody.querySelectorAll('tr[data-search]').forEach(row=>{
+    const match = !q || row.getAttribute('data-search').includes(q);
+    row.style.display = match ? '' : 'none';
+    if(match) visibleCount++;
+  });
+  const emptyRow = document.getElementById('invoices-empty-row');
   if(emptyRow) emptyRow.style.display = visibleCount===0 ? '' : 'none';
 }
 
@@ -1415,6 +1569,42 @@ function afterRender(){
   }
   setupClientCombo();
   setupImportDropzone();
+
+  // dashboard filter controls
+  ['dash-from','dash-to','dash-client','dash-status'].forEach(id=>{
+    const el = document.getElementById(id);
+    if(!el) return;
+    el.addEventListener('change', ()=>{
+      const from = document.getElementById('dash-from').value;
+      const to = document.getElementById('dash-to').value;
+      const clientId = document.getElementById('dash-client').value;
+      const status = document.getElementById('dash-status').value;
+      state.dashboardFilter = { preset:'custom', from, to, clientId, status };
+      render();
+    });
+  });
+
+  // invoice list filter controls
+  ['inv-from','inv-to','inv-client','inv-status'].forEach(id=>{
+    const el = document.getElementById(id);
+    if(!el) return;
+    el.addEventListener('change', ()=>{
+      const from = document.getElementById('inv-from').value;
+      const to = document.getElementById('inv-to').value;
+      const clientId = document.getElementById('inv-client').value;
+      const status = document.getElementById('inv-status').value;
+      state.invoiceFilter = { ...state.invoiceFilter, from, to, clientId, status };
+      render();
+    });
+  });
+  const invSearchInput = document.getElementById('inv-search');
+  if(invSearchInput){
+    invSearchInput.addEventListener('input', (e)=>{
+      state.invoiceFilter.search = e.target.value;
+      filterInvoiceRows(e.target.value);
+    });
+    if(state.invoiceFilter.search) filterInvoiceRows(state.invoiceFilter.search);
+  }
   const settingsForm = document.getElementById('settings-form');
   if(settingsForm){ settingsForm.addEventListener('submit', onSubmitSettings); }
   const restoreFileInput = document.getElementById('restore-file-input');
@@ -1543,6 +1733,13 @@ document.addEventListener('click', async (e)=>{
   else if(action==='add-item'){ state.formItems.push({desc:'',qty:1,unit:'ks',price:0,vat:21}); render(); }
   else if(action==='remove-item'){ const idx = parseInt(el.getAttribute('data-index')); state.formItems.splice(idx,1); if(!state.formItems.length) state.formItems.push({desc:'',qty:1,unit:'ks',price:0,vat:21}); render(); }
   else if(action==='goto-import'){ state.view='invoice-import'; state.importError=''; state.importResult=null; render(); }
+  else if(action==='dash-preset'){
+    const preset = el.getAttribute('data-preset');
+    const range = applyDateRangeFromPreset(preset);
+    state.dashboardFilter = { ...state.dashboardFilter, preset, from: range.from, to: range.to };
+    render();
+  }
+  else if(action==='inv-clear-filters'){ state.invoiceFilter = { search:'', from:'', to:'', clientId:'', status:'' }; render(); }
   else if(action==='import-discard'){ state.importResult=null; state.importError=''; render(); }
   else if(action==='import-confirm'){ await confirmImport(); }
   else if(action==='export-backup'){ exportBackupFile(); }
