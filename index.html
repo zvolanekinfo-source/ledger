@@ -2701,6 +2701,14 @@ function renderClients() {
     </div>
   `;
 }
+
+// 🚀 INICIALIZACE APLIKACE
+document.addEventListener('DOMContentLoaded', async () => {
+  await loadCompany();
+  await loadInvoices();
+  await loadClients();
+  render();
+});
 </script>
 </body>
 </html>
