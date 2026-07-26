@@ -539,14 +539,11 @@ function applyDateRangeFromPreset(preset){
   if(preset==='month'){
     return { from: today.slice(0,7)+'-01', to: today };
   }
-  if(preset==='year'){
-    return { from: today.slice(0,4)+'-01-01', to: today };
-  }
   if(preset==='12m'){
     const d = new Date(today); d.setMonth(d.getMonth()-11); d.setDate(1);
     return { from: d.toISOString().slice(0,10), to: today };
   }
-  return { from:'', to:'' }; // 'all'
+  return { from:'', to:'' }; // 'all' or 'custom'
 }
 
 function applyInvoiceFilters(list, f){
@@ -770,7 +767,7 @@ function viewDashboard(){
   const overdueCount = filtered.filter(i=>i.status==='overdue').length;
   const sorted = [...filtered].sort((a,b)=> (b.issueDate||'').localeCompare(a.issueDate||''));
 
-  const presets = [['month','Tento měsíc'],['year','Tento rok'],['12m','Posledních 12 měsíců'],['all','Vše']];
+  const presets = [['month','Tento měsíc'],['12m','Posledních 12 měsíců'],['all','Vše'],['custom','Vlastní']];
 
   return `
     <div class="pagehead">
@@ -782,12 +779,14 @@ function viewDashboard(){
       <div class="filter-presets">
         ${presets.map(([v,l])=>`<button type="button" class="chip ${f.preset===v?'active':''}" data-action="dash-preset" data-preset="${v}">${l}</button>`).join('')}
       </div>
+      ${f.preset==='custom' ? `
       <div class="filter-row">
         <div class="field"><label>Od</label><input type="date" id="dash-from" value="${f.from||''}"></div>
         <div class="field"><label>Do</label><input type="date" id="dash-to" value="${f.to||''}"></div>
         <div class="field"><label>Klient</label><select id="dash-client">${clientOptions(f.clientId)}</select></div>
         <div class="field"><label>Stav</label><select id="dash-status">${statusOptions(f.status)}</select></div>
       </div>
+      ` : ''}
     </div>
 
     <div class="cards">
