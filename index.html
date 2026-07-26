@@ -192,6 +192,10 @@
   .combo-item:hover,.combo-item.hl{background:var(--accent-soft);}
   .combo-item .sub{font-size:11.5px;color:var(--ink-soft);}
   .combo-empty{padding:12px;font-size:13px;color:var(--ink-soft);}
+  .combo-group-label{padding:8px 12px 4px 12px;font-size:10px;text-transform:uppercase;letter-spacing:0.8px;color:var(--ink-soft);font-weight:600;}
+  .combo-item.ares-item .sub{color:var(--accent);}
+  .ares-status{font-size:11.5px;color:var(--ink-soft);margin-top:6px;display:flex;align-items:center;gap:6px;min-height:16px;}
+  .ares-spinner{width:11px;height:11px;border:2px solid var(--line);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite;display:inline-block;}
 
   /* INVOICE IMPORT */
   .dropzone{
@@ -566,7 +570,7 @@ function exportBackupFile(){
 }
 
 async function restoreFromBackupObject(data, label){
-  if(!confirm(`Obnovit data ${label}? Přepíší se tím současní klienti, faktury i údaje o firmě.`)) return;
+  if(!confirm(`Obnovit data ${label}? Přepíší se tím současní odběratelé, faktury i údaje o firmě.`)) return;
   try{
     if(data.company){ state.company = data.company; await saveCompany(); }
     if(Array.isArray(data.clients)){ state.clients = data.clients; await saveClients(); }
@@ -600,6 +604,68 @@ async function restoreFromUploadedFile(file){
     console.error(e);
     alert('Soubor se nepodařilo přečíst — zkontroluj, že je to platná záloha (.json) z této appky.');
   }
+}
+
+/* ---------- ARES (Administrativní registr ekonomických subjektů) ----------
+   Veřejné REST API bez klíče: https://ares.gov.cz/ekonomicke-subjekty-v-be/rest
+   - GET  /ekonomicke-subjekty/{ico}      -> detail podle IČO
+   - POST /ekonomicke-subjekty/vyhledat   -> hledání podle názvu / DIČ
+*/
+const ARES_BASE = 'https://ares.gov.cz/ekonomicke-subjekty-v-be/rest';
+
+function aresFormatAddress(sidlo){
+  if(!sidlo) return '';
+  if(sidlo.textovaAdresa) return sidlo.textovaAdresa;
+  const parts = [];
+  let ulice = sidlo.nazevUlice || sidlo.nazevObce || '';
+  let cislo = '';
+  if(sidlo.cisloDomovni){ cislo = String(sidlo.cisloDomovni); if(sidlo.cisloOrientacni) cislo += '/'+sidlo.cisloOrientacni; }
+  if(ulice) parts.push(cislo ? `${ulice} ${cislo}` : ulice);
+  const cityLine = [sidlo.psc, sidlo.nazevObce].filter(Boolean).join(' ');
+  if(cityLine && cityLine !== ulice) parts.push(cityLine);
+  return parts.join(', ');
+}
+
+function aresMapDetail(d){
+  if(!d) return null;
+  return {
+    ico: d.ico || '',
+    name: d.obchodniJmeno || '',
+    address: aresFormatAddress(d.sidlo),
+    dic: d.dic || (d.seznamRegistraci && d.seznamRegistraci.stavZdrojeDph==='AKTIVNI' && d.ico ? '' : '')
+  };
+}
+
+async function aresLookupByIco(ico){
+  const clean = (ico||'').replace(/\s+/g,'');
+  if(!/^\d{6,9}$/.test(clean)) throw new Error('IČO musí mít 6–9 číslic.');
+  const res = await fetch(`${ARES_BASE}/ekonomicke-subjekty/${clean}`, { headers:{ 'Accept':'application/json' } });
+  if(!res.ok){
+    if(res.status===404) throw new Error('Subjekt s tímto IČO nebyl v ARES nalezen.');
+    throw new Error('ARES momentálně nelze kontaktovat (zkus to znovu).');
+  }
+  const data = await res.json();
+  return aresMapDetail(data);
+}
+
+async function aresSearchByName(query){
+  const q = (query||'').trim();
+  if(q.length<3) return [];
+  const res = await fetch(`${ARES_BASE}/ekonomicke-subjekty/vyhledat`, {
+    method:'POST',
+    headers:{ 'Content-Type':'application/json', 'Accept':'application/json' },
+    body: JSON.stringify({ obchodniJmeno: q, pocet: 10, start: 0 })
+  });
+  if(!res.ok) throw new Error('ARES momentálně nelze kontaktovat.');
+  const data = await res.json();
+  return (data.ekonomickeSubjekty||[]).map(aresMapDetail);
+}
+
+async function aresSearchByDic(dic){
+  const clean = (dic||'').replace(/\s+/g,'').toUpperCase();
+  const icoPart = clean.replace(/^CZ/,'');
+  if(!/^\d{6,9}$/.test(icoPart)) return [];
+  try{ const d = await aresLookupByIco(icoPart); return d ? [d] : []; }catch(e){ return []; }
 }
 
 /* ---------- DERIVED ---------- */
@@ -681,7 +747,7 @@ function buildRevenueChart(list){
 }
 
 function clientOptions(selectedId){
-  return `<option value="">Všichni klienti</option>` + state.clients.map(c=>
+  return `<option value="">Všichni odběratelé</option>` + state.clients.map(c=>
     `<option value="${c.id}" ${selectedId===c.id?'selected':''}>${escapeHtml(c.name)}</option>`
   ).join('');
 }
@@ -707,7 +773,7 @@ function render(){
       </div>
       <div class="navitem ${state.view==='dashboard'?'active':''}" data-action="nav" data-view="dashboard">Přehled</div>
       <div class="navitem ${state.view==='invoices'||state.view==='invoice-form'||state.view==='invoice-preview'||state.view==='invoice-import'?'active':''}" data-action="nav" data-view="invoices">Faktury</div>
-      <div class="navitem ${state.view==='clients'||state.view==='client-form'?'active':''}" data-action="nav" data-view="clients">Klienti</div>
+      <div class="navitem ${state.view==='clients'||state.view==='client-form'?'active':''}" data-action="nav" data-view="clients">Odběratelé</div>
       <div class="navitem ${state.view==='settings'?'active':''}" data-action="nav" data-view="settings">Nastavení</div>
       <div class="sidebar-foot">
         <div class="whoami">
@@ -731,7 +797,7 @@ function renderAuth(){
         <div class="side-top">
           <div class="side-mark">L</div>
           <div class="side-brand">Ledger</div>
-          <div class="side-sub">Sdílená fakturační kniha pro tebe a tvůj tým — jedno místo pro faktury, klienty a přehledy.</div>
+          <div class="side-sub">Sdílená fakturační kniha pro tebe a tvůj tým — jedno místo pro faktury, odběratele a přehledy.</div>
         </div>
         <div class="side-foot">© ${new Date().getFullYear()} · Ledger</div>
       </div>
@@ -869,7 +935,7 @@ function viewDashboard(){
       <div class="filter-row">
         <div class="field"><label>Od</label><input type="date" id="dash-from" value="${f.from||''}"></div>
         <div class="field"><label>Do</label><input type="date" id="dash-to" value="${f.to||''}"></div>
-        <div class="field"><label>Klient</label><select id="dash-client">${clientOptions(f.clientId)}</select></div>
+        <div class="field"><label>Odběratel</label><select id="dash-client">${clientOptions(f.clientId)}</select></div>
         <div class="field"><label>Stav</label><select id="dash-status">${statusOptions(f.status)}</select></div>
       </div>
       ` : ''}
@@ -915,12 +981,12 @@ function viewInvoices(){
     </div>
     <div class="filter-bar no-print">
       <div class="search-row" style="margin-bottom:14px;">
-        <input type="text" id="inv-search" class="search-input" placeholder="Hledat podle čísla faktury nebo klienta…" value="${escapeAttr(f.search)}">
+        <input type="text" id="inv-search" class="search-input" placeholder="Hledat podle čísla faktury nebo odběratele…" value="${escapeAttr(f.search)}">
       </div>
       <div class="filter-row">
         <div class="field"><label>Od</label><input type="date" id="inv-from" value="${f.from||''}"></div>
         <div class="field"><label>Do</label><input type="date" id="inv-to" value="${f.to||''}"></div>
-        <div class="field"><label>Klient</label><select id="inv-client">${clientOptions(f.clientId)}</select></div>
+        <div class="field"><label>Odběratel</label><select id="inv-client">${clientOptions(f.clientId)}</select></div>
         <div class="field"><label>Stav</label><select id="inv-status">${statusOptions(f.status)}</select></div>
       </div>
       ${anyFilterActive?`<button type="button" class="filter-clear" data-action="inv-clear-filters">Zrušit filtry</button>`:''}
@@ -933,7 +999,7 @@ function renderInvoiceTable(list, tbodyId){
   return `
   <table>
     <thead><tr>
-      <th>Číslo</th><th>Klient</th><th>Vystaveno</th><th>Splatnost</th><th>Částka</th><th>Stav</th><th>Vytvořil</th><th></th>
+      <th>Číslo</th><th>Odběratel</th><th>Vystaveno</th><th>Splatnost</th><th>Částka</th><th>Stav</th><th>Vytvořil</th><th></th>
     </tr></thead>
     <tbody ${tbodyId?`id="${tbodyId}"`:''}>
       ${list.map(inv=>{
@@ -983,8 +1049,8 @@ function viewInvoiceForm(){
   if(!state.clients.length){
     return `
       <div class="pagehead"><div><h1>${editing?'Upravit fakturu':'Nová faktura'}</h1></div></div>
-      <div class="form-card">${emptyState('Nejdřív přidej klienta','Fakturu potřebuje mít komu poslat — přidej klienta v sekci „Klienti“.')}
-      <div class="formfoot"><button class="btn secondary" data-action="nav" data-view="clients">Přejít na klienty</button></div></div>
+      <div class="form-card">${emptyState('Nejdřív přidej odběratele','Fakturu potřebuje mít komu poslat — přidej odběratele v sekci „Odběratelé“.')}
+      <div class="formfoot"><button class="btn secondary" data-action="nav" data-view="clients">Přejít na odběratele</button></div></div>
     `;
   }
   const selClient = clientById(inv.clientId);
@@ -995,15 +1061,15 @@ function viewInvoiceForm(){
       <div class="field-row">
         <div class="field"><label>Číslo faktury</label><input name="number" value="${inv.number}" required></div>
         <div class="field combo-field">
-          <label>Klient</label>
-          <input type="text" id="client-combo-input" placeholder="Hledat klienta podle názvu, IČO…" autocomplete="off" value="${escapeAttr(selClient?selClient.name:'')}">
+          <label>Odběratel</label>
+          <input type="text" id="client-combo-input" placeholder="Hledat odběratele podle názvu, IČO… (nebo najít v ARES)" autocomplete="off" value="${escapeAttr(selClient?selClient.name:'')}">
           <input type="hidden" name="clientId" id="client-combo-value" value="${inv.clientId||''}">
           <div class="combo-list" id="client-combo-list"></div>
         </div>
       </div>
       <div class="client-detail-box" id="client-detail-box" style="${selClient?'':'display:none;'}">
         <div class="field-row">
-          <div class="field"><label>Adresa klienta</label><input name="clientAddress" id="client-detail-address" value="${escapeAttr(selClient?selClient.address||'':'')}"></div>
+          <div class="field"><label>Adresa odběratele</label><input name="clientAddress" id="client-detail-address" value="${escapeAttr(selClient?selClient.address||'':'')}"></div>
           <div class="field"><label>IČO</label><input name="clientIco" id="client-detail-ico" value="${escapeAttr(selClient?selClient.ico||'':'')}"></div>
         </div>
         <div class="field-row">
@@ -1014,7 +1080,7 @@ function viewInvoiceForm(){
           <div class="field"><label>Telefon</label><input name="clientPhone" id="client-detail-phone" value="${escapeAttr(selClient?selClient.phone||'':'')}"></div>
           <div class="field"></div>
         </div>
-        <p style="font-size:11.5px;color:var(--ink-soft);margin:-8px 0 4px 0;">Úpravy tady se po uložení faktury promítnou i do karty klienta.</p>
+        <p style="font-size:11.5px;color:var(--ink-soft);margin:-8px 0 4px 0;">Úpravy tady se po uložení faktury promítnou i do karty odběratele.</p>
       </div>
       <div class="field-row">
         <div class="field"><label>Datum vystavení</label><input type="date" name="issueDate" value="${inv.issueDate}" required></div>
@@ -1228,16 +1294,16 @@ function buildSpayd(co, inv, total){
   return s;
 }
 
-/* ---------- CLIENTS ---------- */
+/* ---------- CLIENTS (ODBĚRATELÉ) ---------- */
 function viewClients(){
   return `
     <div class="pagehead">
-      <div><h1>Klienti</h1><p class="desc">${state.clients.length} klientů v evidenci. Klikni na klienta pro rovnou vystavení faktury.</p></div>
-      <button class="btn" data-action="new-client">+ Přidat klienta</button>
+      <div><h1>Odběratelé</h1><p class="desc">${state.clients.length} odběratelů v evidenci. Klikni na odběratele pro rovnou vystavení faktury.</p></div>
+      <button class="btn" data-action="new-client">+ Přidat odběratele</button>
     </div>
     ${state.clients.length ? `
     <div class="search-row">
-      <input type="text" id="client-search-input" class="search-input" placeholder="Hledat klienta (název, IČO, email, telefon)…" value="${escapeAttr(state.clientSearch)}">
+      <input type="text" id="client-search-input" class="search-input" placeholder="Hledat odběratele (název, IČO, email, telefon)…" value="${escapeAttr(state.clientSearch)}">
     </div>
     <table>
       <thead><tr><th>Název</th><th>IČO</th><th>Email</th><th>Telefon</th><th></th></tr></thead>
@@ -1255,9 +1321,9 @@ function viewClients(){
               <button class="iconbtn" data-action="delete-client" data-id="${c.id}" title="Smazat">✕</button>
             </td>
           </tr>`;}).join('')}
-        <tr id="clients-empty-row" style="display:none;"><td colspan="5" class="empty">Žádný klient neodpovídá hledání.</td></tr>
+        <tr id="clients-empty-row" style="display:none;"><td colspan="5" class="empty">Žádný odběratel neodpovídá hledání.</td></tr>
       </tbody>
-    </table>` : emptyState('Žádní klienti', 'Přidej prvního klienta, aby ses jim mohl fakturovat.')}
+    </table>` : emptyState('Žádní odběratelé', 'Přidej prvního odběratele, abys mu mohl fakturovat.')}
   `;
 }
 
@@ -1293,20 +1359,26 @@ function viewClientForm(){
   const editing = state.editingClientId ? state.clients.find(c=>c.id===state.editingClientId) : null;
   const c = editing || {name:'',address:'',ico:'',dic:'',email:'',phone:''};
   return `
-    <div class="pagehead"><div><h1>${editing?'Upravit klienta':'Nový klient'}</h1></div></div>
+    <div class="pagehead"><div><h1>${editing?'Upravit odběratele':'Nový odběratel'}</h1></div></div>
     <form id="client-form" class="form-card">
-      <div class="field"><label>Název / jméno</label><input name="name" value="${escapeAttr(c.name)}" required></div>
-      <div class="field"><label>Adresa</label><textarea name="address">${c.address||''}</textarea></div>
+      <div class="field combo-field">
+        <label>Název / jméno</label>
+        <input name="name" id="client-form-name" value="${escapeAttr(c.name)}" autocomplete="off" required>
+        <div class="combo-list" id="client-form-ares-list"></div>
+        <div class="ares-status" id="client-form-ares-status"></div>
+      </div>
+      <div class="field"><label>Adresa</label><textarea name="address" id="client-form-address">${c.address||''}</textarea></div>
       <div class="field-row">
-        <div class="field"><label>IČO</label><input name="ico" value="${escapeAttr(c.ico)}"></div>
-        <div class="field"><label>DIČ</label><input name="dic" value="${escapeAttr(c.dic)}"></div>
+        <div class="field"><label>IČO</label><input name="ico" id="client-form-ico" value="${escapeAttr(c.ico)}" placeholder="Zadej a doplní se z ARES"></div>
+        <div class="field"><label>DIČ</label><input name="dic" id="client-form-dic" value="${escapeAttr(c.dic)}"></div>
       </div>
       <div class="field-row">
         <div class="field"><label>Email</label><input type="email" name="email" value="${escapeAttr(c.email)}"></div>
         <div class="field"><label>Telefon</label><input name="phone" value="${escapeAttr(c.phone)}"></div>
       </div>
+      <p style="font-size:11.5px;color:var(--ink-soft);margin:-6px 0 4px 0;">Napiš název firmy nebo IČO/DIČ — údaje z veřejného rejstříku ARES se doplní automaticky.</p>
       <div class="formfoot">
-        <button type="submit" class="btn">Uložit klienta</button>
+        <button type="submit" class="btn">Uložit odběratele</button>
         <button type="button" class="btn secondary" data-action="nav" data-view="clients">Zrušit</button>
       </div>
       <input type="hidden" name="id" value="${c.id||''}">
@@ -1429,7 +1501,7 @@ function viewSettings(){
     <div class="section-title" style="margin-top:30px;">Zálohování dat</div>
     <div class="form-card">
       <p style="font-size:13px;color:var(--ink-soft);margin-top:0;">
-        Data appky (klienti, faktury, firma) žijí v uložišti napojeném na tuto appku, ne v tomto souboru.
+        Data appky (odběratelé, faktury, firma) žijí v uložišti napojeném na tuto appku, ne v tomto souboru.
         Aby ses nikdy nespoléhal jen na to, doporučujeme si čas od času stáhnout zálohu na vlastní počítač —
         navíc appka sama každý den, kdy něco uložíš, vytvoří automatický záložní snímek (posledních 10 dní).
       </p>
@@ -1487,7 +1559,7 @@ function renderImportPreview(){
       <div class="section-title" style="margin-top:0;">Rozpoznané údaje — zkontroluj před uložením</div>
       <div class="row">
         <div class="col"><div class="k">Dodavatel</div>${escapeHtml((r.company&&r.company.name)||'—')}${!state.company.name?' <span class="badge">uloží se jako moje firma</span>':''}</div>
-        <div class="col"><div class="k">Odběratel</div>${escapeHtml((r.client&&r.client.name)||'—')} ${existingClient?'<span class="badge">existující klient</span>':'<span class="badge">nový klient</span>'}</div>
+        <div class="col"><div class="k">Odběratel</div>${escapeHtml((r.client&&r.client.name)||'—')} ${existingClient?'<span class="badge">existující odběratel</span>':'<span class="badge">nový odběratel</span>'}</div>
       </div>
       <div class="row">
         <div class="col"><div class="k">Číslo faktury</div>${escapeHtml(inv.number||'—')}</div>
@@ -1718,7 +1790,7 @@ async function confirmImport(){
   if(!clientId){
     const c = r.client||{};
     const newClient = {
-      id: uid(), name: c.name || 'Neznámý klient', address: c.address||'',
+      id: uid(), name: c.name || 'Neznámý odběratel', address: c.address||'',
       ico: c.ico||'', dic: c.dic||'', email: c.email||'', phone: c.phone||''
     };
     state.clients.push(newClient);
@@ -1775,6 +1847,7 @@ function afterRender(){
     if(state.clientSearch) filterClientRows(state.clientSearch);
   }
   setupClientCombo();
+  setupClientFormAres();
   setupImportDropzone();
 
   // dashboard filter controls
@@ -1850,6 +1923,100 @@ function afterRender(){
   }
 }
 
+/* ---------- ARES AUTOFILL — formulář „Nový/Upravit odběratel" ---------- */
+function setupClientFormAres(){
+  const nameInput = document.getElementById('client-form-name');
+  const icoInput = document.getElementById('client-form-ico');
+  const dicInput = document.getElementById('client-form-dic');
+  const addressInput = document.getElementById('client-form-address');
+  const list = document.getElementById('client-form-ares-list');
+  const status = document.getElementById('client-form-ares-status');
+  if(!nameInput || !icoInput || !list) return;
+
+  function setStatus(html){ if(status) status.innerHTML = html; }
+
+  function fillFromAres(d){
+    if(!d) return;
+    if(d.name) nameInput.value = d.name;
+    if(d.ico) icoInput.value = d.ico;
+    if(d.dic) dicInput.value = d.dic;
+    if(d.address && addressInput) addressInput.value = d.address;
+    list.classList.remove('open');
+    setStatus(`<span style="color:var(--accent);">✓ Doplněno z ARES</span>`);
+  }
+
+  function renderAresList(items){
+    if(!items.length){
+      list.classList.remove('open');
+      return;
+    }
+    list.innerHTML = `<div class="combo-group-label">Nalezeno v ARES</div>` + items.map((it,i)=>`
+      <div class="combo-item ares-item" data-ares-index="${i}">
+        <div>${escapeHtml(it.name||'—')}</div>
+        <div class="sub">IČO: ${escapeHtml(it.ico||'—')}${it.address?' · '+escapeHtml(it.address):''}</div>
+      </div>
+    `).join('');
+    list._aresItems = items;
+    list.classList.add('open');
+  }
+
+  list.addEventListener('mousedown', (e)=>{
+    const item = e.target.closest('.combo-item[data-ares-index]');
+    if(!item) return;
+    const idx = parseInt(item.getAttribute('data-ares-index'));
+    const d = (list._aresItems||[])[idx];
+    fillFromAres(d);
+  });
+
+  document.addEventListener('click', (e)=>{
+    if(e.target!==nameInput && !list.contains(e.target)) list.classList.remove('open');
+  });
+
+  // hledání podle názvu firmy (debounced)
+  let nameTimer = null;
+  nameInput.addEventListener('input', ()=>{
+    clearTimeout(nameTimer);
+    const q = nameInput.value.trim();
+    if(q.length<3){ list.classList.remove('open'); setStatus(''); return; }
+    setStatus(`<span class="ares-spinner"></span> Hledám v ARES…`);
+    nameTimer = setTimeout(async ()=>{
+      try{
+        const results = await aresSearchByName(q);
+        renderAresList(results);
+        setStatus(results.length ? `Nalezeno ${results.length} shod v ARES — vyber ze seznamu.` : 'V ARES nic nenalezeno, vyplň prosím ručně.');
+      }catch(err){
+        setStatus(`<span style="color:var(--red);">${escapeHtml(err.message||'ARES nelze kontaktovat.')}</span>`);
+      }
+    }, 450);
+  });
+
+  // vyhledání podle IČO (na blur, i po vložení celého čísla)
+  async function lookupIco(){
+    const val = icoInput.value.trim();
+    if(!/^\d{6,9}$/.test(val)) return;
+    setStatus(`<span class="ares-spinner"></span> Hledám IČO ${escapeHtml(val)} v ARES…`);
+    try{
+      const d = await aresLookupByIco(val);
+      fillFromAres(d);
+    }catch(err){
+      setStatus(`<span style="color:var(--red);">${escapeHtml(err.message||'ARES nelze kontaktovat.')}</span>`);
+    }
+  }
+  icoInput.addEventListener('blur', lookupIco);
+  icoInput.addEventListener('keydown', (e)=>{ if(e.key==='Enter'){ e.preventDefault(); lookupIco(); } });
+
+  // vyhledání podle DIČ (na blur) — DIČ se v ČR odvozuje z IČO (CZ + IČO)
+  async function lookupDic(){
+    const val = dicInput.value.trim();
+    if(val.length<8) return;
+    setStatus(`<span class="ares-spinner"></span> Hledám DIČ ${escapeHtml(val)} v ARES…`);
+    const results = await aresSearchByDic(val).catch(()=>[]);
+    if(results.length){ fillFromAres(results[0]); }
+    else { setStatus('V ARES nic nenalezeno pro toto DIČ.'); }
+  }
+  dicInput.addEventListener('blur', lookupDic);
+}
+
 /* ---------- CLIENT COMBO BOX (searchable client picker in invoice form) ---------- */
 function setupClientCombo(){
   const input = document.getElementById('client-combo-input');
@@ -1874,29 +2041,74 @@ function setupClientCombo(){
     if(phone) phone.value = c.phone||'';
   }
 
+  async function createClientFromAres(d){
+    const newClient = { id: uid(), name: d.name||'', address: d.address||'', ico: d.ico||'', dic: d.dic||'', email:'', phone:'' };
+    state.clients.push(newClient);
+    await saveClients();
+    input.value = newClient.name;
+    hidden.value = newClient.id;
+    fillDetailBox(newClient);
+    list.classList.remove('open');
+    // znovu vykreslit combo se sesazenou hodnotou (bez ztráty formuláře)
+    setupClientCombo();
+  }
+
+  let aresTimer = null;
   function renderList(query){
     const q = stripDiacritics(query||'').toLowerCase().trim();
     const matches = state.clients.filter(c=>{
       if(!q) return true;
       return stripDiacritics(`${c.name} ${c.ico||''}`).toLowerCase().includes(q);
     }).slice(0,30);
-    if(!matches.length){
-      list.innerHTML = `<div class="combo-empty">Žádný klient neodpovídá. <span style="text-decoration:underline;cursor:pointer;" data-action="new-client">Přidat nového?</span></div>`;
-    } else {
-      list.innerHTML = matches.map(c=>`
+
+    let html = '';
+    if(matches.length){
+      html += matches.map(c=>`
         <div class="combo-item" data-id="${c.id}">
           <div>${escapeHtml(c.name)}</div>
           ${c.ico?`<div class="sub">IČO: ${escapeHtml(c.ico)}</div>`:''}
         </div>
       `).join('');
+    } else {
+      html += `<div class="combo-empty">Žádný odběratel neodpovídá. <span style="text-decoration:underline;cursor:pointer;" data-action="new-client">Přidat nového?</span></div>`;
     }
+    list.innerHTML = html;
     list.classList.add('open');
+
+    // navíc dohledej v ARES, pokud dotaz vypadá na název firmy
+    clearTimeout(aresTimer);
+    if(q.length>=3){
+      aresTimer = setTimeout(async ()=>{
+        try{
+          const results = await aresSearchByName(query);
+          const existingIcos = new Set(state.clients.map(c=>(c.ico||'').replace(/\s+/g,'')));
+          const fresh = results.filter(r=> r.ico && !existingIcos.has(r.ico));
+          if(fresh.length){
+            list.innerHTML = html + `<div class="combo-group-label">Nalezeno v ARES</div>` + fresh.map((it,i)=>`
+              <div class="combo-item ares-item" data-ares-index="${i}">
+                <div>${escapeHtml(it.name||'—')}</div>
+                <div class="sub">IČO: ${escapeHtml(it.ico||'—')}${it.address?' · '+escapeHtml(it.address):''} · nový odběratel</div>
+              </div>
+            `).join('');
+            list._aresItems = fresh;
+            list.classList.add('open');
+          }
+        }catch(e){ /* ticho — ARES je jen doplněk */ }
+      }, 450);
+    }
   }
 
   input.addEventListener('focus', ()=> renderList(input.value));
   input.addEventListener('input', ()=>{ hidden.value=''; fillDetailBox(null); renderList(input.value); });
-  list.addEventListener('mousedown', (e)=>{
-    const item = e.target.closest('.combo-item');
+  list.addEventListener('mousedown', async (e)=>{
+    const aresItem = e.target.closest('.combo-item[data-ares-index]');
+    if(aresItem){
+      const idx = parseInt(aresItem.getAttribute('data-ares-index'));
+      const d = (list._aresItems||[])[idx];
+      if(d) await createClientFromAres(d);
+      return;
+    }
+    const item = e.target.closest('.combo-item[data-id]');
     if(!item) return;
     const c = clientById(item.getAttribute('data-id'));
     if(c){ input.value = c.name; hidden.value = c.id; fillDetailBox(c); }
@@ -1943,7 +2155,7 @@ document.addEventListener('click', async (e)=>{
   }
   else if(action==='new-client'){ state.view='client-form'; state.editingClientId=null; render(); }
   else if(action==='edit-client'){ state.view='client-form'; state.editingClientId=id; render(); }
-  else if(action==='delete-client'){ if(confirm('Smazat tohoto klienta?')){ state.clients = state.clients.filter(c=>c.id!==id); await saveClients(); render(); } }
+  else if(action==='delete-client'){ if(confirm('Smazat tohoto odběratele?')){ state.clients = state.clients.filter(c=>c.id!==id); await saveClients(); render(); } }
   else if(action==='client-to-invoice'){ state.preselectClientId=id; state.view='invoice-form'; state.editingInvoiceId=null; state.formItems=[]; render(); }
   else if(action==='add-item'){ state.formItems.push({desc:'',qty:1,unit:'ks',price:0,vat:21}); render(); }
   else if(action==='remove-item'){ const idx = parseInt(el.getAttribute('data-index')); state.formItems.splice(idx,1); if(!state.formItems.length) state.formItems.push({desc:'',qty:1,unit:'ks',price:0,vat:21}); render(); }
@@ -2000,7 +2212,7 @@ async function onSubmitInvoice(e){
   const id = fd.get('id');
   const clientId = fd.get('clientId');
   if(!clientId || !clientById(clientId)){
-    alert('Vyber klienta ze seznamu (napiš jeho jméno a klikni na něj v nabídce).');
+    alert('Vyber odběratele ze seznamu (napiš jeho jméno a klikni na něj v nabídce).');
     return;
   }
   // Update the client's own record with any edits made inline on this invoice
