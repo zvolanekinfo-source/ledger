@@ -2466,7 +2466,6 @@ document.addEventListener('focusin', (e) => {
     }
   }
 });/* ---------- AUTOMATICKÉ NAŠEPTÁVÁNÍ ADRES (Nominatim) ---------- */
-let addressDebounceTimer = null;
 
 async function searchAddressSuggestions(query, callback) {
   if (!query || query.length < 3) {
