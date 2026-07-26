@@ -1067,7 +1067,7 @@ function blankInvoice(){
   const preselected = state.preselectClientId && clientById(state.preselectClientId) ? state.preselectClientId : (state.clients[0]?state.clients[0].id:null);
   state.preselectClientId = null;
   return {
-    id:null, number:num, clientId: preselected, supplierId: '__company__', supplier: {name: c.name, ico: c.ico, account: c.account, iban: c.iban, bankName: c.bankName, swift: c.swift, showLogo: c.showLogo, showStamp: c.showStamp, showSignature: c.showSignature, showQr: c.showQr},
+    id:null, number:num, clientId: preselected, supplierId: '__company__', supplier: {name: c.name, ico: c.ico, account: c.account, iban: c.iban, bankName: c.bankName, swift: c.swift, showLogo: c.showLogo, showStamp: c.showStamp, showSignature: c.showSignature, showQr: c.showQr, logo: c.logo, signature: c.signature, stamp: c.stamp},
     issueDate: todayISO(), taxDate: todayISO(), dueDate: addDays(todayISO(), c.defaultDueDays||14),
     variableSymbol: num.replace(/\D/g,''), note: c.defaultNote||'', paid:false, paidDate:null,
     paymentMethod: c.defaultPaymentMethod || 'Bankovním převodem',
@@ -1218,8 +1218,8 @@ function viewInvoicePreview(){
   const status = invoiceStatus(inv);
 
   const showQr = (supplier.showQr!==false) && inv.includeQr!==false;
-  const showStamp = (supplier.showStamp!==false) && inv.includeStamp!==false && !!co.stamp;
-  const showSignature = (supplier.showSignature!==false) && inv.includeSignature!==false && !!co.signature;
+  const showStamp = (supplier.showStamp!==false) && inv.includeStamp!==false && !!supplier.stamp;
+  const showSignature = (supplier.showSignature!==false) && inv.includeSignature!==false && !!supplier.signature;
   const showLogo = (supplier.showLogo!==false) && !!co.logo;
   const spayd = showQr ? buildSpayd(supplier, inv, t.total) : null;
 
@@ -1241,7 +1241,7 @@ function viewInvoicePreview(){
         <div class="inv-body">
         <div class="inv-header">
           <div class="inv-header-left">
-            ${showLogo ? `<img class="inv-logo" src="${co.logo}" alt="Logo">` : `<div class="inv-logo-placeholder">LOGO</div>`}
+            ${showLogo ? `<img class="inv-logo" src="${supplier.logo}" alt="Logo">` : `<div class="inv-logo-placeholder">LOGO</div>`}
             <div>
               <div class="inv-co-name">${escapeHtml(co.name||'Vaše firma')}</div>
               ${co.tagline?`<div class="inv-co-tagline">${escapeHtml(co.tagline)}</div>`:''}
@@ -1316,8 +1316,8 @@ function viewInvoicePreview(){
             <div class="signoff-terms">${co.invoiceTerms?escapeHtml(co.invoiceTerms):''}</div>
             <div class="signbox">
               <div class="sig-stack">
-                ${showSignature?`<img class="sig-img" src="${co.signature}" alt="Podpis">`:''}
-                ${showStamp?`<img class="co-stamp-img" src="${co.stamp}" alt="Razítko">`:''}
+                ${showSignature?`<img class="sig-img" src="${supplier.signature}" alt="Podpis">`:''}
+                ${showStamp?`<img class="co-stamp-img" src="${supplier.stamp}" alt="Razítko">`:''}
               </div>
               <div class="sig-line">Podpis a razítko</div>
             </div>
@@ -1456,6 +1456,20 @@ function brandSlot(field, title, sub, imgAlt){
   `;
 }
 
+function brandSlotSupplier(supplier, field, title, imgAlt){
+  const val = supplier?.[field];
+  return `
+    <div class="brand-slot" style="min-width:120px;">
+      <div class="bs-title">${title}</div>
+      <div class="bs-preview" style="height:60px; overflow:hidden;">${val ? `<img src="${val}" alt="${imgAlt}" style="width:100%; height:100%; object-fit:cover;">` : `<span class="bs-empty" style="font-size:11px;">Zatím nic</span>`}</div>
+      <div class="bs-actions" style="margin-top:6px;">
+        <button type="button" class="btn secondary small" data-action="upload-supplier-branding" data-field="${field}" style="font-size:11px;padding:4px 8px;">${val?'Změnit':'Nahrát'}</button>
+        ${val?`<button type="button" class="btn danger small" data-action="remove-supplier-branding" data-field="${field}" style="font-size:11px;padding:4px 8px;">Smazat</button>`:''}
+      </div>
+    </div>
+  `;
+}
+
 function viewSettings(){
   const co = state.company;
   return `
@@ -1493,6 +1507,16 @@ function viewSettings(){
       <div class="toggle-row"><input type="checkbox" name="showStamp" id="chk-showStamp" value="1" ${co.showStamp?'checked':''}><label for="chk-showStamp">Zobrazovat razítko na fakturách</label></div>
       <div class="toggle-row"><input type="checkbox" name="showSignature" id="chk-showSignature" value="1" ${co.showSignature?'checked':''}><label for="chk-showSignature">Zobrazovat elektronický podpis na fakturách</label></div>
       <div class="toggle-row"><input type="checkbox" name="showQr" id="chk-showQr" value="1" ${co.showQr?'checked':''}><label for="chk-showQr">Zobrazovat QR platbu (vyžaduje vyplněný IBAN)</label></div>
+      
+      <div style="margin-top:16px; padding-top:16px; border-top:1px solid var(--border);">
+        <p style="font-size:12.5px;color:var(--ink-soft);margin-top:0;">Nahraj logo firmy, obrázek svého podpisu a fotku razítka — objeví se na fakturách přesně tak, jak si je nastavíš výše.</p>
+        <div class="brand-grid">
+          ${brandSlot('logo','Logo firmy','Zobrazí se v hlavičce faktury.','Logo firmy')}
+          ${brandSlot('signature','Elektronický podpis','Foto nebo scan podpisu.','Podpis')}
+          ${brandSlot('stamp','Razítko','Foto razítka firmy.','Razítko')}
+        </div>
+        <input type="file" id="branding-file-input" accept="image/*" style="display:none;">
+      </div>
 
       <div class="section-title">Fakturace</div>
       <div class="field-row">
@@ -1505,19 +1529,6 @@ function viewSettings(){
           <select name="defaultPaymentMethod">
             ${['Bankovním převodem','Hotově','Kartou'].map(m=>`<option value="${m}" ${co.defaultPaymentMethod===m?'selected':''}>${m}</option>`).join('')}
           </select>
-        </div>
-      </div>
-      <div class="field"><label>Výchozí poznámka (na fakturu)</label><input name="defaultNote" value="${escapeAttr(co.defaultNote)}"></div>
-      <div class="field"><label>Platební podmínky / patička faktury</label><textarea name="invoiceTerms" style="min-height:70px;">${co.invoiceTerms||''}</textarea></div>
-
-      <div class="formfoot">
-        <button type="submit" class="btn">Uložit nastavení</button>
-      </div>
-    </form>
-
-    <div class="section-title" style="margin-top:30px;">Logo, podpis a razítko</div>
-    <div class="form-card">
-      <p style="font-size:12.5px;color:var(--ink-soft);margin-top:0;">
         Nahraj logo firmy, obrázek svého podpisu a fotku razítka — objeví se na fakturách přesně tak, jak si je nastavíš výše.
       </p>
       <div class="brand-grid">
@@ -1980,7 +1991,12 @@ function afterRender(){
   if(brandingFileInput){
     brandingFileInput.addEventListener('change', ()=>{
       const field = brandingFileInput.getAttribute('data-target-field');
-      if(field && brandingFileInput.files[0]) handleBrandingUpload(field, brandingFileInput.files[0]);
+      const supplierField = state.uploadBrandingSupplierField;
+      if(field && brandingFileInput.files[0]){ 
+        handleBrandingUpload(field, brandingFileInput.files[0]);
+      } else if(supplierField && brandingFileInput.files[0]){
+        handleSupplierBrandingUpload(supplierField, brandingFileInput.files[0]);
+      }
     });
   }
 
@@ -2455,6 +2471,20 @@ document.addEventListener('click', async (e)=>{
     const field = el.getAttribute('data-field');
     if(confirm('Odebrat tento obrázek?')) await removeBrandingImage(field);
   }
+  else if(action==='upload-supplier-branding'){
+    const field = el.getAttribute('data-field');
+    state.uploadBrandingSupplierField = field;
+    const fi = document.getElementById('branding-file-input');
+    if(fi){ fi.value=''; fi.click(); }
+  }
+  else if(action==='remove-supplier-branding'){
+    const field = el.getAttribute('data-field');
+    // This will need special handling - we'll update the modal
+    state.pendingRemoveSupplierBrandingField = field;
+    if(confirm('Odebrat tento obrázek?')) {
+      // Handler będzie v afterRender když je modal otevřen
+    }
+  }
   else if(action==='set-scheme'){
     const scheme = el.getAttribute('data-scheme');
     const field = document.getElementById('invoice-color-scheme');
@@ -2527,7 +2557,10 @@ async function onSubmitInvoice(e){
       showLogo: state.company.showLogo,
       showStamp: state.company.showStamp,
       showSignature: state.company.showSignature,
-      showQr: state.company.showQr
+      showQr: state.company.showQr,
+      logo: state.company.logo,
+      signature: state.company.signature,
+      stamp: state.company.stamp
     };
   } else {
     const s = supplierById(supplierId);
@@ -2585,6 +2618,7 @@ async function onSubmitClient(e){
 // Další firmy
 function openSupplierModal(id){
   const supplier = id ? supplierById(id) : null;
+  state.editingSupplier = id; // Store for branding upload
   const modalHtml = `
     <div class="modal-overlay" id="supplier-modal-overlay">
       <div class="modal-card">
@@ -2624,6 +2658,15 @@ function openSupplierModal(id){
           <div class="toggle-row"><input type="checkbox" name="showSignature" value="1" ${supplier?.showSignature!==false?'checked':''}><label>Zobrazovat podpis</label></div>
           <div class="toggle-row"><input type="checkbox" name="showQr" value="1" ${supplier?.showQr!==false?'checked':''}><label>Zobrazovat QR platbu</label></div>
 
+          <div style="margin-top:16px; padding-top:16px; border-top:1px solid var(--border);">
+            <p style="font-size:12px;color:var(--ink-soft);margin:0 0 12px 0;">Logo, podpis a razítko pro tuto firmu:</p>
+            <div class="brand-grid" style="gap:10px;">
+              ${brandSlotSupplier(supplier, 'logo','Logo','Logo firmy')}
+              ${brandSlotSupplier(supplier, 'signature','Podpis','Podpis')}
+              ${brandSlotSupplier(supplier, 'stamp','Razítko','Razítko')}
+            </div>
+          </div>
+
           <div style="display:flex; gap:10px; margin-top:24px;">
             <button type="submit" class="btn" style="flex:1;">Uložit další firmu</button>
             <button type="button" class="btn secondary" data-action="close-supplier-modal">Zrušit</button>
@@ -2648,6 +2691,7 @@ function openSupplierModal(id){
 
 function closeSupplerModal(){
   const modal = document.getElementById('supplier-modal-overlay');
+  state.editingSupplier = null; // Clear editing state
   if(modal) modal.remove();
 }
 
@@ -2655,6 +2699,7 @@ async function onSubmitSupplier(e){
   e.preventDefault();
   const fd = new FormData(e.target);
   const id = fd.get('id');
+  const existingSupplier = id ? state.suppliers.find(s=>s.id===id) : null;
   const supplier = { 
     id: id || uid(), 
     name: fd.get('name'), 
@@ -2670,7 +2715,10 @@ async function onSubmitSupplier(e){
     showLogo: fd.get('showLogo')==='1',
     showStamp: fd.get('showStamp')==='1',
     showSignature: fd.get('showSignature')==='1',
-    showQr: fd.get('showQr')==='1'
+    showQr: fd.get('showQr')==='1',
+    logo: existingSupplier?.logo || '',
+    signature: existingSupplier?.signature || '',
+    stamp: existingSupplier?.stamp || ''
   };
   if(id){ const idx = state.suppliers.findIndex(s=>s.id===id); state.suppliers[idx]=supplier; }
   else{ state.suppliers.push(supplier); }
@@ -2750,6 +2798,27 @@ async function removeBrandingImage(field){
   state.company[field] = '';
   await saveCompany();
   render();
+}
+
+async function handleSupplierBrandingUpload(field, file){
+  if(!file) return;
+  if(!file.type.startsWith('image/')){ alert('Vyber prosím obrázek (PNG, JPG apod.).'); return; }
+  try{
+    const dataUrl = await resizeImageFile(file, field==='stamp' ? 400 : 480);
+    state.uploadBrandingSupplierField = null;
+    // Najdi editovaného supplieru
+    if(state.editingSupplier){
+      const supplierIndex = state.suppliers.findIndex(s => s.id === state.editingSupplier);
+      if(supplierIndex >= 0){
+        state.suppliers[supplierIndex][field] = dataUrl;
+        await saveSuppliers();
+      }
+    }
+    render();
+  }catch(err){
+    console.error(err);
+    alert('Nahrání se nepovedlo, zkus to prosím znovu.');
+  }
 }
 
 /* ---------- INIT ---------- */
