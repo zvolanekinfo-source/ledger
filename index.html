@@ -132,12 +132,18 @@
   .section-title{font-size:12px;text-transform:uppercase;letter-spacing:1px;color:var(--ink-soft);margin:24px 0 12px 0;border-top:1px solid var(--line);padding-top:18px;}
   .section-title:first-child{border-top:none;padding-top:0;margin-top:0;}
 
-  .items-table{width:100%;border-collapse:collapse;margin-bottom:10px;}
+  .items-table{width:100%;border-collapse:collapse;margin-bottom:10px;table-layout:fixed;}
   .items-table th{font-size:11px;text-transform:uppercase;color:var(--ink-soft);text-align:left;padding:6px 8px;border-bottom:1px solid var(--line);}
   .items-table td{padding:6px 8px;vertical-align:top;}
-  .items-table input,.items-table select{padding:7px 8px;font-size:13.5px;}
-  .items-table .col-desc{width:38%;}
-  .items-table .col-qty,.items-table .col-price,.items-table .col-vat{width:12%;}
+  .items-table input,.items-table select{padding:7px 8px;font-size:13.5px;width:100%;box-sizing:border-box;}
+  .items-table .col-desc{width:30%;}
+  .items-table .col-qty{width:10%;}
+  .items-table .col-unit{width:9%;}
+  .items-table .col-price{width:14%;}
+  .items-table .col-vat{width:11%;}
+  .items-table .col-total{width:17%;}
+  .items-table .col-remove{width:32px;}
+  .items-table-wrap{overflow-x:auto;}
   .totals-box{margin-left:auto;width:260px;font-size:14px;}
   .totals-box .trow{display:flex;justify-content:space-between;padding:5px 0;color:var(--ink-soft);}
   .totals-box .trow.grand{color:var(--ink);font-weight:700;font-size:17px;border-top:1px solid var(--line);margin-top:6px;padding-top:10px;font-family:'IBM Plex Mono',monospace;}
@@ -152,6 +158,7 @@
 
   /* CLIENT COMBO */
   .combo-field{position:relative;}
+  .client-detail-box{background:var(--paper);border:1px solid var(--line);border-radius:6px;padding:16px 18px 4px 18px;margin:-4px 0 18px 0;}
   .combo-list{
     position:absolute;top:100%;left:0;right:0;background:#fff;border:1px solid var(--line);
     border-radius:4px;margin-top:4px;max-height:220px;overflow-y:auto;box-shadow:0 6px 18px rgba(24,36,32,0.1);
@@ -697,6 +704,7 @@ function viewInvoiceForm(){
       <div class="formfoot"><button class="btn secondary" data-action="nav" data-view="clients">Přejít na klienty</button></div></div>
     `;
   }
+  const selClient = clientById(inv.clientId);
   return `
     <div class="pagehead"><div><h1>${editing?'Upravit fakturu':'Nová faktura'}</h1></div></div>
     <form id="invoice-form" class="form-card">
@@ -705,10 +713,25 @@ function viewInvoiceForm(){
         <div class="field"><label>Číslo faktury</label><input name="number" value="${inv.number}" required></div>
         <div class="field combo-field">
           <label>Klient</label>
-          <input type="text" id="client-combo-input" placeholder="Hledat klienta podle názvu, IČO…" autocomplete="off" value="${escapeAttr(clientById(inv.clientId)?clientById(inv.clientId).name:'')}">
+          <input type="text" id="client-combo-input" placeholder="Hledat klienta podle názvu, IČO…" autocomplete="off" value="${escapeAttr(selClient?selClient.name:'')}">
           <input type="hidden" name="clientId" id="client-combo-value" value="${inv.clientId||''}">
           <div class="combo-list" id="client-combo-list"></div>
         </div>
+      </div>
+      <div class="client-detail-box" id="client-detail-box" style="${selClient?'':'display:none;'}">
+        <div class="field-row">
+          <div class="field"><label>Adresa klienta</label><input name="clientAddress" id="client-detail-address" value="${escapeAttr(selClient?selClient.address||'':'')}"></div>
+          <div class="field"><label>IČO</label><input name="clientIco" id="client-detail-ico" value="${escapeAttr(selClient?selClient.ico||'':'')}"></div>
+        </div>
+        <div class="field-row">
+          <div class="field"><label>DIČ</label><input name="clientDic" id="client-detail-dic" value="${escapeAttr(selClient?selClient.dic||'':'')}"></div>
+          <div class="field"><label>Email</label><input name="clientEmail" id="client-detail-email" value="${escapeAttr(selClient?selClient.email||'':'')}"></div>
+        </div>
+        <div class="field-row">
+          <div class="field"><label>Telefon</label><input name="clientPhone" id="client-detail-phone" value="${escapeAttr(selClient?selClient.phone||'':'')}"></div>
+          <div class="field"></div>
+        </div>
+        <p style="font-size:11.5px;color:var(--ink-soft);margin:-8px 0 4px 0;">Úpravy tady se po uložení faktury promítnou i do karty klienta.</p>
       </div>
       <div class="field-row">
         <div class="field"><label>Datum vystavení</label><input type="date" name="issueDate" value="${inv.issueDate}" required></div>
@@ -720,10 +743,12 @@ function viewInvoiceForm(){
       </div>
 
       <div class="section-title">Položky</div>
+      <div class="items-table-wrap">
       <table class="items-table">
-        <thead><tr><th class="col-desc">Popis</th><th>Množství</th><th>Jedn.</th><th class="col-price">Cena/ks</th><th class="col-vat">DPH</th><th class="num">Celkem</th><th></th></tr></thead>
+        <thead><tr><th class="col-desc">Popis</th><th class="col-qty">Množství</th><th class="col-unit">Jedn.</th><th class="col-price">Cena/ks</th><th class="col-vat">DPH</th><th class="col-total num">Celkem</th><th class="col-remove"></th></tr></thead>
         <tbody id="items-body">${renderItemRows()}</tbody>
       </table>
+      </div>
       <button type="button" class="btn secondary small no-print" data-action="add-item">+ Přidat položku</button>
 
       <div class="section-title">Souhrn</div>
@@ -749,11 +774,11 @@ function renderItemRows(){
     return `<tr>
       <td class="col-desc"><input data-field="desc" data-index="${idx}" value="${escapeAttr(it.desc)}" placeholder="Popis položky"></td>
       <td class="col-qty"><input type="number" step="0.01" data-field="qty" data-index="${idx}" value="${it.qty}"></td>
-      <td><input data-field="unit" data-index="${idx}" value="${escapeAttr(it.unit||'ks')}" style="width:60px"></td>
+      <td class="col-unit"><input data-field="unit" data-index="${idx}" value="${escapeAttr(it.unit||'ks')}"></td>
       <td class="col-price"><input type="number" step="0.01" data-field="price" data-index="${idx}" value="${it.price}"></td>
       <td class="col-vat"><select data-field="vat" data-index="${idx}">${VAT_RATES.map(r=>`<option value="${r}" ${r==it.vat?'selected':''}>${r}%</option>`).join('')}</select></td>
-      <td class="num" style="white-space:nowrap;padding-top:14px;">${fmt(lineTotal)} Kč</td>
-      <td><button type="button" class="iconbtn no-print" data-action="remove-item" data-index="${idx}">✕</button></td>
+      <td class="col-total num" style="white-space:nowrap;padding-top:14px;">${fmt(lineTotal)} Kč</td>
+      <td class="col-remove"><button type="button" class="iconbtn no-print" data-action="remove-item" data-index="${idx}">✕</button></td>
     </tr>`;
   }).join('');
 }
@@ -1354,7 +1379,24 @@ function setupClientCombo(){
   const input = document.getElementById('client-combo-input');
   const hidden = document.getElementById('client-combo-value');
   const list = document.getElementById('client-combo-list');
+  const detailBox = document.getElementById('client-detail-box');
   if(!input || !hidden || !list) return;
+
+  function fillDetailBox(c){
+    if(!detailBox) return;
+    if(!c){ detailBox.style.display='none'; return; }
+    detailBox.style.display='';
+    const addr = document.getElementById('client-detail-address');
+    const ico = document.getElementById('client-detail-ico');
+    const dic = document.getElementById('client-detail-dic');
+    const email = document.getElementById('client-detail-email');
+    const phone = document.getElementById('client-detail-phone');
+    if(addr) addr.value = c.address||'';
+    if(ico) ico.value = c.ico||'';
+    if(dic) dic.value = c.dic||'';
+    if(email) email.value = c.email||'';
+    if(phone) phone.value = c.phone||'';
+  }
 
   function renderList(query){
     const q = stripDiacritics(query||'').toLowerCase().trim();
@@ -1376,12 +1418,12 @@ function setupClientCombo(){
   }
 
   input.addEventListener('focus', ()=> renderList(input.value));
-  input.addEventListener('input', ()=>{ hidden.value=''; renderList(input.value); });
+  input.addEventListener('input', ()=>{ hidden.value=''; fillDetailBox(null); renderList(input.value); });
   list.addEventListener('mousedown', (e)=>{
     const item = e.target.closest('.combo-item');
     if(!item) return;
     const c = clientById(item.getAttribute('data-id'));
-    if(c){ input.value = c.name; hidden.value = c.id; }
+    if(c){ input.value = c.name; hidden.value = c.id; fillDetailBox(c); }
     list.classList.remove('open');
   });
   document.addEventListener('click', (e)=>{
@@ -1440,15 +1482,29 @@ async function onSubmitInvoice(e){
   e.preventDefault();
   const fd = new FormData(e.target);
   const id = fd.get('id');
-  if(!fd.get('clientId') || !clientById(fd.get('clientId'))){
+  const clientId = fd.get('clientId');
+  if(!clientId || !clientById(clientId)){
     alert('Vyber klienta ze seznamu (napiš jeho jméno a klikni na něj v nabídce).');
     return;
+  }
+  // Update the client's own record with any edits made inline on this invoice
+  const clientIdx = state.clients.findIndex(c=>c.id===clientId);
+  if(clientIdx > -1){
+    state.clients[clientIdx] = {
+      ...state.clients[clientIdx],
+      address: fd.get('clientAddress') ?? state.clients[clientIdx].address,
+      ico: fd.get('clientIco') ?? state.clients[clientIdx].ico,
+      dic: fd.get('clientDic') ?? state.clients[clientIdx].dic,
+      email: fd.get('clientEmail') ?? state.clients[clientIdx].email,
+      phone: fd.get('clientPhone') ?? state.clients[clientIdx].phone
+    };
+    await saveClients();
   }
   const items = state.formItems.filter(it=> (it.desc||'').trim()!=='' || (it.qty||0)!==0 );
   const invoice = {
     id: id || uid(),
     number: fd.get('number'),
-    clientId: fd.get('clientId'),
+    clientId: clientId,
     issueDate: fd.get('issueDate'),
     dueDate: fd.get('dueDate'),
     taxDate: fd.get('taxDate'),
