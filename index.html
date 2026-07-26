@@ -2345,7 +2345,7 @@ async function removeBrandingImage(field){
     pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
   }
   document.getElementById('app').innerHTML = '<div style="padding:60px;font-family:Inter,sans-serif;color:#5C6B66;">Načítám…</div>';
-  await loadUsers();
+  await loadAll();
   render();
 })();
 /* ---------- ADDRESS AUTOCOMPLETE (Nominatim / OpenStreetMap) ---------- */
@@ -2592,11 +2592,7 @@ if (!window.storage) {
   };
 }
 
-// 🚀 INICIALIZACE APLIKACE
-document.addEventListener('DOMContentLoaded', async () => {
-  await loadAll();
-  render();
-});
+// 🚀 APLIKACE INICIALIZOVÁNA VÝŠE
 </script>
 </body>
 </html>
