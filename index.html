@@ -216,90 +216,89 @@
   .preview-wrap{display:flex;gap:24px;align-items:flex-start;}
   .invoice-sheet{
     background:var(--surface);width:760px;padding:0;border:1px solid var(--line);
-    position:relative;overflow:hidden;border-radius:8px;
-    box-shadow:0 2px 18px rgba(24,36,32,0.06);
+    position:relative;overflow:hidden;border-radius:14px;
+    box-shadow:0 6px 28px rgba(24,36,32,0.06);
     -webkit-print-color-adjust:exact;print-color-adjust:exact;color-adjust:exact;
   }
-  .invoice-sheet .inv-body{padding:40px 48px 48px 48px;}
+  .invoice-sheet .inv-topbar{height:5px;background:var(--inv-accent);}
+  .invoice-sheet .inv-body{padding:6px 52px 48px 52px;}
 
-  /* header band */
+  /* header */
   .invoice-sheet .inv-header{
-    display:flex;justify-content:space-between;align-items:center;gap:20px;
-    background:var(--inv-accent);color:#fff;padding:32px 48px;
+    display:flex;justify-content:space-between;align-items:flex-start;gap:20px;
+    padding-bottom:26px;margin-bottom:26px;border-bottom:1px solid var(--line);
   }
-  .invoice-sheet .inv-header-left{display:flex;align-items:center;gap:16px;min-width:0;}
-  .invoice-sheet .inv-logo{width:56px;height:56px;border-radius:10px;object-fit:cover;background:rgba(255,255,255,0.14);flex-shrink:0;}
+  .invoice-sheet .inv-header-left{display:flex;align-items:center;gap:14px;min-width:0;}
+  .invoice-sheet .inv-logo{width:48px;height:48px;border-radius:11px;object-fit:cover;background:var(--paper);flex-shrink:0;}
   .invoice-sheet .inv-logo-placeholder{
-    width:56px;height:56px;border-radius:10px;background:rgba(255,255,255,0.14);
-    border:1px dashed rgba(255,255,255,0.4);display:flex;align-items:center;justify-content:center;
-    font-size:10px;color:rgba(255,255,255,0.75);text-transform:uppercase;letter-spacing:0.5px;flex-shrink:0;text-align:center;
+    width:48px;height:48px;border-radius:11px;background:var(--paper);
+    border:1px dashed var(--line);display:flex;align-items:center;justify-content:center;
+    font-size:9px;color:var(--ink-soft);text-transform:uppercase;letter-spacing:0.5px;flex-shrink:0;text-align:center;
   }
-  .invoice-sheet .inv-co-name{font-family:'Fraunces',serif;font-size:20px;font-weight:600;color:#fff;line-height:1.25;}
-  .invoice-sheet .inv-co-tagline{font-size:12.5px;color:rgba(255,255,255,0.78);margin-top:3px;}
+  .invoice-sheet .inv-co-name{font-family:'Fraunces',serif;font-size:18px;font-weight:600;color:var(--ink);line-height:1.25;}
+  .invoice-sheet .inv-co-tagline{font-size:12px;color:var(--ink-soft);margin-top:2px;}
   .invoice-sheet .inv-header-right{text-align:right;flex-shrink:0;}
-  .invoice-sheet .inv-doctitle{font-family:'Fraunces',serif;font-size:26px;font-weight:600;color:#fff;letter-spacing:0.5px;}
-  .invoice-sheet .inv-docnum{font-family:'IBM Plex Mono',monospace;color:rgba(255,255,255,0.85);font-size:13px;margin-top:4px;}
+  .invoice-sheet .inv-doctitle{font-family:'Inter',sans-serif;font-size:11.5px;font-weight:700;color:var(--inv-accent);letter-spacing:2.5px;text-transform:uppercase;}
+  .invoice-sheet .inv-docnum{font-family:'Fraunces',serif;color:var(--ink);font-size:21px;font-weight:600;margin-top:6px;}
+  .invoice-sheet .paid-badge{
+    display:inline-block;margin-top:10px;
+    color:var(--inv-accent);background:var(--inv-accent-soft);
+    font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;
+    padding:4px 12px;border-radius:20px;
+  }
 
   /* meta strip under header */
   .invoice-sheet .inv-meta{
-    display:grid;grid-template-columns:repeat(4,1fr);gap:14px;
-    background:var(--inv-accent-soft);padding:16px 48px;
+    display:grid;grid-template-columns:repeat(4,1fr);
+    margin-bottom:30px;
   }
-  .invoice-sheet .inv-meta .k{font-size:10px;text-transform:uppercase;letter-spacing:0.8px;color:var(--inv-accent);opacity:0.8;margin-bottom:3px;font-weight:600;}
+  .invoice-sheet .inv-meta > div{padding:0 16px;border-left:1px solid var(--line);}
+  .invoice-sheet .inv-meta > div:first-child{padding-left:0;border-left:none;}
+  .invoice-sheet .inv-meta .k{font-size:10px;text-transform:uppercase;letter-spacing:0.8px;color:var(--ink-soft);margin-bottom:4px;font-weight:600;}
   .invoice-sheet .inv-meta .v{font-family:'IBM Plex Mono',monospace;font-weight:600;font-size:13px;color:var(--ink);}
 
   /* parties */
-  .invoice-sheet .parties{display:flex;justify-content:space-between;margin:28px 0 26px 0;gap:24px;}
-  .invoice-sheet .party{flex:1;font-size:13.5px;line-height:1.55;background:var(--inv-accent-tint);border:1px solid var(--inv-accent-soft);border-radius:8px;padding:16px 18px;}
-  .invoice-sheet .party .k{font-size:10.5px;text-transform:uppercase;letter-spacing:1px;color:var(--inv-accent);font-weight:700;margin-bottom:8px;}
-  .invoice-sheet .party .nm{font-weight:700;font-size:15px;margin-bottom:3px;color:var(--ink);}
+  .invoice-sheet .parties{display:flex;justify-content:space-between;margin:0 0 30px 0;gap:22px;}
+  .invoice-sheet .party{flex:1;font-size:13px;line-height:1.6;color:var(--ink-soft);border-left:2px solid var(--inv-accent-soft);padding-left:16px;}
+  .invoice-sheet .party .k{font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--inv-accent);font-weight:700;margin-bottom:8px;}
+  .invoice-sheet .party .nm{font-weight:700;font-size:14.5px;margin-bottom:3px;color:var(--ink);}
 
-  .invoice-sheet table.lines{width:100%;border-collapse:collapse;margin-bottom:18px;border-radius:6px;overflow:hidden;}
+  .invoice-sheet table.lines{width:100%;border-collapse:collapse;margin-bottom:22px;}
   .invoice-sheet table.lines thead th{
-    text-align:left;font-size:10.5px;text-transform:uppercase;letter-spacing:0.6px;color:#fff;
-    background:var(--inv-accent);padding:10px 10px;font-weight:600;
+    text-align:left;font-size:10.5px;text-transform:uppercase;letter-spacing:0.6px;color:var(--ink-soft);
+    padding:0 10px 10px 10px;font-weight:600;border-bottom:2px solid var(--inv-accent);
   }
-  .invoice-sheet table.lines th:first-child{border-top-left-radius:6px;}
-  .invoice-sheet table.lines th:last-child{border-top-right-radius:6px;}
-  .invoice-sheet table.lines td{padding:10px 10px;border-bottom:1px solid var(--line);font-size:13.5px;}
-  .invoice-sheet table.lines tbody tr:nth-child(even){background:var(--inv-accent-tint);}
+  .invoice-sheet table.lines td{padding:12px 10px;border-bottom:1px solid var(--line);font-size:13.5px;color:var(--ink);}
   .invoice-sheet table.lines td.num,.invoice-sheet table.lines th.num{text-align:right;font-family:'IBM Plex Mono',monospace;}
 
   .invoice-sheet .bottom{display:flex;justify-content:space-between;align-items:flex-start;margin-top:8px;gap:24px;}
-  .invoice-sheet .paybox{flex:1;font-size:12.5px;color:var(--ink-soft);background:var(--paper);border:1px solid var(--line);border-radius:8px;padding:16px 18px;}
-  .invoice-sheet .paybox .k{font-size:10.5px;text-transform:uppercase;letter-spacing:0.8px;color:var(--inv-accent);font-weight:700;margin-bottom:8px;}
-  .invoice-sheet .paybox .prow{display:flex;justify-content:space-between;padding:3px 0;gap:10px;}
-  .invoice-sheet .paybox .prow span:last-child{font-family:'IBM Plex Mono',monospace;color:var(--ink);}
-  .invoice-sheet .qrbox{text-align:center;font-size:11px;color:var(--ink-soft);flex-shrink:0;}
-  .invoice-sheet .qrbox .qrimg{border:1px solid var(--line);padding:8px;background:#fff;display:inline-block;margin-bottom:6px;border-radius:6px;}
-  .invoice-sheet .totals{width:250px;flex-shrink:0;}
-  .invoice-sheet .totals .trow{display:flex;justify-content:space-between;font-size:13.5px;padding:5px 0;color:var(--ink-soft);}
+  .invoice-sheet .paybox{flex:1;font-size:12.5px;color:var(--ink-soft);}
+  .invoice-sheet .paybox .k{font-size:10px;text-transform:uppercase;letter-spacing:0.8px;color:var(--ink-soft);font-weight:700;margin-bottom:10px;}
+  .invoice-sheet .paybox .prow{display:flex;justify-content:space-between;padding:4px 0;gap:10px;}
+  .invoice-sheet .paybox .prow span:last-child{font-family:'IBM Plex Mono',monospace;color:var(--ink);font-weight:500;}
+  .invoice-sheet .qrbox{text-align:center;font-size:10.5px;color:var(--ink-soft);flex-shrink:0;}
+  .invoice-sheet .qrbox .qrimg{border:1px solid var(--line);padding:8px;background:#fff;display:inline-block;margin-bottom:6px;border-radius:8px;}
+  .invoice-sheet .totals{width:230px;flex-shrink:0;}
+  .invoice-sheet .totals .trow{display:flex;justify-content:space-between;font-size:13px;padding:5px 0;color:var(--ink-soft);}
   .invoice-sheet .totals .trow.grand{
-    font-family:'IBM Plex Mono',monospace;font-size:19px;font-weight:700;color:#fff;
-    background:var(--inv-accent);border-radius:6px;margin-top:8px;padding:12px 14px;
+    font-family:'IBM Plex Mono',monospace;font-size:19px;font-weight:700;color:var(--inv-accent);
+    border-top:2px solid var(--inv-accent);margin-top:8px;padding-top:12px;
   }
-  .invoice-sheet .note{margin-top:22px;font-size:12px;color:var(--ink-soft);border-top:1px solid var(--line);padding-top:14px;white-space:pre-wrap;}
+  .invoice-sheet .note{margin-top:24px;font-size:12px;color:var(--ink-soft);border-top:1px solid var(--line);padding-top:16px;white-space:pre-wrap;}
 
   /* signature / stamp row */
-  .invoice-sheet .signoff{display:flex;justify-content:space-between;align-items:flex-end;margin-top:34px;gap:24px;}
+  .invoice-sheet .signoff{display:flex;justify-content:space-between;align-items:flex-end;margin-top:36px;gap:24px;}
   .invoice-sheet .signoff-terms{flex:1;font-size:11px;color:var(--ink-soft);line-height:1.5;white-space:pre-wrap;}
-  .invoice-sheet .signbox{width:210px;flex-shrink:0;text-align:center;position:relative;min-height:92px;}
+  .invoice-sheet .signbox{width:200px;flex-shrink:0;text-align:center;position:relative;min-height:92px;}
   .invoice-sheet .signbox .sig-stack{position:relative;height:60px;display:flex;align-items:flex-end;justify-content:center;}
   .invoice-sheet .signbox img.sig-img{max-height:56px;max-width:180px;object-fit:contain;position:relative;z-index:2;}
   .invoice-sheet .signbox img.co-stamp-img{
     max-height:82px;max-width:120px;object-fit:contain;position:absolute;left:50%;bottom:-6px;
-    transform:translateX(-50%) rotate(-6deg);opacity:0.85;z-index:1;mix-blend-mode:multiply;
+    transform:translateX(-50%) rotate(-6deg);opacity:0.8;z-index:1;mix-blend-mode:multiply;
   }
-  .invoice-sheet .signbox .sig-line{border-top:1px solid var(--ink);margin-top:6px;padding-top:6px;font-size:10.5px;color:var(--ink-soft);text-transform:uppercase;letter-spacing:0.5px;}
+  .invoice-sheet .signbox .sig-line{border-top:1px solid var(--line);margin-top:6px;padding-top:6px;font-size:10px;color:var(--ink-soft);text-transform:uppercase;letter-spacing:0.5px;}
 
-  .invoice-sheet .paid-ribbon{
-    position:absolute;top:250px;right:48px;z-index:5;
-    border:3px solid var(--inv-accent);color:var(--inv-accent);background:rgba(255,255,255,0.9);
-    font-family:'Fraunces',serif;font-weight:700;font-size:24px;
-    padding:7px 16px;border-radius:6px;transform:rotate(-9deg);
-    letter-spacing:2px;opacity:0.9;
-  }
-  .invoice-sheet .inv-footer{margin-top:26px;padding-top:14px;border-top:1px solid var(--line);display:flex;justify-content:space-between;font-size:10.5px;color:var(--ink-soft);}
+  .invoice-sheet .inv-footer{margin-top:28px;padding-top:16px;border-top:1px solid var(--line);display:flex;justify-content:space-between;font-size:10.5px;color:var(--ink-soft);}
 
   .preview-side{width:220px;display:flex;flex-direction:column;gap:8px;}
 
@@ -1128,9 +1127,9 @@ function viewInvoicePreview(){
     </div>
     <div class="preview-wrap">
       <div class="invoice-sheet" id="invoice-sheet" style="${sheetStyle}">
-        ${inv.paid ? `<div class="paid-ribbon">ZAPLACENO</div>` : ''}
+        <div class="inv-topbar"></div>
 
-        <div class="inv-header">
+        <div class="inv-header" style="padding:0 52px;margin-top:32px;">
           <div class="inv-header-left">
             ${showLogo ? `<img class="inv-logo" src="${co.logo}" alt="Logo">` : `<div class="inv-logo-placeholder">LOGO</div>`}
             <div>
@@ -1139,12 +1138,13 @@ function viewInvoicePreview(){
             </div>
           </div>
           <div class="inv-header-right">
-            <div class="inv-doctitle">FAKTURA</div>
-            <div class="inv-docnum">č. ${escapeHtml(inv.number)}</div>
+            <div class="inv-doctitle">Faktura</div>
+            <div class="inv-docnum">${escapeHtml(inv.number)}</div>
+            ${inv.paid ? `<div class="paid-badge">Zaplaceno</div>` : ''}
           </div>
         </div>
 
-        <div class="inv-meta">
+        <div class="inv-meta" style="padding:22px 52px 0 52px;">
           <div><div class="k">Vystaveno</div><div class="v">${inv.issueDate||''}</div></div>
           <div><div class="k">Splatnost</div><div class="v">${inv.dueDate||''}</div></div>
           <div><div class="k">Zd. plnění</div><div class="v">${inv.taxDate||''}</div></div>
