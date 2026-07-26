@@ -1,248 +1,835 @@
 <!DOCTYPE html>
 <html lang="cs">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Ledger — fakturační kniha</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-<style>
-  :root{
-    --ink:#182420;
-    --ink-soft:#5C6B66;
-    --paper:#EEF0EA;
-    --surface:#FFFFFF;
-    --line:#D7D9CF;
-    --accent:#1F5C4D;
-    --accent-soft:#DCE8E2;
-    --amber:#B8802B;
-    --amber-soft:#F3E6CD;
-    --red:#AE4530;
-    --red-soft:#F3DCD4;
-  }
-  *{box-sizing:border-box;}
-  html,body{margin:0;padding:0;}
-  body{
-    background:var(--paper);
-    color:var(--ink);
-    font-family:'Inter',sans-serif;
-    min-height:100vh;
-  }
-  .num{font-family:'IBM Plex Mono',monospace;}
-  h1,h2,h3,.display{font-family:'Fraunces',serif;}
-  button{font-family:inherit;cursor:pointer;}
-  input,select,textarea{font-family:inherit;}
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Ledger — fakturační kniha</title>
+  
+  <!-- Supabase Library -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  
+  <!-- Fonts & Helpers -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 
-  #app{display:flex;min-height:100vh;}
+  <style>
+    :root{
+      --ink:#182420;
+      --ink-soft:#5C6B66;
+      --paper:#EEF0EA;
+      --surface:#FFFFFF;
+      --line:#D7D9CF;
+      --accent:#1F5C4D;
+      --accent-soft:#DCE8E2;
+      --amber:#B8802B;
+      --amber-soft:#F3E6CD;
+      --red:#AE4530;
+      --red-soft:#F3DCD4;
+    }
+    *{box-sizing:border-box;}
+    html,body{margin:0;padding:0;}
+    body{
+      background:var(--paper);
+      color:var(--ink);
+      font-family:'Inter',sans-serif;
+      min-height:100vh;
+    }
+    .num{font-family:'IBM Plex Mono',monospace;}
+    h1,h2,h3,.display{font-family:'Fraunces',serif;}
+    button{font-family:inherit;cursor:pointer;}
+    input,select,textarea{font-family:inherit;}
 
-  /* SIDEBAR */
-  .sidebar{
-    width:220px;
-    flex-shrink:0;
-    background:var(--ink);
-    color:#EDEFEA;
-    display:flex;
-    flex-direction:column;
-    padding:24px 0;
-  }
-  .brand{
-    padding:0 22px 20px 22px;
-    border-bottom:1px solid rgba(255,255,255,0.12);
-    margin-bottom:16px;
-  }
-  .brand .display{font-size:22px;font-weight:600;letter-spacing:0.3px;color:#fff;}
-  .brand .sub{font-size:11px;color:#9BAAA3;text-transform:uppercase;letter-spacing:1.5px;margin-top:2px;}
-  .navitem{
-    display:flex;align-items:center;gap:10px;
-    padding:11px 22px;
-    font-size:14px;
-    color:#C9D2CC;
-    border-left:3px solid transparent;
-    transition:background .15s;
-  }
-  .navitem:hover{background:rgba(255,255,255,0.05);}
-  .navitem.active{
-    background:rgba(255,255,255,0.07);
-    color:#fff;
-    border-left:3px solid var(--accent-soft);
-  }
-  .navitem .n{font-family:'IBM Plex Mono',monospace;font-size:11px;color:#7C8B84;width:18px;}
-  .sidebar-foot{margin-top:auto;padding:16px 22px 0 22px;font-size:11px;color:#647069;border-top:1px solid rgba(255,255,255,0.1);}
+    #app{display:flex;min-height:100vh;}
 
-  /* MAIN */
-  .main{flex:1;padding:36px 44px;max-width:1180px;}
-  .pagehead{display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:28px;}
-  .pagehead h1{font-size:28px;margin:0 0 4px 0;font-weight:600;}
-  .pagehead .desc{color:var(--ink-soft);font-size:14px;margin:0;}
-  .btn{
-    border:1px solid var(--ink);
-    background:var(--ink);
-    color:#fff;
-    padding:10px 18px;
-    border-radius:3px;
-    font-size:14px;
-    font-weight:500;
-  }
-  .btn:hover{background:#0f1815;}
-  .btn.secondary{background:transparent;color:var(--ink);border:1px solid var(--line);}
-  .btn.secondary:hover{background:#fff;}
-  .btn.danger{background:transparent;color:var(--red);border:1px solid var(--red-soft);}
-  .btn.danger:hover{background:var(--red-soft);}
-  .btn.small{padding:6px 12px;font-size:12.5px;}
+    /* SIDEBAR */
+    .sidebar{
+      width:220px;
+      flex-shrink:0;
+      background:var(--ink);
+      color:#EDEFEA;
+      display:flex;
+      flex-direction:column;
+      padding:24px 0;
+    }
+    .brand{
+      padding:0 22px 20px 22px;
+      border-bottom:1px solid rgba(255,255,255,0.12);
+      margin-bottom:16px;
+    }
+    .brand .display{font-size:22px;font-weight:600;letter-spacing:0.3px;color:#fff;}
+    .brand .sub{font-size:11px;color:#9BAAA3;text-transform:uppercase;letter-spacing:1.5px;margin-top:2px;}
+    .navitem{
+      display:flex;align-items:center;gap:10px;
+      padding:11px 22px;
+      font-size:14px;
+      color:#C9D2CC;
+      border-left:3px solid transparent;
+      transition:background .15s;
+      cursor:pointer;
+    }
+    .navitem:hover{background:rgba(255,255,255,0.05);}
+    .navitem.active{
+      background:rgba(255,255,255,0.07);
+      color:#fff;
+      border-left:3px solid var(--accent-soft);
+    }
+    .navitem .n{font-family:'IBM Plex Mono',monospace;font-size:11px;color:#7C8B84;width:18px;}
+    .sidebar-foot{margin-top:auto;padding:16px 22px 0 22px;font-size:11px;color:#647069;border-top:1px solid rgba(255,255,255,0.1);}
 
-  /* CARDS */
-  .cards{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:30px;}
-  .card{background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:16px 18px;}
-  .card .label{font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--ink-soft);margin-bottom:8px;}
-  .card .value{font-family:'IBM Plex Mono',monospace;font-size:22px;font-weight:600;}
-  .card .value.amber{color:var(--amber);}
-  .card .value.red{color:var(--red);}
-  .card .value.accent{color:var(--accent);}
+    /* MAIN */
+    .main{flex:1;padding:36px 44px;max-width:1180px;}
+    .pagehead{display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:28px;}
+    .pagehead h1{font-size:28px;margin:0 0 4px 0;font-weight:600;}
+    .pagehead .desc{color:var(--ink-soft);font-size:14px;margin:0;}
+    .btn{
+      border:1px solid var(--ink);
+      background:var(--ink);
+      color:#fff;
+      padding:10px 18px;
+      border-radius:3px;
+      font-size:14px;
+      font-weight:500;
+    }
+    .btn:hover{background:#0f1815;}
+    .btn.secondary{background:transparent;color:var(--ink);border:1px solid var(--line);}
+    .btn.secondary:hover{background:#fff;}
+    .btn.danger{background:transparent;color:var(--red);border:1px solid var(--red-soft);}
+    .btn.danger:hover{background:var(--red-soft);}
+    .btn.small{padding:6px 12px;font-size:12.5px;}
 
-  /* TABLE */
-  table{width:100%;border-collapse:collapse;background:var(--surface);border:1px solid var(--line);border-radius:6px;overflow:hidden;}
-  thead th{
-    text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:0.8px;
-    color:var(--ink-soft);padding:12px 16px;border-bottom:1px solid var(--line);font-weight:600;
-  }
-  tbody td{padding:13px 16px;border-bottom:1px solid var(--line);font-size:14px;vertical-align:middle;}
-  tbody tr:last-child td{border-bottom:none;}
-  tbody tr:hover{background:#FAFAF6;}
-  .rowlink{cursor:pointer;}
-  .empty{padding:50px 20px;text-align:center;color:var(--ink-soft);}
-  .empty .display{font-size:18px;color:var(--ink);margin-bottom:6px;}
+    /* CARDS */
+    .cards{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:30px;}
+    .card{background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:16px 18px;}
+    .card .label{font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--ink-soft);margin-bottom:8px;}
+    .card .value{font-family:'IBM Plex Mono',monospace;font-size:22px;font-weight:600;}
+    .card .value.amber{color:var(--amber);}
+    .card .value.red{color:var(--red);}
+    .card .value.accent{color:var(--accent);}
 
-  .pill{display:inline-block;padding:3px 10px;border-radius:20px;font-size:11.5px;font-weight:600;letter-spacing:0.2px;}
-  .pill.paid{background:var(--accent-soft);color:var(--accent);}
-  .pill.pending{background:var(--amber-soft);color:var(--amber);}
-  .pill.overdue{background:var(--red-soft);color:var(--red);}
+    /* TABLE */
+    table{width:100%;border-collapse:collapse;background:var(--surface);border:1px solid var(--line);border-radius:6px;overflow:hidden;}
+    thead th{
+      text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:0.8px;
+      color:var(--ink-soft);padding:12px 16px;border-bottom:1px solid var(--line);font-weight:600;
+    }
+    tbody td{padding:13px 16px;border-bottom:1px solid var(--line);font-size:14px;vertical-align:middle;}
+    tbody tr:last-child td{border-bottom:none;}
+    tbody tr:hover{background:#FAFAF6;}
+    .rowlink{cursor:pointer;}
+    .empty{padding:50px 20px;text-align:center;color:var(--ink-soft);}
+    .empty .display{font-size:18px;color:var(--ink);margin-bottom:6px;}
 
-  /* FORMS */
-  .form-card{background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:26px 28px;max-width:840px;}
-  .field-row{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:14px;}
-  .field{margin-bottom:14px;}
-  .field label{display:block;font-size:12px;color:var(--ink-soft);margin-bottom:5px;font-weight:500;}
-  .field input,.field select,.field textarea{
-    width:100%;padding:9px 11px;border:1px solid var(--line);border-radius:4px;font-size:14px;background:#fff;color:var(--ink);
-  }
-  .field input:focus,.field select:focus,.field textarea:focus{outline:none;border-color:var(--accent);}
-  .field textarea{resize:vertical;min-height:60px;}
-  .section-title{font-size:12px;text-transform:uppercase;letter-spacing:1px;color:var(--ink-soft);margin:24px 0 12px 0;border-top:1px solid var(--line);padding-top:18px;}
-  .section-title:first-child{border-top:none;padding-top:0;margin-top:0;}
+    .pill{display:inline-block;padding:3px 10px;border-radius:20px;font-size:11.5px;font-weight:600;letter-spacing:0.2px;}
+    .pill.paid{background:var(--accent-soft);color:var(--accent);}
+    .pill.pending{background:var(--amber-soft);color:var(--amber);}
+    .pill.overdue{background:var(--red-soft);color:var(--red);}
 
-  .items-table{width:100%;border-collapse:collapse;margin-bottom:10px;}
-  .items-table th{font-size:11px;text-transform:uppercase;color:var(--ink-soft);text-align:left;padding:6px 8px;border-bottom:1px solid var(--line);}
-  .items-table td{padding:6px 8px;vertical-align:top;}
-  .items-table input,.items-table select{padding:7px 8px;font-size:13.5px;}
-  .items-table .col-desc{width:38%;}
-  .items-table .col-qty,.items-table .col-price,.items-table .col-vat{width:12%;}
-  .totals-box{margin-left:auto;width:260px;font-size:14px;}
-  .totals-box .trow{display:flex;justify-content:space-between;padding:5px 0;color:var(--ink-soft);}
-  .totals-box .trow.grand{color:var(--ink);font-weight:700;font-size:17px;border-top:1px solid var(--line);margin-top:6px;padding-top:10px;font-family:'IBM Plex Mono',monospace;}
-  .formfoot{display:flex;gap:10px;margin-top:22px;align-items:center;}
-  .btn-link{background:none;border:none;color:var(--ink-soft);text-decoration:underline;font-size:14px;padding:10px 4px;}
-  .btn-link:hover{color:var(--ink);}
+    /* FORMS */
+    .form-card{background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:26px 28px;max-width:840px;}
+    .field-row{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:14px;}
+    .field{margin-bottom:14px;}
+    .field label{display:block;font-size:12px;color:var(--ink-soft);margin-bottom:5px;font-weight:500;}
+    .field input,.field select,.field textarea{
+      width:100%;padding:9px 11px;border:1px solid var(--line);border-radius:4px;font-size:14px;background:#fff;color:var(--ink);
+    }
+    .field input:focus,.field select:focus,.field textarea:focus{outline:none;border-color:var(--accent);}
+    .field textarea{resize:vertical;min-height:60px;}
+    .section-title{font-size:12px;text-transform:uppercase;letter-spacing:1px;color:var(--ink-soft);margin:24px 0 12px 0;border-top:1px solid var(--line);padding-top:18px;}
+    .section-title:first-child{border-top:none;padding-top:0;margin-top:0;}
 
-  /* SEARCH */
-  .search-row{margin-bottom:16px;}
-  .search-input{width:100%;max-width:340px;padding:9px 12px;border:1px solid var(--line);border-radius:4px;font-size:14px;background:#fff;}
-  .search-input:focus{outline:none;border-color:var(--accent);}
+    .items-table{width:100%;border-collapse:collapse;margin-bottom:10px;}
+    .items-table th{font-size:11px;text-transform:uppercase;color:var(--ink-soft);text-align:left;padding:6px 8px;border-bottom:1px solid var(--line);}
+    .items-table td{padding:6px 8px;vertical-align:top;}
+    .items-table input,.items-table select{padding:7px 8px;font-size:13.5px;}
+    .items-table .col-desc{width:38%;}
+    .items-table .col-qty,.items-table .col-price,.items-table .col-vat{width:12%;}
+    .totals-box{margin-left:auto;width:260px;font-size:14px;}
+    .totals-box .trow{display:flex;justify-content:space-between;padding:5px 0;color:var(--ink-soft);}
+    .totals-box .trow.grand{color:var(--ink);font-weight:700;font-size:17px;border-top:1px solid var(--line);margin-top:6px;padding-top:10px;font-family:'IBM Plex Mono',monospace;}
+    .formfoot{display:flex;gap:10px;margin-top:22px;align-items:center;}
 
-  /* CLIENT COMBO */
-  .combo-field{position:relative;}
-  .combo-list{
-    position:absolute;top:100%;left:0;right:0;background:#fff;border:1px solid var(--line);
-    border-radius:4px;margin-top:4px;max-height:220px;overflow-y:auto;box-shadow:0 6px 18px rgba(24,36,32,0.1);
-    z-index:20;display:none;
-  }
-  .combo-list.open{display:block;}
-  .combo-item{padding:9px 12px;font-size:13.5px;cursor:pointer;}
-  .combo-item:hover,.combo-item.hl{background:var(--accent-soft);}
-  .combo-item .sub{font-size:11.5px;color:var(--ink-soft);}
-  .combo-empty{padding:12px;font-size:13px;color:var(--ink-soft);}
+    /* INVOICE PREVIEW */
+    .preview-wrap{display:flex;gap:24px;align-items:flex-start;}
+    .invoice-sheet{
+      background:var(--surface);width:720px;padding:48px 52px;border:1px solid var(--line);
+      position:relative;overflow:hidden;border-radius:2px;
+      box-shadow:0 2px 18px rgba(24,36,32,0.06);
+    }
+    .invoice-sheet .top{display:flex;justify-content:space-between;margin-bottom:36px;}
+    .invoice-sheet .doctitle{font-size:26px;font-weight:600;}
+    .invoice-sheet .docnum{font-family:'IBM Plex Mono',monospace;color:var(--ink-soft);font-size:13px;margin-top:4px;}
+    .invoice-sheet .parties{display:flex;justify-content:space-between;margin-bottom:30px;gap:30px;}
+    .invoice-sheet .party{flex:1;font-size:13.5px;line-height:1.55;}
+    .invoice-sheet .party .k{font-size:10.5px;text-transform:uppercase;letter-spacing:1px;color:var(--ink-soft);margin-bottom:6px;}
+    .invoice-sheet .party .nm{font-weight:600;font-size:15px;margin-bottom:2px;}
+    .invoice-sheet .meta{display:flex;gap:28px;margin-bottom:26px;font-size:13px;}
+    .invoice-sheet .meta div .k{color:var(--ink-soft);font-size:10.5px;text-transform:uppercase;letter-spacing:1px;margin-bottom:3px;}
+    .invoice-sheet .meta div .v{font-family:'IBM Plex Mono',monospace;font-weight:600;}
+    .invoice-sheet table.lines{width:100%;border-collapse:collapse;margin-bottom:18px;}
+    .invoice-sheet table.lines th{text-align:left;font-size:10.5px;text-transform:uppercase;letter-spacing:0.6px;color:var(--ink-soft);border-bottom:1px solid var(--ink);padding:0 8px 8px 0;}
+    .invoice-sheet table.lines td{padding:9px 8px 9px 0;border-bottom:1px solid var(--line);font-size:13.5px;}
+    .invoice-sheet table.lines td.num,.invoice-sheet table.lines th.num{text-align:right;font-family:'IBM Plex Mono',monospace;}
+    .invoice-sheet .bottom{display:flex;justify-content:space-between;align-items:flex-start;margin-top:22px;}
+    .invoice-sheet .qrbox{text-align:center;font-size:11px;color:var(--ink-soft);}
+    .invoice-sheet .qrbox .qrimg{border:1px solid var(--line);padding:8px;background:#fff;display:inline-block;margin-bottom:6px;}
+    .invoice-sheet .totals{width:260px;}
+    .invoice-sheet .totals .trow{display:flex;justify-content:space-between;font-size:13.5px;padding:4px 0;color:var(--ink-soft);}
+    .invoice-sheet .totals .trow.grand{font-family:'IBM Plex Mono',monospace;font-size:20px;font-weight:700;color:var(--ink);border-top:1px solid var(--ink);margin-top:6px;padding-top:10px;}
+    .stamp{
+      position:absolute;top:120px;right:60px;
+      border:3px solid var(--accent);color:var(--accent);
+      font-family:'Fraunces',serif;font-weight:700;font-size:26px;
+      padding:8px 18px;border-radius:6px;transform:rotate(-9deg);
+      letter-spacing:2px;opacity:0.85;
+    }
+    .preview-side{width:220px;display:flex;flex-direction:column;gap:8px;}
 
-  /* INVOICE IMPORT */
-  .dropzone{
-    border:2px dashed var(--line);border-radius:8px;padding:40px 24px;text-align:center;
-    color:var(--ink-soft);font-size:14px;cursor:pointer;transition:border-color .15s,background .15s;
-  }
-  .dropzone:hover,.dropzone.drag{border-color:var(--accent);background:var(--accent-soft);}
-  .dropzone .display{font-size:17px;color:var(--ink);margin-bottom:6px;}
-  .import-status{margin-top:16px;font-size:14px;color:var(--ink-soft);display:flex;align-items:center;gap:8px;}
-  .spinner{width:14px;height:14px;border:2px solid var(--line);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite;}
-  @keyframes spin{to{transform:rotate(360deg);}}
-  .import-error{background:var(--red-soft);color:var(--red);font-size:13.5px;padding:10px 14px;border-radius:4px;margin-top:14px;}
-  .import-preview{margin-top:22px;border-top:1px solid var(--line);padding-top:20px;}
-  .import-preview .row{display:flex;gap:24px;margin-bottom:14px;font-size:13.5px;}
-  .import-preview .col{flex:1;}
-  .import-preview .k{font-size:10.5px;text-transform:uppercase;letter-spacing:1px;color:var(--ink-soft);margin-bottom:4px;}
-  .import-preview .badge{display:inline-block;font-size:11px;padding:2px 8px;border-radius:10px;background:var(--accent-soft);color:var(--accent);margin-left:6px;}
-  .iconbtn{background:transparent;border:none;color:var(--ink-soft);font-size:13px;padding:4px 6px;}
-  .iconbtn:hover{color:var(--red);}
-  .actions-cell{display:flex;gap:8px;}
-
-  /* INVOICE PREVIEW */
-  .preview-wrap{display:flex;gap:24px;align-items:flex-start;}
-  .invoice-sheet{
-    background:var(--surface);width:720px;padding:48px 52px;border:1px solid var(--line);
-    position:relative;overflow:hidden;border-radius:2px;
-    box-shadow:0 2px 18px rgba(24,36,32,0.06);
-  }
-  .invoice-sheet .top{display:flex;justify-content:space-between;margin-bottom:36px;}
-  .invoice-sheet .doctitle{font-size:26px;font-weight:600;}
-  .invoice-sheet .docnum{font-family:'IBM Plex Mono',monospace;color:var(--ink-soft);font-size:13px;margin-top:4px;}
-  .invoice-sheet .parties{display:flex;justify-content:space-between;margin-bottom:30px;gap:30px;}
-  .invoice-sheet .party{flex:1;font-size:13.5px;line-height:1.55;}
-  .invoice-sheet .party .k{font-size:10.5px;text-transform:uppercase;letter-spacing:1px;color:var(--ink-soft);margin-bottom:6px;}
-  .invoice-sheet .party .nm{font-weight:600;font-size:15px;margin-bottom:2px;}
-  .invoice-sheet .meta{display:flex;gap:28px;margin-bottom:26px;font-size:13px;}
-  .invoice-sheet .meta div .k{color:var(--ink-soft);font-size:10.5px;text-transform:uppercase;letter-spacing:1px;margin-bottom:3px;}
-  .invoice-sheet .meta div .v{font-family:'IBM Plex Mono',monospace;font-weight:600;}
-  .invoice-sheet table.lines{width:100%;border-collapse:collapse;margin-bottom:18px;}
-  .invoice-sheet table.lines th{text-align:left;font-size:10.5px;text-transform:uppercase;letter-spacing:0.6px;color:var(--ink-soft);border-bottom:1px solid var(--ink);padding:0 8px 8px 0;}
-  .invoice-sheet table.lines td{padding:9px 8px 9px 0;border-bottom:1px solid var(--line);font-size:13.5px;}
-  .invoice-sheet table.lines td.num,.invoice-sheet table.lines th.num{text-align:right;font-family:'IBM Plex Mono',monospace;}
-  .invoice-sheet .bottom{display:flex;justify-content:space-between;align-items:flex-start;margin-top:22px;}
-  .invoice-sheet .qrbox{text-align:center;font-size:11px;color:var(--ink-soft);}
-  .invoice-sheet .qrbox .qrimg{border:1px solid var(--line);padding:8px;background:#fff;display:inline-block;margin-bottom:6px;}
-  .invoice-sheet .totals{width:260px;}
-  .invoice-sheet .totals .trow{display:flex;justify-content:space-between;font-size:13.5px;padding:4px 0;color:var(--ink-soft);}
-  .invoice-sheet .totals .trow.grand{font-family:'IBM Plex Mono',monospace;font-size:20px;font-weight:700;color:var(--ink);border-top:1px solid var(--ink);margin-top:6px;padding-top:10px;}
-  .invoice-sheet .note{margin-top:26px;font-size:12px;color:var(--ink-soft);border-top:1px solid var(--line);padding-top:14px;}
-  .stamp{
-    position:absolute;top:120px;right:60px;
-    border:3px solid var(--accent);color:var(--accent);
-    font-family:'Fraunces',serif;font-weight:700;font-size:26px;
-    padding:8px 18px;border-radius:6px;transform:rotate(-9deg);
-    letter-spacing:2px;opacity:0.85;
-  }
-  .preview-side{width:220px;display:flex;flex-direction:column;gap:8px;}
-
-  /* LOGIN */
-  .login-wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;background:var(--ink);}
-  .login-card{background:var(--surface);width:380px;padding:36px 34px;border-radius:8px;box-shadow:0 10px 40px rgba(0,0,0,0.3);}
-  .login-card .display{font-size:24px;margin-bottom:2px;}
-  .login-card .sub{color:var(--ink-soft);font-size:13px;margin-bottom:22px;}
-  .login-card .field{margin-bottom:14px;}
-  .login-card .switch{font-size:13px;color:var(--ink-soft);margin-top:14px;text-align:center;}
-  .login-card .switch a{color:var(--accent);cursor:pointer;text-decoration:underline;}
-  .login-error{background:var(--red-soft);color:var(--red);font-size:13px;padding:9px 12px;border-radius:4px;margin-bottom:14px;}
-  .whoami{display:flex;align-items:center;justify-content:space-between;gap:8px;}
-  .whoami .name{font-size:13px;color:#EDEFEA;font-weight:600;}
-  .whoami button{background:none;border:none;color:#9BAAA3;font-size:12px;text-decoration:underline;padding:0;}
-  .user-row{display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-bottom:1px solid var(--line);font-size:14px;}
-  .user-row:last-child{border-bottom:none;}
-
-  @media print{
-    .sidebar,.pagehead,.preview-side,.no-print{display:none !important;}
-    body,.main{background:#fff;padding:0;margin:0;}
-    .preview-wrap{display:block;}
-    .invoice-sheet{box-shadow:none;border:none;width:auto;}
-  }
-</style>
+    @media print{
+      .sidebar,.pagehead,.preview-side,.no-print{display:none !important;}
+      body,.main{background:#fff;padding:0;margin:0;}
+      .preview-wrap{display:block;}
+      .invoice-sheet{box-shadow:none;border:none;width:auto;}
+    }
+  </style>
 </head>
+<body>
+
+  <div id="app">
+    <!-- NAVIGATION SIDEBAR -->
+    <div class="sidebar">
+      <div class="brand">
+        <div class="display">Ledger</div>
+        <div class="sub">Fakturační systém</div>
+      </div>
+      <div class="navitem active" onclick="switchView('dashboard')">
+        <span class="n">01</span> Přehled
+      </div>
+      <div class="navitem" onclick="switchView('invoices')">
+        <span class="n">02</span> Faktury
+      </div>
+      <div class="navitem" onclick="switchView('clients')">
+        <span class="n">03</span> Klienti
+      </div>
+      <div class="navitem" onclick="switchView('new-invoice')">
+        <span class="n">04</span> Nová faktura
+      </div>
+      <div class="sidebar-foot">
+        Poháněno Supabase DB
+      </div>
+    </div>
+
+    <!-- MAIN VIEW AREA -->
+    <div class="main">
+      
+      <!-- VIEW: DASHBOARD -->
+      <div id="view-dashboard">
+        <div class="pagehead">
+          <div>
+            <h1>Přehled</h1>
+            <p class="desc">Souhrn vašich výnosů a fakturace</p>
+          </div>
+          <button class="btn" onclick="switchView('new-invoice')">+ Vystavit fakturu</button>
+        </div>
+
+        <div class="cards">
+          <div class="card">
+            <div class="label">Celkem faktur</div>
+            <div class="value" id="stat-count">0</div>
+          </div>
+          <div class="card">
+            <div class="label">Nezaplaceno</div>
+            <div class="value amber" id="stat-unpaid">0 Kč</div>
+          </div>
+          <div class="card">
+            <div class="label">Po splatnosti</div>
+            <div class="value red" id="stat-overdue">0 Kč</div>
+          </div>
+          <div class="card">
+            <div class="label">Celkem utrženo</div>
+            <div class="value accent" id="stat-total">0 Kč</div>
+          </div>
+        </div>
+
+        <h3 class="display" style="font-size:20px;margin-bottom:14px;">Poslední faktury</h3>
+        <table id="table-dashboard-invoices">
+          <thead>
+            <tr>
+              <th>Číslo</th>
+              <th>Odběratel</th>
+              <th>Splatnost</th>
+              <th>Částka</th>
+              <th>Stav</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+
+      <!-- VIEW: INVOICES -->
+      <div id="view-invoices" style="display:none;">
+        <div class="pagehead">
+          <div>
+            <h1>Všechny faktury</h1>
+            <p class="desc">Kompletní evidence vystavených dokladů</p>
+          </div>
+          <button class="btn" onclick="switchView('new-invoice')">+ Nová faktura</button>
+        </div>
+
+        <table>
+          <thead>
+            <tr>
+              <th>Číslo</th>
+              <th>Odběratel</th>
+              <th>Vystaveno</th>
+              <th>Splatnost</th>
+              <th>Částka s DPH</th>
+              <th>Stav</th>
+              <th style="text-align:right;">Akce</th>
+            </tr>
+          </thead>
+          <tbody id="table-all-invoices"></tbody>
+        </table>
+      </div>
+
+      <!-- VIEW: NEW INVOICE -->
+      <div id="view-new-invoice" style="display:none;">
+        <div class="pagehead">
+          <div>
+            <h1>Nová faktura</h1>
+            <p class="desc">Vytvořte a uložte nový doklad do databáze</p>
+          </div>
+        </div>
+
+        <div class="form-card">
+          <form id="form-invoice" onsubmit="handleSaveInvoice(event)">
+            <div class="section-title">Základní údaje</div>
+            <div class="field-row">
+              <div class="field">
+                <label>Číslo faktury</label>
+                <input type="text" id="inv-number" required placeholder="FA-2026-001">
+              </div>
+              <div class="field">
+                <label>Odběratel (Klient)</label>
+                <input type="text" id="inv-client-name" required placeholder="Firma / Název">
+              </div>
+            </div>
+
+            <div class="field-row">
+              <div class="field">
+                <label>Datum vystavení</label>
+                <input type="date" id="inv-date-issue" required>
+              </div>
+              <div class="field">
+                <label>Datum splatnosti</label>
+                <input type="date" id="inv-date-due" required>
+              </div>
+            </div>
+
+            <div class="section-title">Položky faktury</div>
+            <table class="items-table">
+              <thead>
+                <tr>
+                  <th class="col-desc">Popis</th>
+                  <th class="col-qty">Počet</th>
+                  <th class="col-price">Cena/ks (Kč)</th>
+                  <th class="col-vat">DPH %</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody id="invoice-items-body"></tbody>
+            </table>
+            <button type="button" class="btn secondary small" onclick="addInvoiceItemRow()">+ Přidat položku</button>
+
+            <div class="totals-box">
+              <div class="trow">
+                <span>Základ celkem:</span>
+                <span id="calc-base" class="num">0.00 Kč</span>
+              </div>
+              <div class="trow">
+                <span>DPH celkem:</span>
+                <span id="calc-vat" class="num">0.00 Kč</span>
+              </div>
+              <div class="trow grand">
+                <span>K úhradě:</span>
+                <span id="calc-total" class="num">0.00 Kč</span>
+              </div>
+            </div>
+
+            <div class="formfoot">
+              <button type="submit" class="btn">Uložit fakturu</button>
+              <button type="button" class="btn secondary" onclick="switchView('invoices')">Zrušit</button>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      <!-- VIEW: PREVIEW INVOICE -->
+      <div id="view-preview" style="display:none;">
+        <div class="pagehead no-print">
+          <div>
+            <h1>Náhled faktury</h1>
+            <p class="desc">Doklad připravený k tisku nebo k úhradě</p>
+          </div>
+          <div class="preview-side">
+            <button class="btn" onclick="window.print()">Tisknout / Uložit PDF</button>
+            <button class="btn secondary" onclick="switchView('invoices')">Zpět na seznam</button>
+          </div>
+        </div>
+
+        <div class="preview-wrap">
+          <div class="invoice-sheet" id="invoice-render-area">
+            <!-- Rendered dynamically -->
+          </div>
+        </div>
+      </div>
+
+      <!-- VIEW: CLIENTS -->
+      <div id="view-clients" style="display:none;">
+        <div class="pagehead">
+          <div>
+            <h1>Adresář klientů</h1>
+            <p class="desc">Správa vašich odběratelů</p>
+          </div>
+        </div>
+
+        <div class="form-card" style="margin-bottom: 24px;">
+          <div class="section-title">Přidat nového klienta</div>
+          <form onsubmit="handleSaveClient(event)" class="field-row">
+            <div class="field">
+              <label>Název firmy / Jméno</label>
+              <input type="text" id="cli-name" required placeholder="ACME s.r.o.">
+            </div>
+            <div class="field">
+              <label>IČO</label>
+              <input type="text" id="cli-ico" placeholder="12345678">
+            </div>
+            <div style="grid-column: span 2;">
+              <button type="submit" class="btn small">+ Uložit klienta</button>
+            </div>
+          </form>
+        </div>
+
+        <table>
+          <thead>
+            <tr>
+              <th>Název klienta</th>
+              <th>IČO</th>
+              <th style="text-align:right;">Akce</th>
+            </tr>
+          </thead>
+          <tbody id="table-clients"></tbody>
+        </table>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- SUPABASE JS LOGIC -->
+  <script>
+    // 1. Config & Client Initialization
+    const SUPABASE_URL = "https://jucphmkmujjhxymvguhc.supabase.co";
+    const SUPABASE_ANON_KEY = "sb_publishable_wk2kCIi0aM_wq-ZEAGF8OA_m9D4gGaG";
+    const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    // Global State
+    let currentInvoices = [];
+    let currentClients = [];
+
+    // --- NAVIGATION LOGIC ---
+    function switchView(viewName) {
+      const views = ['dashboard', 'invoices', 'new-invoice', 'preview', 'clients'];
+      views.forEach(v => {
+        const el = document.getElementById('view-' + v);
+        if (el) el.style.display = (v === viewName) ? 'block' : 'none';
+      });
+
+      // Update Nav active style
+      const navs = document.querySelectorAll('.navitem');
+      navs.forEach(n => n.classList.remove('active'));
+
+      if (viewName === 'dashboard') {
+        loadDashboardData();
+      } else if (viewName === 'invoices') {
+        loadInvoicesData();
+      } else if (viewName === 'new-invoice') {
+        resetInvoiceForm();
+      } else if (viewName === 'clients') {
+        loadClientsData();
+      }
+    }
+
+    // --- SUPABASE API CALLS ---
+
+    // Load Invoices
+    async function fetchInvoices() {
+      const { data, error } = await supabase
+        .from('invoices')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.error('Chyba při načítání faktur:', error);
+        return [];
+      }
+      return data || [];
+    }
+
+    // Load Clients
+    async function fetchClients() {
+      const { data, error } = await supabase
+        .from('clients')
+        .select('*');
+
+      if (error) {
+        console.error('Chyba při načítání klientů:', error);
+        return [];
+      }
+      return data || [];
+    }
+
+    // --- VIEW RENDERERS ---
+
+    async function loadDashboardData() {
+      currentInvoices = await fetchInvoices();
+      
+      let count = currentInvoices.length;
+      let total = 0;
+      let unpaid = 0;
+      let overdue = 0;
+
+      const now = new Date();
+
+      currentInvoices.forEach(inv => {
+        const amt = Number(inv.total_amount) || 0;
+        total += amt;
+        if (!inv.is_paid) {
+          unpaid += amt;
+          if (inv.date_due && new Date(inv.date_due) < now) {
+            overdue += amt;
+          }
+        }
+      });
+
+      document.getElementById('stat-count').innerText = count;
+      document.getElementById('stat-total').innerText = total.toLocaleString('cs-CZ') + ' Kč';
+      document.getElementById('stat-unpaid').innerText = unpaid.toLocaleString('cs-CZ') + ' Kč';
+      document.getElementById('stat-overdue').innerText = overdue.toLocaleString('cs-CZ') + ' Kč';
+
+      // Table Recent
+      const tbody = document.querySelector('#table-dashboard-invoices tbody');
+      tbody.innerHTML = '';
+      
+      currentInvoices.slice(0, 5).forEach(inv => {
+        const tr = document.createElement('tr');
+        tr.className = 'rowlink';
+        tr.onclick = () => showInvoicePreview(inv);
+
+        const statusPill = inv.is_paid 
+          ? '<span class="pill paid">Zaplaceno</span>' 
+          : '<span class="pill pending">Čeká</span>';
+
+        tr.innerHTML = `
+          <td class="num"><strong>${inv.number || 'FA-00'}</strong></td>
+          <td>${inv.client_name || 'Neznámý'}</td>
+          <td class="num">${inv.date_due || '-'}</td>
+          <td class="num"><strong>${Number(inv.total_amount || 0).toLocaleString('cs-CZ')} Kč</strong></td>
+          <td>${statusPill}</td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }
+
+    async function loadInvoicesData() {
+      currentInvoices = await fetchInvoices();
+      const tbody = document.getElementById('table-all-invoices');
+      tbody.innerHTML = '';
+
+      currentInvoices.forEach(inv => {
+        const tr = document.createElement('tr');
+        const statusPill = inv.is_paid 
+          ? '<span class="pill paid">Zaplaceno</span>' 
+          : '<span class="pill pending">Nezaplaceno</span>';
+
+        tr.innerHTML = `
+          <td class="num"><strong>${inv.number}</strong></td>
+          <td>${inv.client_name}</td>
+          <td class="num">${inv.date_issue || '-'}</td>
+          <td class="num">${inv.date_due || '-'}</td>
+          <td class="num"><strong>${Number(inv.total_amount || 0).toLocaleString('cs-CZ')} Kč</strong></td>
+          <td>${statusPill}</td>
+          <td style="text-align:right;">
+            <button class="btn secondary small" onclick="showInvoicePreviewById('${inv.id}')">Zobrazit</button>
+            <button class="btn danger small" onclick="deleteInvoice('${inv.id}')">Smazat</button>
+          </td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }
+
+    async function loadClientsData() {
+      currentClients = await fetchClients();
+      const tbody = document.getElementById('table-clients');
+      tbody.innerHTML = '';
+
+      currentClients.forEach(cli => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td><strong>${cli.name}</strong></td>
+          <td class="num">${cli.ico || '-'}</td>
+          <td style="text-align:right;">
+            <button class="btn danger small" onclick="deleteClient('${cli.id}')">Smazat</button>
+          </td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }
+
+    // --- FORM & CALCULATION LOGIC ---
+
+    function resetInvoiceForm() {
+      document.getElementById('form-invoice').reset();
+      const tbody = document.getElementById('invoice-items-body');
+      tbody.innerHTML = '';
+      
+      // Default Dates
+      const today = new Date().toISOString().split('T')[0];
+      const due = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+      
+      document.getElementById('inv-date-issue').value = today;
+      document.getElementById('inv-date-due').value = due;
+      
+      // Default single row
+      addInvoiceItemRow();
+    }
+
+    function addInvoiceItemRow() {
+      const tbody = document.getElementById('invoice-items-body');
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td><input type="text" class="item-desc" placeholder="Služba / Zboží" required></td>
+        <td><input type="number" class="item-qty num" value="1" min="1" oninput="recalculateTotals()" required></td>
+        <td><input type="number" class="item-price num" value="0" step="0.01" oninput="recalculateTotals()" required></td>
+        <td>
+          <select class="item-vat num" onchange="recalculateTotals()">
+            <option value="21">21%</option>
+            <option value="12">12%</option>
+            <option value="0">0%</option>
+          </select>
+        </td>
+        <td><button type="button" class="btn danger small" onclick="this.closest('tr').remove(); recalculateTotals();">X</button></td>
+      `;
+      tbody.appendChild(tr);
+      recalculateTotals();
+    }
+
+    function recalculateTotals() {
+      let baseTotal = 0;
+      let vatTotal = 0;
+
+      const rows = document.querySelectorAll('#invoice-items-body tr');
+      rows.forEach(r => {
+        const qty = Number(r.querySelector('.item-qty').value) || 0;
+        const price = Number(r.querySelector('.item-price').value) || 0;
+        const vatRate = Number(r.querySelector('.item-vat').value) || 0;
+
+        const rowBase = qty * price;
+        const rowVat = rowBase * (vatRate / 100);
+
+        baseTotal += rowBase;
+        vatTotal += rowVat;
+      });
+
+      const grandTotal = baseTotal + vatTotal;
+
+      document.getElementById('calc-base').innerText = baseTotal.toFixed(2) + ' Kč';
+      document.getElementById('calc-vat').innerText = vatTotal.toFixed(2) + ' Kč';
+      document.getElementById('calc-total').innerText = grandTotal.toFixed(2) + ' Kč';
+
+      return { baseTotal, vatTotal, grandTotal };
+    }
+
+    // Save Invoice to Supabase
+    async function handleSaveInvoice(event) {
+      event.preventDefault();
+
+      const { baseTotal, vatTotal, grandTotal } = recalculateTotals();
+
+      // Gather Items
+      const items = [];
+      document.querySelectorAll('#invoice-items-body tr').forEach(r => {
+        items.push({
+          description: r.querySelector('.item-desc').value,
+          qty: Number(r.querySelector('.item-qty').value),
+          price: Number(r.querySelector('.item-price').value),
+          vat: Number(r.querySelector('.item-vat').value)
+        });
+      });
+
+      const newInvoice = {
+        number: document.getElementById('inv-number').value,
+        client_name: document.getElementById('inv-client-name').value,
+        date_issue: document.getElementById('inv-date-issue').value,
+        date_due: document.getElementById('inv-date-due').value,
+        base_amount: baseTotal,
+        vat_amount: vatTotal,
+        total_amount: grandTotal,
+        items: items,
+        is_paid: false
+      };
+
+      const { data, error } = await supabase
+        .from('invoices')
+        .insert([newInvoice]);
+
+      if (error) {
+        alert('Chyba při ukládání faktury: ' + error.message);
+      } else {
+        alert('Faktura úspešně uložena!');
+        switchView('invoices');
+      }
+    }
+
+    // Save Client
+    async function handleSaveClient(e) {
+      e.preventDefault();
+      const newClient = {
+        name: document.getElementById('cli-name').value,
+        ico: document.getElementById('cli-ico').value
+      };
+
+      const { error } = await supabase.from('clients').insert([newClient]);
+      if (error) {
+        alert('Chyba při ukládání klienta: ' + error.message);
+      } else {
+        document.getElementById('cli-name').value = '';
+        document.getElementById('cli-ico').value = '';
+        loadClientsData();
+      }
+    }
+
+    // Delete Operations
+    async function deleteInvoice(id) {
+      if (confirm('Opravdu chcete smazat tuto fakturu?')) {
+        await supabase.from('invoices').delete().eq('id', id);
+        loadInvoicesData();
+      }
+    }
+
+    async function deleteClient(id) {
+      if (confirm('Opravdu chcete smazat tohoto klienta?')) {
+        await supabase.from('clients').delete().eq('id', id);
+        loadClientsData();
+      }
+    }
+
+    // --- PREVIEW & QR CODE ---
+
+    async function showInvoicePreviewById(id) {
+      const inv = currentInvoices.find(x => x.id == id);
+      if (inv) showInvoicePreview(inv);
+    }
+
+    function showInvoicePreview(inv) {
+      switchView('preview');
+      const container = document.getElementById('invoice-render-area');
+
+      let itemsHtml = '';
+      const items = inv.items || [];
+      items.forEach(it => {
+        itemsHtml += `
+          <tr>
+            <td>${it.description}</td>
+            <td class="num">${it.qty}</td>
+            <td class="num">${Number(it.price).toFixed(2)} Kč</td>
+            <td class="num">${it.vat}%</td>
+          </tr>
+        `;
+      });
+
+      container.innerHTML = `
+        ${inv.is_paid ? '<div class="stamp">ZAPLACENO</div>' : ''}
+        <div class="top">
+          <div>
+            <div class="doctitle">FAKTURA — DAŇOVÝ DOKLAD</div>
+            <div class="docnum">Číslo: ${inv.number}</div>
+          </div>
+        </div>
+
+        <div class="parties">
+          <div class="party">
+            <div class="k">Dodavatel</div>
+            <div class="nm">Moje Firma s.r.o.</div>
+            <div>Městská 123, Praha</div>
+            <div>IČO: 87654321</div>
+          </div>
+          <div class="party">
+            <div class="k">Odběratel</div>
+            <div class="nm">${inv.client_name}</div>
+          </div>
+        </div>
+
+        <div class="meta">
+          <div>
+            <div class="k">Datum vystavení</div>
+            <div class="v">${inv.date_issue || '-'}</div>
+          </div>
+          <div>
+            <div class="k">Datum splatnosti</div>
+            <div class="v">${inv.date_due || '-'}</div>
+          </div>
+        </div>
+
+        <table class="lines">
+          <thead>
+            <tr>
+              <th>Položka</th>
+              <th class="num">Množství</th>
+              <th class="num">Cena/ks</th>
+              <th class="num">DPH</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${itemsHtml}
+          </tbody>
+        </table>
+
+        <div class="bottom">
+          <div class="qrbox">
+            <div id="qrcode-target" class="qrimg"></div>
+            <div>QR Platba</div>
+          </div>
+          <div class="totals">
+            <div class="trow grand">
+              <span>Celkem:</span>
+              <span>${Number(inv.total_amount).toFixed(2)} Kč</span>
+            </div>
+          </div>
+        </div>
+      `;
+
+      // Generování QR Kódu
+      setTimeout(() => {
+        const qrContainer = document.getElementById('qrcode-target');
+        if (qrContainer) {
+          qrContainer.innerHTML = '';
+          new QRCode(qrContainer, {
+            text: `SPD*1.0*ACC:CZ1234567890*AM:${inv.total_amount}*CC:CZK*MSG:Faktura ${inv.number}`,
+            width: 80,
+            height: 80
+          });
+        }
+      }, 50);
+    }
+
+    // Startup Initialization
+    window.addEventListener('DOMContentLoaded', () => {
+      switchView('dashboard');
+    });
+  </script>
+</body>
+</html>
 <body>
 <div id="app"></div>
 
