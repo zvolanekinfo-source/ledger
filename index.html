@@ -2465,138 +2465,6 @@ document.addEventListener('focusin', (e) => {
       });
     }
   }
-});/* ---------- AUTOMATICKÉ NAŠEPTÁVÁNÍ ADRES (Nominatim) ---------- */
-let addressDebounceTimer = null;
-
-async function searchAddressSuggestions(query, callback) {
-  if (!query || query.length < 3) {
-    callback([]);
-    return;
-  }
-  try {
-    const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&addressdetails=1&countrycodes=cz,sk&limit=5`;
-    const res = await fetch(url, { headers: { 'User-Agent': 'LedgerApp/1.0' } });
-    const data = await res.json();
-
-    const results = data.map(item => {
-      const addr = item.address || {};
-      const street = addr.road || addr.pedestrian || addr.suburb || '';
-      const houseNumber = addr.house_number || '';
-      const city = addr.city || addr.town || addr.village || addr.municipality || '';
-      const postcode = addr.postcode || '';
-
-      const formattedStreet = houseNumber ? `${street} ${houseNumber}`.trim() : street;
-
-      return {
-        label: item.display_name,
-        street: formattedStreet || query,
-        city: city,
-        postcode: postcode
-      };
-    });
-    callback(results);
-  } catch (err) {
-    console.error('Chyba při vyhledávání adresy:', err);
-    callback([]);
-  }
-}
-
-function attachAddressAutocomplete(inputEl, onSelect) {
-  if (!inputEl) return;
-
-  let wrapper = inputEl.parentElement;
-  if (!wrapper.classList.contains('combo-field')) {
-    wrapper = document.createElement('div');
-    wrapper.className = 'combo-field';
-    inputEl.parentNode.insertBefore(wrapper, inputEl);
-    wrapper.appendChild(inputEl);
-  }
-
-  let listEl = wrapper.querySelector('.combo-list.address-list');
-  if (!listEl) {
-    listEl = document.createElement('div');
-    listEl.className = 'combo-list address-list';
-    wrapper.appendChild(listEl);
-  }
-
-  inputEl.addEventListener('input', (e) => {
-    const query = e.target.value;
-    clearTimeout(addressDebounceTimer);
-
-    addressDebounceTimer = setTimeout(() => {
-      searchAddressSuggestions(query, (items) => {
-        if (!items.length) {
-          listEl.classList.remove('open');
-          listEl.innerHTML = '';
-          return;
-        }
-
-        listEl.innerHTML = items.map((item, idx) => `
-          <div class="combo-item" data-idx="${idx}">
-            <strong>${item.street}</strong>
-            <div class="sub">${item.city} ${item.postcode}</div>
-          </div>
-        `).join('');
-
-        listEl.classList.add('open');
-
-        listEl.querySelectorAll('.combo-item').forEach(el => {
-          el.addEventListener('click', () => {
-            const selected = items[parseInt(el.dataset.idx)];
-            onSelect(selected);
-            listEl.classList.remove('open');
-          });
-        });
-      });
-    }, 300);
-  });
-
-  document.addEventListener('click', (e) => {
-    if (!wrapper.contains(e.target)) {
-      listEl.classList.remove('open');
-    }
-  });
-}
-
-// Propojení s formuláři v aplikaci Ledger
-document.addEventListener('focusin', (e) => {
-  const target = e.target;
-  if (!target) return;
-
-  // Kontrola, zda jde o políčko ulice/adresy
-  const isAddressField = target.id === 'f-street' || 
-                         target.id === 'f-address' || 
-                         target.name === 'street' || 
-                         target.name === 'address' || 
-                         target.placeholder?.toLowerCase().includes('ulice') ||
-                         target.placeholder?.toLowerCase().includes('adresa');
-
-  if (isAddressField && !target.dataset.hasAddressAutocomplete) {
-    target.dataset.hasAddressAutocomplete = 'true';
-
-    attachAddressAutocomplete(target, (selected) => {
-      // 1. Vyplní ulici a číslo
-      target.value = selected.street;
-      target.dispatchEvent(new Event('input', { bubbles: true }));
-
-      // 2. Najde nejbližší formulář nebo obalovací kontejner
-      const container = target.closest('form') || target.closest('.form-card') || document;
-
-      // 3. Najde políčka pro město a PSČ a automaticky je doplní
-      const cityInput = container.querySelector('#f-city, [name="city"], input[placeholder*="Město"], input[placeholder*="město"]');
-      const zipInput = container.querySelector('#f-zip, #f-postcode, [name="zip"], [name="postcode"], input[placeholder*="PSČ"], input[placeholder*="psč"]');
-
-      if (cityInput && selected.city) {
-        cityInput.value = selected.city;
-        cityInput.dispatchEvent(new Event('input', { bubbles: true }));
-      }
-
-      if (zipInput && selected.postcode) {
-        zipInput.value = selected.postcode;
-        zipInput.dispatchEvent(new Event('input', { bubbles: true }));
-      }
-    });
-  }
 });
 /* ---------- ZOBRAZENÍ FAKTUR U ODBĚRATELE ---------- */
 
@@ -2702,11 +2570,31 @@ function renderClients() {
   `;
 }
 
+// Fallback na localStorage, když window.storage není dostupné
+if (!window.storage) {
+  window.storage = {
+    async get(key, shared) {
+      const val = localStorage.getItem(key);
+      return val ? { key, value: val, shared } : null;
+    },
+    async set(key, value, shared) {
+      localStorage.setItem(key, value);
+      return { key, value, shared };
+    },
+    async delete(key, shared) {
+      localStorage.removeItem(key);
+      return { key, deleted: true, shared };
+    },
+    async list(prefix, shared) {
+      const keys = Object.keys(localStorage).filter(k => !prefix || k.startsWith(prefix));
+      return { keys, prefix, shared };
+    }
+  };
+}
+
 // 🚀 INICIALIZACE APLIKACE
 document.addEventListener('DOMContentLoaded', async () => {
-  await loadCompany();
-  await loadInvoices();
-  await loadClients();
+  await loadAll();
   render();
 });
 </script>
