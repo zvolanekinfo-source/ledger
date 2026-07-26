@@ -419,6 +419,7 @@ let state = {
   editingInvoiceId: null,
   editingClientId: null,
   editingSupplier: null,
+  clientDetailId: null,
   previewId: null,
   formItems: [],
   loaded: false,
@@ -941,10 +942,27 @@ function viewDashboard(){
   return `
     <div class="pagehead">
       <div><h1>Přehled</h1><p class="desc">Stav fakturace za vybrané období.</p></div>
-      <button class="btn no-print" data-action="new-invoice">+ Nová faktura</button>
+
     </div>
 
-    <div class="filter-bar no-print">
+    <div class="form-card" style="margin-bottom:16px; padding:14px 16px;">
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; font-size:12px;">
+        ${client.invoiceAddress ? `
+          <div>
+            <div style="font-weight:600; margin-bottom:4px; color:var(--ink);">Fakturační adresa</div>
+            <div style="color:var(--ink-soft); white-space:pre-line;">${escapeHtml(client.invoiceAddress)}</div>
+          </div>
+        ` : ''}
+        ${client.deliveryAddress ? `
+          <div>
+            <div style="font-weight:600; margin-bottom:4px; color:var(--ink);">Doručovací adresa</div>
+            <div style="color:var(--ink-soft); white-space:pre-line;">${escapeHtml(client.deliveryAddress)}</div>
+          </div>
+        ` : ''}
+      </div>
+    </div>
+    
+    <div class="filter-bar no-print;">
       <div class="filter-presets">
         ${presets.map(([v,l])=>`<button type="button" class="chip ${f.preset===v?'active':''}" data-action="dash-preset" data-preset="${v}">${l}</button>`).join('')}
       </div>
@@ -996,7 +1014,24 @@ function viewInvoices(){
         <button class="btn" data-action="new-invoice">+ Nová faktura</button>
       </div>
     </div>
-    <div class="filter-bar no-print">
+    <div class="form-card" style="margin-bottom:16px; padding:14px 16px;">
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; font-size:12px;">
+        ${client.invoiceAddress ? `
+          <div>
+            <div style="font-weight:600; margin-bottom:4px; color:var(--ink);">Fakturační adresa</div>
+            <div style="color:var(--ink-soft); white-space:pre-line;">${escapeHtml(client.invoiceAddress)}</div>
+          </div>
+        ` : ''}
+        ${client.deliveryAddress ? `
+          <div>
+            <div style="font-weight:600; margin-bottom:4px; color:var(--ink);">Doručovací adresa</div>
+            <div style="color:var(--ink-soft); white-space:pre-line;">${escapeHtml(client.deliveryAddress)}</div>
+          </div>
+        ` : ''}
+      </div>
+    </div>
+    
+    <div class="filter-bar no-print;">
       <div class="search-row" style="margin-bottom:14px;">
         <input type="text" id="inv-search" class="search-input" placeholder="Hledat podle čísla faktury nebo odběratele…" value="${escapeAttr(f.search)}">
       </div>
@@ -1105,6 +1140,112 @@ function handleSupplierChange(supplierId){
     if(chk.name === 'includeSignature') chk.checked = supplier.showSignature !== false;
     if(chk.name === 'includeQr') chk.checked = supplier.showQr !== false;
   });
+}
+
+
+
+function viewClientDetail(clientId){
+  const client = clientById(clientId);
+  if(!client){
+    return `<div class="pagehead"><h1>Odběratel nenalezen</h1></div><div class="form-card"><button class="btn" data-action="nav" data-view="clients">← Zpět na odběratele</button></div>`;
+  }
+  
+  // Filtruj faktury pro tohoto odběratele
+  const allInvoices = state.invoices.filter(i => i.clientId === clientId);
+  const f = state.invoiceFilter;
+  let sorted = allInvoices;
+  
+  if(f.search) sorted = sorted.filter(i => (i.number||'').includes(f.search));
+  if(f.from) sorted = sorted.filter(i => (i.issueDate||'') >= f.from);
+  if(f.to) sorted = sorted.filter(i => (i.issueDate||'') <= f.to);
+  if(f.status==='paid') sorted = sorted.filter(i => i.paid);
+  if(f.status==='unpaid') sorted = sorted.filter(i => !i.paid);
+  
+  sorted.sort((a,b) => (new Date(b.issueDate||0) - new Date(a.issueDate||0)));
+  
+  return `
+    <div class="pagehead">
+      <div>
+        <h1>${escapeHtml(client.name)}</h1>
+        <div style="font-size:13px; color:var(--ink-soft); line-height:1.5; margin-top:6px;">
+          ${client.ico || client.dic ? `<div>IČO: ${escapeHtml(client.ico||'—')}${client.dic ? ' · DIČ: ' + escapeHtml(client.dic) : ''}</div>` : ''}
+          ${client.contactPerson ? `<div>Kontakt: ${escapeHtml(client.contactPerson)}</div>` : ''}
+          ${client.email || client.phone ? `<div>${client.email ? escapeHtml(client.email) : ''}${client.email && client.phone ? ' · ' : ''}${client.phone ? escapeHtml(client.phone) : ''}</div>` : ''}
+        </div>
+      </div>
+      <div style="display:flex; gap:8px;">
+        <button class="btn" data-action="new-invoice" data-preset-client="${escapeAttr(clientId)}">+ Nová faktura</button>
+        <button class="btn secondary" data-action="edit-client" data-id="${escapeAttr(clientId)}">Upravit</button>
+        <button class="btn secondary" data-action="nav" data-view="clients">← Zpět</button>
+      </div>
+    </div>
+    
+    <div class="form-card" style="margin-bottom:16px; padding:14px 16px;">
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; font-size:12px;">
+        ${client.invoiceAddress ? `
+          <div>
+            <div style="font-weight:600; margin-bottom:4px; color:var(--ink);">Fakturační adresa</div>
+            <div style="color:var(--ink-soft); white-space:pre-line;">${escapeHtml(client.invoiceAddress)}</div>
+          </div>
+        ` : ''}
+        ${client.deliveryAddress ? `
+          <div>
+            <div style="font-weight:600; margin-bottom:4px; color:var(--ink);">Doručovací adresa</div>
+            <div style="color:var(--ink-soft); white-space:pre-line;">${escapeHtml(client.deliveryAddress)}</div>
+          </div>
+        ` : ''}
+      </div>
+    </div>
+    
+    <div class="filter-bar no-print;">
+      <div style="display:flex; gap:8px; align-items:center;">
+        <input type="text" id="invoice-filter-search" placeholder="Hledat číslo faktury..." value="${escapeAttr(f.search)}" onkeyup="state.invoiceFilter.search = this.value; render();">
+        <input type="date" id="invoice-filter-from" value="${f.from}" onchange="state.invoiceFilter.from = this.value; render();">
+        <input type="date" id="invoice-filter-to" value="${f.to}" onchange="state.invoiceFilter.to = this.value; render();">
+        <select onchange="state.invoiceFilter.status = this.value; render();" style="flex:0;">
+          <option value="">Všechny</option>
+          <option value="paid" ${f.status==='paid'?'selected':''}>Zaplacené</option>
+          <option value="unpaid" ${f.status==='unpaid'?'selected':''}>Nezaplacené</option>
+        </select>
+        <button type="button" class="btn secondary small" onclick="state.invoiceFilter = { search:'', from:'', to:'', clientId:'', status:'' }; render();">Vymazat filtry</button>
+      </div>
+    </div>
+    
+    <div class="form-card">
+      ${sorted.length ? `
+        <table class="items-table" style="width:100%;">
+          <thead>
+            <tr>
+              <th>Číslo</th>
+              <th>Datum</th>
+              <th>Splatnost</th>
+              <th class="num">Částka</th>
+              <th>Stav</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            ${sorted.map(inv => {
+              const total = (inv.items||[]).reduce((sum, it) => sum + (it.qty||0)*(it.price||0)*(1+(it.vat||0)/100), 0);
+              return `
+                <tr>
+                  <td><strong>${escapeHtml(inv.number)}</strong></td>
+                  <td>${inv.issueDate}</td>
+                  <td>${inv.dueDate}</td>
+                  <td class="num">${fmt(total)} Kč</td>
+                  <td>${inv.paid ? '<span style="color:green;">✓ Zaplaceno</span>' : '<span style="color:red;">⚠ Nezaplaceno</span>'}</td>
+                  <td style="text-align:right; white-space:nowrap;">
+                    <button class="btn small secondary" data-action="view-invoice" data-id="${escapeAttr(inv.id)}" onclick="state.previewId='${inv.id}'; state.view='invoice-preview'; render();">Zobrazit</button>
+                    <button class="btn small secondary" data-action="edit-invoice" data-id="${escapeAttr(inv.id)}" onclick="state.editingInvoiceId='${inv.id}'; state.view='invoice-form'; render();">Upravit</button>
+                  </td>
+                </tr>
+              `;
+            }).join('')}
+          </tbody>
+        </table>
+      ` : `<p style="color:var(--ink-soft); padding:20px 0; text-align:center;">Tento odběratel nemá žádné faktury.</p>`}
+    </div>
+  `;
 }
 
 function viewInvoiceForm(){
@@ -1375,6 +1516,9 @@ function buildSpayd(co, inv, total){
 
 /* ---------- CLIENTS (ODBĚRATELÉ) ---------- */
 function viewClients(){
+  if(state.clientDetailId){
+    return viewClientDetail(state.clientDetailId);
+  }
   return `
     <div class="pagehead">
       <div><h1>Odběratelé</h1><p class="desc">${state.clients.length} odběratelů v evidenci. Klikni na odběratele pro rovnou vystavení faktury.</p></div>
@@ -1390,7 +1534,7 @@ function viewClients(){
         ${state.clients.map(c=>{
           const searchBlob = escapeAttr(stripDiacritics(`${c.name} ${c.ico||''} ${c.email||''} ${c.phone||''}`).toLowerCase());
           return `
-          <tr class="rowlink" data-action="client-to-invoice" data-id="${c.id}" data-search="${searchBlob}">
+          <tr class="rowlink" onclick="state.clientDetailId='${c.id}'; state.view='clients'; render();" style="cursor:pointer;" data-search="${searchBlob}">
             <td>${escapeHtml(c.name)}</td>
             <td class="num">${escapeHtml(c.ico||'—')}</td>
             <td>${escapeHtml(c.email||'—')}</td>
@@ -1436,25 +1580,32 @@ function filterInvoiceRows(query){
 
 function viewClientForm(){
   const editing = state.editingClientId ? state.clients.find(c=>c.id===state.editingClientId) : null;
-  const c = editing || {name:'',address:'',ico:'',dic:'',email:'',phone:''};
+  const c = editing || {name:'',address:'',ico:'',dic:'',email:'',phone:'',contactPerson:'',invoiceAddress:'',deliveryAddress:''};
   return `
     <div class="pagehead"><div><h1>${editing?'Upravit odběratele':'Nový odběratel'}</h1></div></div>
     <form id="client-form" class="form-card">
+      <div class="section-title">Základní údaje</div>
       <div class="field combo-field">
         <label>Název / jméno</label>
         <input name="name" id="client-form-name" value="${escapeAttr(c.name)}" autocomplete="off" required>
         <div class="combo-list" id="client-form-ares-list"></div>
         <div class="ares-status" id="client-form-ares-status"></div>
       </div>
-      <div class="field"><label>Adresa</label><textarea name="address" id="client-form-address">${c.address||''}</textarea></div>
       <div class="field-row">
         <div class="field"><label>IČO</label><input name="ico" id="client-form-ico" value="${escapeAttr(c.ico)}" placeholder="Zadej a doplní se z ARES"></div>
         <div class="field"><label>DIČ</label><input name="dic" id="client-form-dic" value="${escapeAttr(c.dic)}"></div>
       </div>
+      
+      <div class="section-title">Kontakt</div>
+      <div class="field"><label>Kontaktní osoba</label><input name="contactPerson" value="${escapeAttr(c.contactPerson)}" placeholder="Jméno a příjmení nebo pozice"></div>
       <div class="field-row">
         <div class="field"><label>Email</label><input type="email" name="email" value="${escapeAttr(c.email)}"></div>
         <div class="field"><label>Telefon</label><input name="phone" value="${escapeAttr(c.phone)}"></div>
       </div>
+      
+      <div class="section-title">Adresy</div>
+      <div class="field"><label>Fakturační adresa</label><textarea name="invoiceAddress" placeholder="Bude použita na faktuře">${c.invoiceAddress||''}</textarea></div>
+      <div class="field"><label>Doručovací adresa</label><textarea name="deliveryAddress" placeholder="Adresa pro doručení (pokud se liší od fakturační)">${c.deliveryAddress||''}</textarea></div>
       <p style="font-size:11.5px;color:var(--ink-soft);margin:-6px 0 4px 0;">Napiš název firmy nebo IČO/DIČ — údaje z veřejného rejstříku ARES se doplní automaticky.</p>
       <div class="formfoot">
         <button type="submit" class="btn">Uložit odběratele</button>
@@ -2214,7 +2365,7 @@ document.addEventListener('click', async (e)=>{
 
   if(action==='auth-switch'){ state.authView = el.getAttribute('data-view'); state.authError=''; render(); }
   else if(action==='logout'){ state.currentUser=null; state.authView='login'; state.view='dashboard'; render(); }
-  else if(action==='nav'){ state.view = el.getAttribute('data-view'); state.editingInvoiceId=null; state.editingClientId=null; state.formItems=[]; render(); }
+  else if(action==='nav'){ state.view = el.getAttribute('data-view'); state.editingInvoiceId=null; state.editingClientId=null; state.clientDetailId=null; state.formItems=[]; render(); }
   else if(action==='new-invoice'){ state.view='invoice-form'; state.editingInvoiceId=null; state.formItems=[]; render(); }
   else if(action==='edit-invoice'){ state.view='invoice-form'; state.editingInvoiceId=id; state.formItems=[]; render(); }
   else if(action==='preview-invoice'){ state.view='invoice-preview'; state.previewId=id; render(); }
@@ -2372,7 +2523,18 @@ async function onSubmitClient(e){
   e.preventDefault();
   const fd = new FormData(e.target);
   const id = fd.get('id');
-  const client = { id: id || uid(), name: fd.get('name'), address: fd.get('address'), ico: fd.get('ico'), dic: fd.get('dic'), email: fd.get('email'), phone: fd.get('phone') };
+  const client = { 
+    id: id || uid(), 
+    name: fd.get('name'), 
+    ico: fd.get('ico'), 
+    dic: fd.get('dic'), 
+    email: fd.get('email'), 
+    phone: fd.get('phone'),
+    contactPerson: fd.get('contactPerson'),
+    invoiceAddress: fd.get('invoiceAddress'),
+    deliveryAddress: fd.get('deliveryAddress'),
+    address: fd.get('invoiceAddress') || ''
+  };
   if(id){ const idx = state.clients.findIndex(c=>c.id===id); state.clients[idx]=client; }
   else{ state.clients.push(client); }
   await saveClients();
