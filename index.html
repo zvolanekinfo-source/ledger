@@ -173,6 +173,11 @@
   .formfoot{display:flex;gap:10px;margin-top:22px;align-items:center;}
   .btn-link{background:none;border:none;color:var(--ink-soft);text-decoration:underline;font-size:14px;padding:10px 4px;}
   .btn-link:hover{color:var(--ink);}
+  
+  /* MODALS */
+  .modal-overlay{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;z-index:1000;}
+  .modal-card{background:var(--surface);border-radius:8px;padding:28px;max-width:500px;width:90%;box-shadow:0 10px 40px rgba(0,0,0,0.15);}
+  .modal-card h2{margin:0 0 20px 0;font-size:20px;font-weight:600;}
 
   /* SEARCH */
   .search-row{margin-bottom:16px;}
@@ -399,6 +404,7 @@ let state = {
   view: 'dashboard',
   company: null,
   clients: [],
+  suppliers: [],
   invoices: [],
   users: [],
   currentUser: null,
@@ -411,6 +417,8 @@ let state = {
   loaded: false,
   clientSearch: '',
   preselectClientId: null,
+  supplierSearch: '',
+  preselectSupplierId: null,
   importBusy: false,
   importError: '',
   importResult: null, // { company, client, matchedClientId, invoice }
@@ -507,8 +515,10 @@ async function loadUsers(){
 async function saveUsers(){ try{ await window.storage.set('users', JSON.stringify(state.users), true); }catch(e){ console.error(e); } }
 
 async function loadAll(){
+  await loadUsers();
   try{ const r = await window.storage.get('company', true); state.company = r ? JSON.parse(r.value) : null; }catch(e){ state.company = null; }
   try{ const r = await window.storage.get('clients', true); state.clients = r ? JSON.parse(r.value) : []; }catch(e){ state.clients = []; }
+  try{ const r = await window.storage.get('suppliers', true); state.suppliers = r ? JSON.parse(r.value) : []; }catch(e){ state.suppliers = []; }
   try{ const r = await window.storage.get('invoices', true); state.invoices = r ? JSON.parse(r.value) : []; }catch(e){ state.invoices = []; }
   if(!state.company){
     state.company = {
@@ -533,6 +543,7 @@ async function loadAll(){
 }
 async function saveCompany(){ try{ await window.storage.set('company', JSON.stringify(state.company), true); }catch(e){ console.error(e); } saveSnapshotBackup(); }
 async function saveClients(){ try{ await window.storage.set('clients', JSON.stringify(state.clients), true); }catch(e){ console.error(e); } saveSnapshotBackup(); }
+async function saveSuppliers(){ try{ await window.storage.set('suppliers', JSON.stringify(state.suppliers), true); }catch(e){ console.error(e); } saveSnapshotBackup(); }
 async function saveInvoices(){ try{ await window.storage.set('invoices', JSON.stringify(state.invoices), true); }catch(e){ console.error(e); } saveSnapshotBackup(); }
 
 /* ---------- BACKUP / SNAPSHOTS ---------- */
@@ -542,7 +553,7 @@ async function loadBackupIndex(){
 async function saveSnapshotBackup(){
   try{
     const date = todayISO();
-    const payload = JSON.stringify({ savedAt: new Date().toISOString(), company: state.company, clients: state.clients, invoices: state.invoices });
+    const payload = JSON.stringify({ savedAt: new Date().toISOString(), company: state.company, clients: state.clients, suppliers: state.suppliers, invoices: state.invoices });
     await window.storage.set('backup:'+date, payload, true);
     let dates = await loadBackupIndex();
     if(!dates.includes(date)) dates.push(date);
@@ -557,7 +568,7 @@ async function saveSnapshotBackup(){
 }
 
 function exportBackupFile(){
-  const payload = { exportedAt: new Date().toISOString(), company: state.company, clients: state.clients, invoices: state.invoices };
+  const payload = { exportedAt: new Date().toISOString(), company: state.company, clients: state.clients, suppliers: state.suppliers, invoices: state.invoices };
   const blob = new Blob([JSON.stringify(payload, null, 2)], { type:'application/json' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -574,6 +585,7 @@ async function restoreFromBackupObject(data, label){
   try{
     if(data.company){ state.company = data.company; await saveCompany(); }
     if(Array.isArray(data.clients)){ state.clients = data.clients; await saveClients(); }
+    if(Array.isArray(data.suppliers)){ state.suppliers = data.suppliers; await saveSuppliers(); }
     if(Array.isArray(data.invoices)){ state.invoices = data.invoices; await saveInvoices(); }
     alert('Data byla obnovena ze zálohy.');
     render();
@@ -685,6 +697,7 @@ function invoiceStatus(inv){
 }
 function statusLabel(s){ return s==='paid'?'Zaplaceno':(s==='overdue'?'Po splatnosti':'Čeká na platbu'); }
 function clientById(id){ return state.clients.find(c=>c.id===id); }
+function supplierById(id){ return state.suppliers.find(s=>s.id===id); }
 
 function applyDateRangeFromPreset(preset){
   const today = todayISO();
@@ -1032,7 +1045,7 @@ function blankInvoice(){
   const preselected = state.preselectClientId && clientById(state.preselectClientId) ? state.preselectClientId : (state.clients[0]?state.clients[0].id:null);
   state.preselectClientId = null;
   return {
-    id:null, number:num, clientId: preselected,
+    id:null, number:num, clientId: preselected, supplierId: null, supplier: null,
     issueDate: todayISO(), taxDate: todayISO(), dueDate: addDays(todayISO(), c.defaultDueDays||14),
     variableSymbol: num.replace(/\D/g,''), note: c.defaultNote||'', paid:false, paidDate:null,
     paymentMethod: c.defaultPaymentMethod || 'Bankovním převodem',
@@ -1065,6 +1078,14 @@ function viewInvoiceForm(){
           <input type="text" id="client-combo-input" placeholder="Hledat odběratele podle názvu, IČO… (nebo najít v ARES)" autocomplete="off" value="${escapeAttr(selClient?selClient.name:'')}">
           <input type="hidden" name="clientId" id="client-combo-value" value="${inv.clientId||''}">
           <div class="combo-list" id="client-combo-list"></div>
+        </div>
+      </div>
+      <div class="field-row">
+        <div class="field combo-field">
+          <label>Dodavatel</label>
+          <input type="text" id="supplier-combo-input" placeholder="Vybrat nebo napsatdodavatele…" autocomplete="off" value="${inv.supplier?escapeAttr(inv.supplier.name||''):''}">
+          <input type="hidden" name="supplierId" id="supplier-combo-value" value="${inv.supplierId||''}">
+          <div class="combo-list" id="supplier-combo-list"></div>
         </div>
       </div>
       <div class="client-detail-box" id="client-detail-box" style="${selClient?'':'display:none;'}">
@@ -1520,6 +1541,34 @@ function viewSettings(){
         `).join('')}
       ` : `<p style="font-size:12.5px;color:var(--ink-soft);">Zatím žádné automatické zálohy — vytvoří se, jakmile poprvé něco uložíš.</p>`}
     </div>
+
+    <div class="section-title" style="margin-top:30px;">Dodavatelé</div>
+    <div class="form-card">
+      ${state.suppliers.length === 0 ? `
+        <p style="color:var(--ink-soft);margin:0;">Zatím nemáš žádné uložené dodavatele.</p>
+        <div class="formfoot">
+          <button type="button" class="btn btn-primary" data-action="open-supplier-modal">+ Přidat prvního dodavatele</button>
+        </div>
+      ` : `
+        <div style="display:flex; flex-direction:column; gap:8px; margin-bottom:16px;">
+          ${state.suppliers.map(s => `
+            <div class="card" style="padding:12px 16px; display:flex; justify-content:space-between; align-items:center;">
+              <div>
+                <div style="font-weight:600; color:var(--ink);">${escapeHtml(s.name)}</div>
+                <div style="font-size:0.85rem; color:var(--ink-soft); margin-top:2px;">
+                  IČ: ${escapeHtml(s.ico || '—')} · ${escapeHtml(s.email || '')}
+                </div>
+              </div>
+              <div style="display:flex; gap:6px;">
+                <button type="button" class="btn btn-small secondary" data-action="edit-supplier" data-id="${escapeAttr(s.id)}">Upravit</button>
+                <button type="button" class="btn btn-small danger" data-action="delete-supplier" data-id="${escapeAttr(s.id)}">Smazat</button>
+              </div>
+            </div>
+          `).join('')}
+        </div>
+        <button type="button" class="btn btn-primary btn-sm" data-action="open-supplier-modal">+ Nový dodavatel</button>
+      `}
+    </div>
   `;
 }
 
@@ -1847,6 +1896,7 @@ function afterRender(){
     if(state.clientSearch) filterClientRows(state.clientSearch);
   }
   setupClientCombo();
+  setupSupplierCombo();
   setupClientFormAres();
   setupImportDropzone();
 
@@ -2119,6 +2169,80 @@ function setupClientCombo(){
   });
 }
 
+/* ---------- SUPPLIER COMBO BOX (searchable supplier picker in invoice form) ---------- */
+function setupSupplierCombo(){
+  const input = document.getElementById('supplier-combo-input');
+  const hidden = document.getElementById('supplier-combo-value');
+  const list = document.getElementById('supplier-combo-list');
+  if(!input || !hidden || !list) return;
+
+  let addingNew = false;
+
+  function renderList(query){
+    const q = stripDiacritics(query||'').toLowerCase().trim();
+    const matches = state.suppliers.filter(s=>{
+      if(!q) return true;
+      return stripDiacritics(`${s.name} ${s.ico||''}`).toLowerCase().includes(q);
+    }).slice(0,20);
+
+    let html = '';
+    if(q && q.length>0 && !state.suppliers.find(s=>s.name.toLowerCase()===q)){
+      html += `
+        <div class="combo-item" data-action="create-supplier" data-name="${escapeAttr(q)}">
+          <strong>+ Nový dodavatel: ${escapeHtml(q)}</strong>
+        </div>
+      `;
+    }
+    if(matches.length){
+      html += matches.map(s=>`
+        <div class="combo-item" data-id="${s.id}">
+          <div>${escapeHtml(s.name)}</div>
+          ${s.ico?`<div class="sub">IČO: ${escapeHtml(s.ico)}</div>`:''}
+        </div>
+      `).join('');
+    } else if(!q || q.length<1) {
+      html += `<div class="combo-empty">Žádní dodavatelé. Napiš jméno a vytvoř nového.</div>`;
+    }
+    list.innerHTML = html;
+    list.classList.add('open');
+  }
+
+  input.addEventListener('input', (e)=>{
+    renderList(e.target.value);
+  });
+
+  input.addEventListener('focus', ()=>{
+    renderList(input.value);
+  });
+
+  list.addEventListener('click', async (e)=>{
+    const item = e.target.closest('.combo-item[data-id], .combo-item[data-action="create-supplier"]');
+    if(!item) return;
+
+    if(item.getAttribute('data-action')==='create-supplier'){
+      // Vytvoř nového dodavatele
+      const name = item.getAttribute('data-name');
+      if(!name) return;
+      const newSupplier = { id: uid(), name: name, address: '', ico: '', dic: '', email: '', phone: '' };
+      state.suppliers.push(newSupplier);
+      await saveSuppliers();
+      input.value = newSupplier.name;
+      hidden.value = newSupplier.id;
+      list.classList.remove('open');
+      renderList('');
+    } else {
+      // Vyber existujícího
+      const s = supplierById(item.getAttribute('data-id'));
+      if(s){ input.value = s.name; hidden.value = s.id; }
+      list.classList.remove('open');
+    }
+  });
+
+  document.addEventListener('click', (e)=>{
+    if(e.target!==input && !list.contains(e.target)) list.classList.remove('open');
+  });
+}
+
 document.addEventListener('click', async (e)=>{
   const el = e.target.closest('[data-action]');
   if(!el) return;
@@ -2156,6 +2280,9 @@ document.addEventListener('click', async (e)=>{
   else if(action==='new-client'){ state.view='client-form'; state.editingClientId=null; render(); }
   else if(action==='edit-client'){ state.view='client-form'; state.editingClientId=id; render(); }
   else if(action==='delete-client'){ if(confirm('Smazat tohoto odběratele?')){ state.clients = state.clients.filter(c=>c.id!==id); await saveClients(); render(); } }
+  else if(action==='open-supplier-modal'){ openSupplierModal(); }
+  else if(action==='edit-supplier'){ openSupplierModal(id); }
+  else if(action==='delete-supplier'){ await deleteSupplier(id); }
   else if(action==='client-to-invoice'){ state.preselectClientId=id; state.view='invoice-form'; state.editingInvoiceId=null; state.formItems=[]; render(); }
   else if(action==='add-item'){ state.formItems.push({desc:'',qty:1,unit:'ks',price:0,vat:21}); render(); }
   else if(action==='remove-item'){ const idx = parseInt(el.getAttribute('data-index')); state.formItems.splice(idx,1); if(!state.formItems.length) state.formItems.push({desc:'',qty:1,unit:'ks',price:0,vat:21}); render(); }
@@ -2271,6 +2398,71 @@ async function onSubmitClient(e){
   else{ state.clients.push(client); }
   await saveClients();
   state.view='clients';
+  render();
+}
+
+// Dodavatelé
+function openSupplierModal(id){
+  const supplier = id ? supplierById(id) : null;
+  const modalHtml = `
+    <div class="modal-overlay" id="supplier-modal-overlay">
+      <div class="modal-card">
+        <h2>Dodavatel</h2>
+        <form id="supplier-form">
+          <input type="hidden" name="id" value="${supplier?.id || ''}">
+          <div class="field"><label>Název firmy / jméno</label><input name="name" value="${escapeAttr(supplier?.name || '')}" required></div>
+          <div class="field"><label>Adresa</label><textarea name="address">${escapeAttr(supplier?.address || '')}</textarea></div>
+          <div class="field-row">
+            <div class="field"><label>IČO</label><input name="ico" value="${escapeAttr(supplier?.ico || '')}"></div>
+            <div class="field"><label>DIČ</label><input name="dic" value="${escapeAttr(supplier?.dic || '')}"></div>
+          </div>
+          <div class="field-row">
+            <div class="field"><label>Email</label><input type="email" name="email" value="${escapeAttr(supplier?.email || '')}"></div>
+            <div class="field"><label>Telefon</label><input name="phone" value="${escapeAttr(supplier?.phone || '')}"></div>
+          </div>
+          <div style="display:flex; gap:10px; margin-top:16px;">
+            <button type="submit" class="btn">Uložit dodavatele</button>
+            <button type="button" class="btn secondary" data-action="close-supplier-modal">Zrušit</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  `;
+  document.body.insertAdjacentHTML('beforeend', modalHtml);
+  const overlay = document.getElementById('supplier-modal-overlay');
+  const form = document.getElementById('supplier-form');
+  
+  form.addEventListener('submit', onSubmitSupplier);
+  overlay.addEventListener('click', (e) => {
+    if(e.target === overlay) closeSupplerModal();
+  });
+  document.querySelectorAll('[data-action="close-supplier-modal"]').forEach(btn => {
+    btn.addEventListener('click', closeSupplerModal);
+  });
+}
+
+function closeSupplerModal(){
+  const modal = document.getElementById('supplier-modal-overlay');
+  if(modal) modal.remove();
+}
+
+async function onSubmitSupplier(e){
+  e.preventDefault();
+  const fd = new FormData(e.target);
+  const id = fd.get('id');
+  const supplier = { id: id || uid(), name: fd.get('name'), address: fd.get('address'), ico: fd.get('ico'), dic: fd.get('dic'), email: fd.get('email'), phone: fd.get('phone') };
+  if(id){ const idx = state.suppliers.findIndex(s=>s.id===id); state.suppliers[idx]=supplier; }
+  else{ state.suppliers.push(supplier); }
+  await saveSuppliers();
+  closeSupplerModal();
+  state.view='settings';
+  render();
+}
+
+async function deleteSupplier(id){
+  if(!confirm('Opravdu smazat tohoto dodavatele?')) return;
+  state.suppliers = state.suppliers.filter(s => s.id !== id);
+  await saveSuppliers();
   render();
 }
 
