@@ -2348,6 +2348,123 @@ async function removeBrandingImage(field){
   await loadUsers();
   render();
 })();
-</script>
+/* ---------- ADDRESS AUTOCOMPLETE (Nominatim / OpenStreetMap) ---------- */
+let addressDebounceTimer = null;
+
+// Vyhledání adres podle napsaného textu
+async function searchAddressSuggestions(query, callback) {
+  if (!query || query.length < 3) {
+    callback([]);
+    return;
+  }
+  try {
+    const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&addressdetails=1&countrycodes=cz,sk&limit=5`;
+    const res = await fetch(url, { headers: { 'User-Agent': 'LedgerApp/1.0' } });
+    const data = await res.json();
+
+    const results = data.map(item => {
+      const addr = item.address || {};
+      const street = addr.road || addr.pedestrian || addr.suburb || '';
+      const houseNumber = addr.house_number || '';
+      const city = addr.city || addr.town || addr.village || addr.municipality || '';
+      const postcode = addr.postcode || '';
+
+      const formattedStreet = houseNumber ? `${street} ${houseNumber}`.trim() : street;
+      const fullAddress = [formattedStreet, city, postcode].filter(Boolean).join(', ');
+
+      return {
+        label: item.display_name,
+        fullAddress,
+        street: formattedStreet,
+        city,
+        postcode
+      };
+    });
+    callback(results);
+  } catch (err) {
+    console.error('Chyba při vyhledávání adresy:', err);
+    callback([]);
+  }
+}
+
+// Připojení na jakýkoliv <input> s adresou
+function attachAddressAutocomplete(inputEl, onSelect) {
+  if (!inputEl) return;
+
+  let wrapper = inputEl.parentElement;
+  if (!wrapper.classList.contains('combo-field')) {
+    wrapper = document.createElement('div');
+    wrapper.className = 'combo-field';
+    inputEl.parentNode.insertBefore(wrapper, inputEl);
+    wrapper.appendChild(inputEl);
+  }
+
+  let listEl = wrapper.querySelector('.combo-list.address-list');
+  if (!listEl) {
+    listEl = document.createElement('div');
+    listEl.className = 'combo-list address-list';
+    wrapper.appendChild(listEl);
+  }
+
+  inputEl.addEventListener('input', (e) => {
+    const query = e.target.value;
+    clearTimeout(addressDebounceTimer);
+
+    addressDebounceTimer = setTimeout(() => {
+      searchAddressSuggestions(query, (items) => {
+        if (!items.length) {
+          listEl.classList.remove('open');
+          listEl.innerHTML = '';
+          return;
+        }
+
+        listEl.innerHTML = items.map((item, idx) => `
+          <div class="combo-item" data-idx="${idx}">
+            <strong>${item.fullAddress || item.label}</strong>
+          </div>
+        `).join('');
+
+        listEl.classList.add('open');
+
+        listEl.querySelectorAll('.combo-item').forEach(el => {
+          el.addEventListener('click', () => {
+            const selected = items[parseInt(el.dataset.idx)];
+            onSelect(selected);
+            listEl.classList.remove('open');
+          });
+        });
+      });
+    }, 300);
+  });
+
+  document.addEventListener('click', (e) => {
+    if (!wrapper.contains(e.target)) {
+      listEl.classList.remove('open');
+    }
+  });
+}
+
+// Automatické sledování vytvoření formulářů
+document.addEventListener('focusin', (e) => {
+  const target = e.target;
+  // Pokud kliknete do pole pro adresu (u odběratele nebo firmy)
+  if (target && (target.id === 'client-address' || target.id === 'company-address' || target.name === 'address')) {
+    if (!target.dataset.hasAddressAutocomplete) {
+      target.dataset.hasAddressAutocomplete = 'true';
+      attachAddressAutocomplete(target, (selected) => {
+        target.value = selected.fullAddress;
+        
+        // Pokud existují samostatná pole pro PSČ nebo město ve stejném formuláři, automaticky je vyplní
+        const form = target.closest('form') || target.closest('.form-card');
+        if (form) {
+          const zipInput = form.querySelector('#client-zip, #company-zip, [name="zip"], [name="postcode"]');
+          const cityInput = form.querySelector('#client-city, #company-city, [name="city"]');
+          if (zipInput && selected.postcode) zipInput.value = selected.postcode;
+          if (cityInput && selected.city) cityInput.value = selected.city;
+        }
+      });
+    }
+  }
+});</script>
 </body>
 </html>
