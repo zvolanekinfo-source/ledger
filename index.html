@@ -399,6 +399,28 @@
 <div id="app"></div>
 
 <script>
+// ⚠️ FALLBACK NA LOCALSTORAGE - MUSÍ BÝT NA ZAČÁTKU!
+if (!window.storage) {
+  window.storage = {
+    async get(key, shared) {
+      const val = localStorage.getItem(key);
+      return val ? { key, value: val, shared } : null;
+    },
+    async set(key, value, shared) {
+      localStorage.setItem(key, value);
+      return { key, value, shared };
+    },
+    async delete(key, shared) {
+      localStorage.removeItem(key);
+      return { key, deleted: true, shared };
+    },
+    async list(prefix, shared) {
+      const keys = Object.keys(localStorage).filter(k => !prefix || k.startsWith(prefix));
+      return { keys, prefix, shared };
+    }
+  };
+}
+
 /* ---------- STATE ---------- */
 let state = {
   view: 'dashboard',
@@ -2533,12 +2555,22 @@ async function removeBrandingImage(field){
 
 /* ---------- INIT ---------- */
 (async function(){
-  if(window.pdfjsLib){
-    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+  try {
+    if(window.pdfjsLib){
+      pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    }
+    document.getElementById('app').innerHTML = '<div style="padding:60px;font-family:Inter,sans-serif;color:#5C6B66;">Načítám…</div>';
+    await loadAll();
+    render();
+  } catch(err) {
+    console.error('Init error:', err);
+    document.getElementById('app').innerHTML = `
+      <div style="padding:60px;font-family:Inter,sans-serif;background:#fee;color:#c33;">
+        <strong>Chyba při spuštění aplikace:</strong><br>${escapeHtml(err.message)}<br><br>
+        <button onclick="location.reload()" style="padding:10px 20px;background:#c33;color:#fff;border:none;cursor:pointer;border-radius:4px;">Zkusit znovu</button>
+      </div>
+    `;
   }
-  document.getElementById('app').innerHTML = '<div style="padding:60px;font-family:Inter,sans-serif;color:#5C6B66;">Načítám…</div>';
-  await loadAll();
-  render();
 })();
 /* ---------- ADDRESS AUTOCOMPLETE (Nominatim / OpenStreetMap) ---------- */
 let addressDebounceTimer = null;
@@ -2760,28 +2792,6 @@ function renderClients() {
       </div>
     </div>
   `;
-}
-
-// Fallback na localStorage, když window.storage není dostupné
-if (!window.storage) {
-  window.storage = {
-    async get(key, shared) {
-      const val = localStorage.getItem(key);
-      return val ? { key, value: val, shared } : null;
-    },
-    async set(key, value, shared) {
-      localStorage.setItem(key, value);
-      return { key, value, shared };
-    },
-    async delete(key, shared) {
-      localStorage.removeItem(key);
-      return { key, deleted: true, shared };
-    },
-    async list(prefix, shared) {
-      const keys = Object.keys(localStorage).filter(k => !prefix || k.startsWith(prefix));
-      return { keys, prefix, shared };
-    }
-  };
 }
 
 // 🚀 APLIKACE INICIALIZOVÁNA VÝŠE
