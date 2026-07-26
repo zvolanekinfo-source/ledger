@@ -247,21 +247,15 @@
     padding:3px 11px;border-radius:20px;
   }
 
-  /* meta strip under header */
-  .invoice-sheet .inv-meta{
-    display:grid;grid-template-columns:repeat(4,1fr);
-    margin-bottom:32px;
-  }
-  .invoice-sheet .inv-meta > div{padding:0 16px;border-left:1px solid var(--line);}
-  .invoice-sheet .inv-meta > div:first-child{padding-left:0;border-left:none;}
-  .invoice-sheet .inv-meta .k{font-size:10px;text-transform:uppercase;letter-spacing:0.7px;color:var(--ink-soft);margin-bottom:4px;font-weight:500;}
-  .invoice-sheet .inv-meta .v{font-family:'Inter',sans-serif;font-weight:600;font-size:13px;color:var(--ink);}
-
-  /* parties */
-  .invoice-sheet .parties{display:flex;justify-content:space-between;margin:0 0 32px 0;gap:22px;}
-  .invoice-sheet .party{flex:1;font-size:13px;line-height:1.6;color:var(--ink-soft);}
-  .invoice-sheet .party .k{font-size:10px;text-transform:uppercase;letter-spacing:0.8px;color:var(--ink-soft);font-weight:600;margin-bottom:8px;}
-  .invoice-sheet .party .nm{font-weight:600;font-size:14px;margin-bottom:3px;color:var(--ink);}
+  /* info cards (dodavatel+platba / odběratel) — rozvržení podle referenční faktury */
+  .invoice-sheet .info-grid{display:flex;gap:20px;margin-bottom:30px;align-items:stretch;}
+  .invoice-sheet .info-card{flex:1;border:1px solid var(--line);border-radius:10px;padding:18px 20px;font-size:13px;line-height:1.6;color:var(--ink-soft);}
+  .invoice-sheet .info-card .k{font-size:10px;text-transform:uppercase;letter-spacing:0.8px;color:var(--ink-soft);font-weight:600;margin-bottom:8px;}
+  .invoice-sheet .info-card .nm{font-weight:600;font-size:14px;margin-bottom:3px;color:var(--ink);}
+  .invoice-sheet .info-card .divider{border-top:1px solid var(--line);margin-top:14px;padding-top:14px;}
+  .invoice-sheet .info-card .meta-row{display:flex;justify-content:space-between;padding:2px 0;gap:10px;}
+  .invoice-sheet .info-card .meta-row span:first-child{color:var(--ink-soft);}
+  .invoice-sheet .info-card .meta-row span:last-child{font-family:'Inter',sans-serif;font-weight:600;color:var(--ink);text-align:right;}
 
   .invoice-sheet table.lines{width:100%;border-collapse:collapse;margin-bottom:22px;}
   .invoice-sheet table.lines thead th{
@@ -272,11 +266,7 @@
   .invoice-sheet table.lines tbody tr:last-child td{border-bottom:1px solid var(--ink);}
   .invoice-sheet table.lines td.num,.invoice-sheet table.lines th.num{text-align:right;font-family:'Inter',sans-serif;}
 
-  .invoice-sheet .bottom{display:flex;justify-content:space-between;align-items:flex-start;margin-top:8px;gap:24px;}
-  .invoice-sheet .paybox{flex:1;font-size:12.5px;color:var(--ink-soft);}
-  .invoice-sheet .paybox .k{font-size:10px;text-transform:uppercase;letter-spacing:0.7px;color:var(--ink-soft);font-weight:600;margin-bottom:10px;}
-  .invoice-sheet .paybox .prow{display:flex;justify-content:space-between;padding:4px 0;gap:10px;}
-  .invoice-sheet .paybox .prow span:last-child{font-family:'Inter',sans-serif;color:var(--ink);font-weight:500;}
+  .invoice-sheet .bottom{display:flex;justify-content:flex-end;align-items:flex-start;margin-top:8px;gap:32px;}
   .invoice-sheet .qrbox{text-align:center;font-size:10.5px;color:var(--ink-soft);flex-shrink:0;}
   .invoice-sheet .qrbox .qrimg{border:1px solid var(--line);padding:8px;background:#fff;display:inline-block;margin-bottom:6px;border-radius:8px;}
   .invoice-sheet .totals{width:230px;flex-shrink:0;}
@@ -1129,7 +1119,7 @@ function viewInvoicePreview(){
     </div>
     <div class="preview-wrap">
       <div class="invoice-sheet" id="invoice-sheet" style="${sheetStyle}">
-        <div class="inv-body" style="padding-bottom:0;">
+        <div class="inv-body">
         <div class="inv-header">
           <div class="inv-header-left">
             ${showLogo ? `<img class="inv-logo" src="${co.logo}" alt="Logo">` : `<div class="inv-logo-placeholder">LOGO</div>`}
@@ -1145,17 +1135,8 @@ function viewInvoicePreview(){
           </div>
         </div>
 
-        <div class="inv-meta">
-          <div><div class="k">Vystaveno</div><div class="v">${inv.issueDate||''}</div></div>
-          <div><div class="k">Splatnost</div><div class="v">${inv.dueDate||''}</div></div>
-          <div><div class="k">Zd. plnění</div><div class="v">${inv.taxDate||''}</div></div>
-          <div><div class="k">Forma úhrady</div><div class="v" style="font-family:'Inter',sans-serif;">${escapeHtml(inv.paymentMethod||'Bankovním převodem')}</div></div>
-        </div>
-        </div>
-
-        <div class="inv-body" style="padding-top:0;">
-          <div class="parties">
-            <div class="party">
+          <div class="info-grid">
+            <div class="info-card">
               <div class="k">Dodavatel</div>
               <div class="nm">${escapeHtml(co.name||'—')}</div>
               <div>${nl2br(co.address)}</div>
@@ -1164,8 +1145,19 @@ function viewInvoicePreview(){
               ${co.email?`<div>${escapeHtml(co.email)}</div>`:''}
               ${co.phone?`<div>${escapeHtml(co.phone)}</div>`:''}
               ${co.website?`<div>${escapeHtml(co.website)}</div>`:''}
+              <div class="divider">
+                ${co.account?`<div class="meta-row"><span>Číslo účtu</span><span>${escapeHtml(co.account)}</span></div>`:''}
+                ${co.iban?`<div class="meta-row"><span>IBAN</span><span>${escapeHtml(co.iban)}</span></div>`:''}
+                ${co.swift?`<div class="meta-row"><span>SWIFT/BIC</span><span>${escapeHtml(co.swift)}</span></div>`:''}
+                <div class="meta-row"><span>Forma úhrady</span><span>${escapeHtml(inv.paymentMethod||'Bankovním převodem')}</span></div>
+                <div class="meta-row"><span>Datum vystavení</span><span>${inv.issueDate||''}</span></div>
+                <div class="meta-row"><span>Datum splatnosti</span><span>${inv.dueDate||''}</span></div>
+                <div class="meta-row"><span>Zd. plnění</span><span>${inv.taxDate||''}</span></div>
+                ${inv.variableSymbol?`<div class="meta-row"><span>Variabilní symbol</span><span>${escapeHtml(inv.variableSymbol)}</span></div>`:''}
+                ${!co.account && !co.iban ? `<div style="margin-top:6px;">Doplň platební údaje v nastavení.</div>` : ''}
+              </div>
             </div>
-            <div class="party">
+            <div class="info-card">
               <div class="k">Odběratel</div>
               <div class="nm">${c?escapeHtml(c.name):'—'}</div>
               <div>${c?nl2br(c.address):''}</div>
@@ -1187,15 +1179,6 @@ function viewInvoicePreview(){
           </table>
 
           <div class="bottom">
-            <div class="paybox">
-              <div class="k">Platební údaje</div>
-              ${co.account?`<div class="prow"><span>Číslo účtu</span><span>${escapeHtml(co.account)}</span></div>`:''}
-              ${co.bankName?`<div class="prow"><span>Banka</span><span>${escapeHtml(co.bankName)}</span></div>`:''}
-              ${co.iban?`<div class="prow"><span>IBAN</span><span>${escapeHtml(co.iban)}</span></div>`:''}
-              ${co.swift?`<div class="prow"><span>SWIFT/BIC</span><span>${escapeHtml(co.swift)}</span></div>`:''}
-              ${inv.variableSymbol?`<div class="prow"><span>Variabilní symbol</span><span>${escapeHtml(inv.variableSymbol)}</span></div>`:''}
-              ${!co.account && !co.iban ? `<div style="color:var(--ink-soft);">Doplň platební údaje v nastavení.</div>` : ''}
-            </div>
             ${showQr ? `
             <div class="qrbox">
               <div class="qrimg" id="qr-holder"></div>
