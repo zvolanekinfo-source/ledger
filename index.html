@@ -1832,28 +1832,32 @@ function viewSettings(){
 
     <div class="section-title" style="margin-top:30px;">Kolegové s přístupem</div>
     <div class="form-card">
-      ${state.users.map(u=>`
+      ${state.users.map(u=>{
+        const isMe = u.id===state.currentUserId;
+        const amAdmin = isCurrentUserAdmin();
+        return `
         <div class="user-row">
           <span>
-            <span style="font-weight:600;">${escapeHtml(u.name)}</span>${u.id===state.currentUserId?' (ty)':''}
+            <span style="font-weight:600;">${escapeHtml(u.name)}</span>${isMe?' (ty)':''}
             ${u.role==='admin'?' <span class="badge">admin</span>':''}
             <br><span style="color:var(--ink-soft);font-size:12.5px;">${escapeHtml(u.email||'')}</span>
           </span>
-          <span>
-            <button class="iconbtn" data-action="edit-user" data-id="${u.id}" title="Upravit jméno/roli">✎</button>
-            ${(isCurrentUserAdmin() && u.id!==state.currentUserId) ? `<button class="iconbtn" data-action="edit-user-creds" data-id="${u.id}" title="Nastavit e-mail/heslo">🔑</button>` : ''}
-            ${(state.users.length>1 && u.id!==state.currentUserId) ? `<button class="iconbtn" data-action="remove-user" data-userid="${escapeAttr(u.id)}" data-name="${escapeAttr(u.name)}" title="Odebrat přístup">✕</button>` : ''}
+          <span style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;">
+            ${(isMe || amAdmin) ? `<button class="btn secondary small" data-action="edit-user-name" data-id="${u.id}">Upravit jméno</button>` : ''}
+            ${(amAdmin && !isMe) ? `<button class="btn secondary small" data-action="toggle-admin" data-id="${u.id}" data-name="${escapeAttr(u.name)}" data-role="${u.role||'member'}">${u.role==='admin'?'Zrušit administrátora':'Nastavit administrátorem'}</button>` : ''}
+            ${(amAdmin && !isMe) ? `<button class="btn secondary small" data-action="edit-user-creds" data-id="${u.id}">Nastavit e-mail a heslo</button>` : ''}
+            ${(amAdmin && !isMe) ? `<button class="btn danger small" data-action="remove-user" data-userid="${escapeAttr(u.id)}" data-name="${escapeAttr(u.name)}">Odebrat přístup</button>` : ''}
           </span>
         </div>
-      `).join('')}
+      `;}).join('')}
       <div class="formfoot" style="margin-top:10px;">
-        <button type="button" class="btn secondary" data-action="edit-own-account">✎ Můj e-mail a heslo</button>
-        ${isCurrentUserAdmin() ? `<button type="button" class="btn secondary" data-action="new-colleague">+ Přidat kolegu (e-mail a heslo)</button>` : ''}
+        <button type="button" class="btn secondary" data-action="edit-own-account">Můj e-mail a heslo</button>
+        ${isCurrentUserAdmin() ? `<button type="button" class="btn secondary" data-action="new-colleague">Přidat kolegu (e-mail a heslo)</button>` : ''}
       </div>
       <p style="font-size:12px;color:var(--ink-soft);margin-top:14px;">
         ${isCurrentUserAdmin()
-          ? 'Jako admin můžeš kolegu přidat rovnou i s heslem (🔑 u jeho jména), nebo mu heslo/e-mail později kdykoli změnit. Jméno a roli může upravit kterýkoli člen týmu.'
-          : 'Noví kolegové se zaregistrují sami přes záložku „Registrace" na přihlašovací obrazovce, nebo je (i s heslem) může rovnou přidat kolega s rolí admin. Jméno a roli může upravit kterýkoli člen týmu; vlastní e-mail a heslo si každý mění sám (tlačítko výše).'}
+          ? 'Jako admin můžeš kolegu přidat rovnou i s heslem, spravovat jeho jméno, roli i přihlašovací údaje. Kolega bez role admin může upravit jen svoje vlastní jméno.'
+          : 'Noví kolegové se zaregistrují sami přes záložku „Registrace" na přihlašovací obrazovce, nebo je (i s heslem) může rovnou přidat kolega s rolí admin. Svoje jméno si můžeš upravit sám; roli a cizí údaje spravuje jen admin.'}
         Appka hesla nikdy neukládá ani nevidí — o vše se stará Supabase Auth.
       </p>
     </div>
@@ -2824,6 +2828,7 @@ document.addEventListener('click', async (e)=>{
   else if(action==='print-invoice'){ window.print(); }
   else if(action==='download-invoice-pdf'){ downloadInvoicePdf(id, el); }
   else if(action==='remove-user'){
+    if(!isCurrentUserAdmin()){ alert('Odebrat přístup smí jen admin.'); return; }
     const userId = el.getAttribute('data-userid');
     const name = el.getAttribute('data-name');
     if(userId===state.currentUserId){ alert('Nemůžeš odebrat sám sebe, dokud jsi přihlášen.'); return; }
@@ -2832,25 +2837,37 @@ document.addEventListener('click', async (e)=>{
       catch(err){ alert('Odebrání se nepovedlo, zkus to prosím znovu.'); }
     }
   }
-  else if(action==='edit-user'){
+  else if(action==='edit-user-name'){
     const u = state.users.find(x=>x.id===id);
     if(!u) return;
-    const newName = prompt('Jméno kolegy:', u.name);
+    if(u.id!==state.currentUserId && !isCurrentUserAdmin()){ alert('Upravit jméno druhého člověka smí jen admin.'); return; }
+    const newName = prompt('Jméno:', u.name);
     if(newName===null) return;
     const trimmed = newName.trim();
     if(!trimmed){ alert('Jméno nesmí být prázdné.'); return; }
-    let newRole = u.role;
-    if(u.id!==state.currentUserId){
-      const roleInput = prompt('Role ("member" nebo "admin"):', u.role||'member');
-      if(roleInput===null) return;
-      newRole = (roleInput.trim().toLowerCase()==='admin') ? 'admin' : 'member';
-    }
     try{
-      await updateTeamMember(u.id, { display_name: trimmed, role: newRole });
+      await updateTeamMember(u.id, { display_name: trimmed });
       await loadTeam();
       if(u.id===state.currentUserId) state.currentUser = trimmed;
       render();
     }catch(err){ alert('Úprava se nepovedla, zkus to prosím znovu.'); }
+  }
+  else if(action==='toggle-admin'){
+    if(!isCurrentUserAdmin()){ alert('Roli smí měnit jen admin.'); return; }
+    const u = state.users.find(x=>x.id===id);
+    if(!u) return;
+    const name = el.getAttribute('data-name');
+    const currentRole = el.getAttribute('data-role');
+    const newRole = currentRole==='admin' ? 'member' : 'admin';
+    const msg = newRole==='admin'
+      ? `Nastavit „${name}“ jako administrátora?`
+      : `Zrušit administrátorská práva „${name}“?`;
+    if(!confirm(msg)) return;
+    try{
+      await updateTeamMember(u.id, { role: newRole });
+      await loadTeam();
+      render();
+    }catch(err){ alert('Změna role se nepovedla, zkus to prosím znovu.'); }
   }
   else if(action==='edit-own-account'){ state.view='account-form'; state.accountError=''; state.accountNotice=''; render(); }
   else if(action==='new-colleague'){
