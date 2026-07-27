@@ -1843,7 +1843,7 @@ function viewSettings(){
             <br><span style="color:var(--ink-soft);font-size:12.5px;">${escapeHtml(u.email||'')}</span>
           </span>
           <span style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;">
-            ${(isMe || amAdmin) ? `<button class="btn secondary small" data-action="edit-user-name" data-id="${u.id}">Upravit jméno</button>` : ''}
+            ${amAdmin ? `<button class="btn secondary small" data-action="edit-user-name" data-id="${u.id}">Upravit jméno</button>` : ''}
             ${(amAdmin && !isMe) ? `<button class="btn secondary small" data-action="toggle-admin" data-id="${u.id}" data-name="${escapeAttr(u.name)}" data-role="${u.role||'member'}">${u.role==='admin'?'Zrušit administrátora':'Nastavit administrátorem'}</button>` : ''}
             ${(amAdmin && !isMe) ? `<button class="btn secondary small" data-action="edit-user-creds" data-id="${u.id}">Nastavit e-mail a heslo</button>` : ''}
             ${(amAdmin && !isMe) ? `<button class="btn danger small" data-action="remove-user" data-userid="${escapeAttr(u.id)}" data-name="${escapeAttr(u.name)}">Odebrat přístup</button>` : ''}
@@ -1856,8 +1856,8 @@ function viewSettings(){
       </div>
       <p style="font-size:12px;color:var(--ink-soft);margin-top:14px;">
         ${isCurrentUserAdmin()
-          ? 'Jako admin můžeš kolegu přidat rovnou i s heslem, spravovat jeho jméno, roli i přihlašovací údaje. Kolega bez role admin může upravit jen svoje vlastní jméno.'
-          : 'Noví kolegové se zaregistrují sami přes záložku „Registrace" na přihlašovací obrazovce, nebo je (i s heslem) může rovnou přidat kolega s rolí admin. Svoje jméno si můžeš upravit sám; roli a cizí údaje spravuje jen admin.'}
+          ? 'Jako admin můžeš kolegu přidat rovnou i s heslem a spravovat jméno, roli i přihlašovací údaje kohokoli v týmu (i svoje vlastní jméno).'
+          : 'Noví kolegové se zaregistrují sami přes záložku „Registrace" na přihlašovací obrazovce, nebo je (i s heslem) může rovnou přidat kolega s rolí admin. Jméno, roli i přihlašovací údaje ostatních spravuje jen admin.'}
         Appka hesla nikdy neukládá ani nevidí — o vše se stará Supabase Auth.
       </p>
     </div>
@@ -2840,7 +2840,7 @@ document.addEventListener('click', async (e)=>{
   else if(action==='edit-user-name'){
     const u = state.users.find(x=>x.id===id);
     if(!u) return;
-    if(u.id!==state.currentUserId && !isCurrentUserAdmin()){ alert('Upravit jméno druhého člověka smí jen admin.'); return; }
+    if(!isCurrentUserAdmin()){ alert('Upravit jméno smí jen admin.'); return; }
     const newName = prompt('Jméno:', u.name);
     if(newName===null) return;
     const trimmed = newName.trim();
