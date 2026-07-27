@@ -1431,13 +1431,10 @@ function viewClientForm(){
 function addressFieldWithGeocode(fieldName, label, value, required, hint){
   const id = 'addr-' + fieldName;
   return `
-    <div class="field">
+    <div class="field combo-field">
       <label>${label}</label>
-      <textarea name="${fieldName}" id="${id}" ${required?'required':''}>${value||''}</textarea>
-      <div style="display:flex;align-items:center;gap:10px;margin-top:5px;">
-        <button type="button" class="btn-link" style="padding:0;font-size:12.5px;" data-action="geocode-address" data-target="${id}">📍 Najít a doplnit PSČ</button>
-        <span class="geocode-hint" id="${id}-hint" style="font-size:12px;color:var(--ink-soft);"></span>
-      </div>
+      <textarea name="${fieldName}" id="${id}" ${required?'required':''} autocomplete="off">${value||''}</textarea>
+      <div class="combo-list" id="${id}-list"></div>
       ${hint?`<p style="font-size:11.5px;color:var(--ink-soft);margin:4px 0 0 0;">${hint}</p>`:''}
     </div>
   `;
@@ -1897,6 +1894,7 @@ function afterRender(){
   const clientForm = document.getElementById('client-form');
   if(clientForm){ clientForm.addEventListener('submit', onSubmitClient); }
   setupAresCombo();
+  ['address','billingAddress','deliveryAddress'].forEach(setupAddressAutocomplete);
   const clientSearchInput = document.getElementById('client-search-input');
   if(clientSearchInput){
     clientSearchInput.addEventListener('input', (e)=>{ state.clientSearch = e.target.value; filterClientRows(e.target.value); });
@@ -2096,45 +2094,68 @@ function setupAresCombo(){
   });
 }
 
-/* ---------- Doplnění PSČ podle adresy (OpenStreetMap / Nominatim, zdarma bez klíče) ---------- */
-async function geocodeAddress(text){
-  const q = (text||'').trim();
-  if(!q) return null;
-  const url = `https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&countrycodes=cz&limit=1&q=${encodeURIComponent(q)}`;
-  const res = await fetch(url, { headers: { 'Accept':'application/json' } });
-  if(!res.ok) throw new Error('Vyhledávání adresy selhalo.');
-  const rows = await res.json();
-  return rows && rows[0] ? rows[0] : null;
+/* ---------- Živé našeptávání adresy + PSČ (OpenStreetMap / Nominatim, zdarma bez klíče) ---------- */
+function formatOsmAddress(item){
+  const a = item.address || {};
+  const street = a.road || a.pedestrian || a.footway || '';
+  const houseNum = a.house_number || '';
+  const streetLine = [street, houseNum].filter(Boolean).join(' ');
+  const city = a.city || a.town || a.village || a.municipality || a.suburb || '';
+  const psc = a.postcode || '';
+  const cityLine = [psc, city].filter(Boolean).join(' ');
+  return [streetLine, cityLine].filter(Boolean).join(', ') || item.display_name;
 }
 
-async function handleGeocodeClick(targetId, triggerEl){
-  const textarea = document.getElementById(targetId);
-  const hint = document.getElementById(targetId + '-hint');
-  if(!textarea) return;
-  const original = triggerEl.textContent;
-  triggerEl.textContent = 'Hledám…';
-  triggerEl.disabled = true;
-  if(hint) hint.textContent = '';
-  try{
-    const result = await geocodeAddress(textarea.value);
-    if(!result || !result.address){
-      if(hint) hint.textContent = 'Adresa nenalezena — zkus ji napsat přesněji (ulice, číslo, město).';
+async function osmSearchAddresses(q){
+  const url = `https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&countrycodes=cz&limit=5&q=${encodeURIComponent(q)}`;
+  const res = await fetch(url, { headers: { 'Accept':'application/json' } });
+  if(!res.ok) throw new Error('Vyhledávání adresy selhalo.');
+  return await res.json();
+}
+
+function setupAddressAutocomplete(fieldName){
+  const id = 'addr-' + fieldName;
+  const textarea = document.getElementById(id);
+  const list = document.getElementById(id + '-list');
+  if(!textarea || !list) return;
+  let debounceTimer = null;
+  let cache = [];
+
+  function renderList(items){
+    cache = items;
+    if(!items.length){
+      list.classList.remove('open');
+      list.innerHTML = '';
       return;
     }
-    const a = result.address;
-    const psc = a.postcode || '';
-    const alreadyHasPsc = /\b\d{3}\s?\d{2}\b/.test(textarea.value);
-    if(psc && !alreadyHasPsc){
-      const sep = textarea.value.trim().endsWith(',') || !textarea.value.trim() ? '' : ',';
-      textarea.value = `${textarea.value.trim()}${sep} ${psc}`.trim();
-    }
-    if(hint) hint.textContent = psc ? `Nalezeno, PSČ ${psc} doplněno (zdroj: OpenStreetMap).` : 'Adresa nalezena, ale bez PSČ.';
-  }catch(err){
-    if(hint) hint.textContent = 'Vyhledávání se nepovedlo, zkus to prosím znovu.';
-  }finally{
-    triggerEl.textContent = original;
-    triggerEl.disabled = false;
+    list.innerHTML = items.map((item,i)=>`
+      <div class="combo-item" data-idx="${i}">${escapeHtml(formatOsmAddress(item))}</div>
+    `).join('');
+    list.classList.add('open');
   }
+
+  textarea.addEventListener('input', ()=>{
+    clearTimeout(debounceTimer);
+    const q = textarea.value.trim();
+    if(q.length < 5){ list.classList.remove('open'); return; }
+    debounceTimer = setTimeout(async ()=>{
+      try{ renderList(await osmSearchAddresses(q)); }
+      catch(err){ list.classList.remove('open'); }
+    }, 450);
+  });
+
+  list.addEventListener('mousedown', (e)=>{
+    const item = e.target.closest('.combo-item');
+    if(!item) return;
+    e.preventDefault();
+    const picked = cache[parseInt(item.getAttribute('data-idx'))];
+    if(picked) textarea.value = formatOsmAddress(picked);
+    list.classList.remove('open');
+  });
+
+  document.addEventListener('click', (e)=>{
+    if(e.target!==textarea && !list.contains(e.target)) list.classList.remove('open');
+  });
 }
 
 function setupClientCombo(){
@@ -2247,9 +2268,6 @@ document.addEventListener('click', async (e)=>{
   else if(action==='export-backup'){ exportBackupFile(); }
   else if(action==='trigger-restore-file'){ const fi=document.getElementById('restore-file-input'); if(fi) fi.click(); }
   else if(action==='restore-snapshot'){ const date=el.getAttribute('data-date'); await restoreFromSnapshot(date); }
-  else if(action==='geocode-address'){
-    handleGeocodeClick(el.getAttribute('data-target'), el);
-  }
   else if(action==='upload-branding'){
     const field = el.getAttribute('data-field');
     const fi = document.getElementById('branding-file-input');
