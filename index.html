@@ -73,7 +73,7 @@
     border-left:3px solid var(--accent-soft);
   }
   .navitem .n{font-family:'IBM Plex Mono',monospace;font-size:11px;color:#7C8B84;width:18px;}
-  .sidebar-foot{margin-top:auto;padding:16px 22px 0 22px;font-size:11px;color:#647069;border-top:1px solid rgba(255,255,255,0.1);}
+  .sidebar-foot{margin-top:auto;padding:16px 22px 20px 22px;font-size:11px;color:#647069;border-top:1px solid rgba(255,255,255,0.1);}
 
   /* MAIN */
   .main{flex:1;padding:36px 44px;max-width:1180px;}
@@ -344,9 +344,9 @@
   .auth-tab.active{background:var(--surface);color:var(--ink);box-shadow:0 1px 3px rgba(0,0,0,0.1);}
   .auth-tab.disabled{opacity:.35;cursor:not-allowed;}
   .auth-subtitle{font-size:13px;color:var(--ink-soft);margin:-6px 0 18px 0;}
-  .whoami{display:flex;align-items:center;justify-content:space-between;gap:8px;}
-  .whoami .name{font-size:13px;color:#EDEFEA;font-weight:600;}
-  .whoami button{background:none;border:none;color:#9BAAA3;font-size:12px;text-decoration:underline;padding:0;}
+  .whoami{display:flex;flex-direction:column;align-items:flex-start;gap:6px;min-width:0;}
+  .whoami .name{font-size:13px;color:#EDEFEA;font-weight:600;max-width:100%;overflow-wrap:break-word;word-break:break-word;line-height:1.35;}
+  .whoami button{background:none;border:none;color:#9BAAA3;font-size:12px;text-decoration:underline;padding:0;flex-shrink:0;}
   .user-row{display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-bottom:1px solid var(--line);font-size:14px;}
   .user-row:last-child{border-bottom:none;}
 
@@ -789,7 +789,7 @@ function render(){
       <div class="navitem ${state.view==='settings'?'active':''}" data-action="nav" data-view="settings">Nastavení</div>
       <div class="sidebar-foot">
         <div class="whoami">
-          <span class="name">${escapeHtml(state.currentUser)}</span>
+          <span class="name" title="${escapeAttr(state.currentUser)}">${escapeHtml(state.currentUser)}</span>
           <button data-action="logout">Odhlásit</button>
         </div>
       </div>
