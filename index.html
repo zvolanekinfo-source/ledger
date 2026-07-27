@@ -398,8 +398,10 @@ let state = {
   invoices: [],
   users: [],
   currentUser: null,
+  currentUserId: null,
   authView: 'login', // 'login' | 'register'
   authError: '',
+  authNotice: '',
   editingInvoiceId: null,
   editingClientId: null,
   previewId: null,
@@ -413,7 +415,7 @@ let state = {
   backupDates: [],
   dashboardFilter: { preset:'all', from:'', to:'', clientId:'', status:'' },
   invoiceFilter: { search:'', from:'', to:'', clientId:'', status:'' },
-  lastLoginName: ''
+  lastLoginEmail: ''
 };
 
 const VAT_RATES = [21, 12, 0];
@@ -430,36 +432,97 @@ function hexToRgba(hex, alpha){
   return `rgba(${r},${g},${b},${alpha})`;
 }
 
-/* ---------- SUPABASE STORAGE SHIM ----------
-   Nahrazuje window.storage (dostupné jen v Claude artefaktech) vlastní
-   implementací nad Supabase REST API, aby appka fungovala i po nahrání
+/* ---------- SUPABASE STORAGE + AUTH ----------
+   Ukládání dat běží nad Supabase REST API, aby appka fungovala i po nahrání
    na GitHub Pages / kamkoliv jinam mimo Claude.
-   Vyžaduje v Supabase tabulku "app_storage" (viz SQL v komentáři níže). */
+   Přístup k datům je řízený skutečným přihlášením přes Supabase Auth
+   (hesla hashuje a spravuje Supabase, tento kód s nimi nikdy nepracuje
+   v čitelné podobě) a RLS pravidly, které povolí čtení/zápis jen členům
+   týmu. Kompletní SQL nastavení najdeš v přiloženém souboru supabase-setup.sql —
+   je potřeba ho jednou spustit v Supabase SQL editoru. */
 const SUPABASE_URL = 'https://jucphmkmujjhxymvguhc.supabase.co';
-const SUPABASE_KEY = 'sb_publishable_wk2kCIi0aM_wq-ZEAGF8OA_m9D4gGaG';
+const SUPABASE_KEY = 'sb_publishable_wk2kCIi0aM_wq-ZEAGF8OA_m9D4gGaG'; // veřejný "anon" klíč – bezpečný ve frontend kódu, sám o sobě k datům nepustí (viz RLS)
 const SUPABASE_REST = SUPABASE_URL + '/rest/v1';
+const SUPABASE_AUTH = SUPABASE_URL + '/auth/v1';
+const SESSION_KEY = 'ledger_session_v1';
 
-/*
-  SQL pro Supabase (SQL Editor -> New query -> spustit jednou):
+/* ---- session (JWT vydaný Supabase Auth po přihlášení) ---- */
+let session = null; // { access_token, refresh_token, expires_at, user:{id,email} }
 
-  create table if not exists app_storage (
-    key text primary key,
-    value text,
-    updated_at timestamptz default now()
-  );
+function loadSessionFromStorage(){
+  try{
+    const raw = localStorage.getItem(SESSION_KEY);
+    session = raw ? JSON.parse(raw) : null;
+  }catch(e){ session = null; }
+}
+function persistSession(s){
+  session = s;
+  try{
+    if(s) localStorage.setItem(SESSION_KEY, JSON.stringify(s));
+    else localStorage.removeItem(SESSION_KEY);
+  }catch(e){}
+}
 
-  alter table app_storage enable row level security;
+async function authRequest(path, body){
+  const res = await fetch(SUPABASE_AUTH + path, {
+    method: 'POST',
+    headers: { 'apikey': SUPABASE_KEY, 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+  const data = await res.json().catch(()=> ({}));
+  if(!res.ok){
+    const msg = data.error_description || data.msg || data.error || 'Chyba přihlašovací služby.';
+    throw new Error(msg);
+  }
+  return data;
+}
 
-  create policy "public read/write app_storage"
-  on app_storage for all
-  using (true)
-  with check (true);
-*/
+function toSession(data){
+  if(!data || !data.access_token) return null;
+  return {
+    access_token: data.access_token,
+    refresh_token: data.refresh_token,
+    expires_at: Date.now() + ((data.expires_in||3600)*1000) - 15000,
+    user: { id: data.user.id, email: data.user.email }
+  };
+}
+
+async function ensureFreshSession(){
+  if(!session) return null;
+  if(Date.now() < session.expires_at) return session;
+  try{
+    const data = await authRequest('/token?grant_type=refresh_token', { refresh_token: session.refresh_token });
+    persistSession(toSession(data));
+    return session;
+  }catch(e){
+    persistSession(null);
+    return null;
+  }
+}
+
+async function signUp(email, password){
+  const data = await authRequest('/signup', { email, password });
+  return toSession(data); // null pokud instance vyžaduje potvrzení e-mailem
+}
+async function signIn(email, password){
+  const data = await authRequest('/token?grant_type=password', { email, password });
+  return toSession(data);
+}
+async function signOutRemote(){
+  if(!session) return;
+  try{
+    await fetch(SUPABASE_AUTH + '/logout', {
+      method: 'POST',
+      headers: { 'apikey': SUPABASE_KEY, 'Authorization': 'Bearer ' + session.access_token }
+    });
+  }catch(e){}
+}
 
 async function sbRequest(path, options = {}){
+  await ensureFreshSession();
   const headers = {
     'apikey': SUPABASE_KEY,
-    'Authorization': 'Bearer ' + SUPABASE_KEY,
+    'Authorization': 'Bearer ' + (session ? session.access_token : SUPABASE_KEY),
     'Content-Type': 'application/json',
     ...(options.headers || {})
   };
@@ -496,11 +559,26 @@ window.storage = {
   }
 };
 
-/* ---------- STORAGE ---------- */
-async function loadUsers(){
-  try{ const r = await window.storage.get('users', true); state.users = r ? JSON.parse(r.value) : []; }catch(e){ state.users = []; }
+/* ---------- TEAM (kolegové s přístupem) ----------
+   Nahrazuje původní tabulku hesel. Řádek v team_members = udělený přístup
+   ke sdíleným datům (viz RLS na app_storage v supabase-setup.sql). */
+async function loadTeam(){
+  try{
+    const res = await sbRequest('/team_members?select=user_id,email,display_name&order=created_at.asc');
+    const rows = await res.json();
+    state.users = rows.map(r=>({ id:r.user_id, name:r.display_name, email:r.email }));
+  }catch(e){ console.error(e); state.users = []; }
 }
-async function saveUsers(){ try{ await window.storage.set('users', JSON.stringify(state.users), true); }catch(e){ console.error(e); } }
+async function insertTeamMember(user_id, email, display_name){
+  await sbRequest('/team_members', {
+    method:'POST',
+    headers:{ 'Prefer':'return=minimal' },
+    body: JSON.stringify({ user_id, email, display_name })
+  });
+}
+async function removeTeamMember(user_id){
+  await sbRequest(`/team_members?user_id=eq.${encodeURIComponent(user_id)}`, { method:'DELETE' });
+}
 
 async function loadAll(){
   try{ const r = await window.storage.get('company', true); state.company = r ? JSON.parse(r.value) : null; }catch(e){ state.company = null; }
@@ -723,8 +801,7 @@ function render(){
 
 /* ---------- AUTH ---------- */
 function renderAuth(){
-  const hasUsers = state.users.length > 0;
-  const view = hasUsers ? state.authView : 'register';
+  const view = state.authView || 'login';
   return `
     <div class="login-wrap">
       <div class="login-side">
@@ -742,12 +819,12 @@ function renderAuth(){
             <div class="sub">${view==='register' ? '' : 'Přihlas se ke sdílené fakturaci.'}</div>
           </div>
           <div class="auth-tabs">
-            <div class="auth-tab ${view==='login'?'active':''} ${!hasUsers?'disabled':''}"
-                 ${hasUsers?`data-action="auth-switch" data-view="login"`:''}>Přihlásit se</div>
+            <div class="auth-tab ${view==='login'?'active':''}" data-action="auth-switch" data-view="login">Přihlásit se</div>
             <div class="auth-tab ${view==='register'?'active':''}" data-action="auth-switch" data-view="register">Registrace</div>
           </div>
           ${state.authError?`<div class="login-error">${escapeHtml(state.authError)}</div>`:''}
-          ${view==='register' ? renderRegisterForm(hasUsers) : renderLoginForm()}
+          ${state.authNotice?`<div class="login-error" style="background:var(--accent-soft);color:var(--accent);">${escapeHtml(state.authNotice)}</div>`:''}
+          ${view==='register' ? renderRegisterForm() : renderLoginForm()}
         </div>
       </div>
     </div>
@@ -757,23 +834,23 @@ function renderAuth(){
 function renderLoginForm(){
   return `
     <form id="login-form">
-      <div class="field"><label>Jméno</label>
-        <input name="name" list="login-users-list" placeholder="Napiš nebo vyber jméno" autocomplete="off" value="${escapeAttr(state.lastLoginName||'')}" autofocus>
-        <datalist id="login-users-list">${state.users.map(u=>`<option value="${escapeAttr(u.name)}">`).join('')}</datalist>
+      <div class="field"><label>E-mail</label>
+        <input name="email" type="email" autocomplete="username" placeholder="jmeno@firma.cz" value="${escapeAttr(state.lastLoginEmail||'')}" autofocus required>
       </div>
-      <div class="field"><label>Heslo</label><input name="password" type="password" required></div>
+      <div class="field"><label>Heslo</label><input name="password" type="password" autocomplete="current-password" required></div>
       <button type="submit" class="btn" style="width:100%;">Přihlásit se</button>
     </form>
   `;
 }
 
-function renderRegisterForm(hasUsers){
+function renderRegisterForm(){
   return `
-    <div class="auth-subtitle">${hasUsers ? 'Vytvoř si vlastní přihlášení do sdílené fakturace.' : 'Vytvoř první přihlášení — pak se přidají i kolegové.'}</div>
+    <div class="auth-subtitle">Vytvoř si účet pro sdílenou fakturaci. Přihlašovací údaje spravuje a hashuje Supabase Auth, appka je nikdy neuvidí v čitelné podobě.</div>
     <form id="register-form">
-      <div class="field"><label>Jméno</label><input name="name" required autofocus></div>
-      <div class="field"><label>Heslo</label><input name="password" type="password" required minlength="4"></div>
-      <div class="field"><label>Heslo znovu</label><input name="password2" type="password" required minlength="4"></div>
+      <div class="field"><label>Jméno (zobrazí se kolegům)</label><input name="displayName" required autofocus></div>
+      <div class="field"><label>E-mail</label><input name="email" type="email" autocomplete="username" required></div>
+      <div class="field"><label>Heslo</label><input name="password" type="password" autocomplete="new-password" required minlength="8"></div>
+      <div class="field"><label>Heslo znovu</label><input name="password2" type="password" autocomplete="new-password" required minlength="8"></div>
       <button type="submit" class="btn" style="width:100%;">Vytvořit a přihlásit</button>
     </form>
   `;
@@ -786,29 +863,40 @@ function afterRenderAuth(){
   if(rf) rf.addEventListener('submit', onSubmitRegister);
 }
 
+async function afterLogin(){
+  await loadTeam();
+  const me = state.users.find(u=>u.id===session.user.id);
+  state.currentUser = me ? me.name : session.user.email;
+  state.currentUserId = session.user.id;
+  await loadAll();
+  state.view = 'dashboard';
+  state.authError=''; state.authNotice='';
+  render();
+}
+
 async function onSubmitLogin(e){
   e.preventDefault();
   const fd = new FormData(e.target);
-  const name = (fd.get('name')||'').trim();
+  const email = (fd.get('email')||'').trim();
   const password = fd.get('password');
-  state.lastLoginName = name;
-  const user = state.users.find(u=>u.name===name);
-  if(!user || user.password!==password){
-    state.authError = 'Nesedí jméno nebo heslo.';
+  state.lastLoginEmail = email;
+  const submitBtn = e.target.querySelector('button[type="submit"]');
+  if(submitBtn) submitBtn.disabled = true;
+  try{
+    const s = await signIn(email, password);
+    persistSession(s);
+    await afterLogin();
+  }catch(err){
+    state.authError = 'Nesedí e-mail nebo heslo.';
     render();
-    return;
   }
-  state.authError='';
-  state.currentUser = name;
-  await loadAll();
-  state.view='dashboard';
-  render();
 }
 
 async function onSubmitRegister(e){
   e.preventDefault();
   const fd = new FormData(e.target);
-  const name = (fd.get('name')||'').trim();
+  const displayName = (fd.get('displayName')||'').trim();
+  const email = (fd.get('email')||'').trim();
   const password = fd.get('password');
   const password2 = fd.get('password2');
   if(password !== password2){
@@ -816,18 +904,26 @@ async function onSubmitRegister(e){
     render();
     return;
   }
-  if(state.users.find(u=>u.name.toLowerCase()===name.toLowerCase())){
-    state.authError = 'Toto jméno už existuje, zvol jiné nebo se přihlas.';
+  const submitBtn = e.target.querySelector('button[type="submit"]');
+  if(submitBtn) submitBtn.disabled = true;
+  try{
+    const s = await signUp(email, password);
+    if(!s){
+      // Instance vyžaduje potvrzení e-mailem, než je session vydaná
+      state.authError = '';
+      state.authNotice = 'Účet je vytvořený. Zkontroluj e-mail a potvrď registraci, pak se přihlas.';
+      state.authView = 'login';
+      state.lastLoginEmail = email;
+      render();
+      return;
+    }
+    persistSession(s);
+    await insertTeamMember(s.user.id, email, displayName || email);
+    await afterLogin();
+  }catch(err){
+    state.authError = err.message || 'Registrace se nepovedla.';
     render();
-    return;
   }
-  state.users.push({name, password});
-  await saveUsers();
-  state.authError='';
-  state.currentUser = name;
-  await loadAll();
-  state.view='dashboard';
-  render();
 }
 
 function renderView(){
@@ -1414,15 +1510,13 @@ function viewSettings(){
     <div class="form-card">
       ${state.users.map(u=>`
         <div class="user-row">
-          <span>${escapeHtml(u.name)}${u.name===state.currentUser?' (ty)':''}</span>
-          ${state.users.length>1 ? `<button class="iconbtn" data-action="remove-user" data-name="${escapeAttr(u.name)}" title="Odebrat">✕</button>` : ''}
+          <span>${escapeHtml(u.name)}${u.id===state.currentUserId?' (ty)':''} <span style="color:var(--ink-soft);font-size:12.5px;">${escapeHtml(u.email||'')}</span></span>
+          ${(state.users.length>1 && u.id!==state.currentUserId) ? `<button class="iconbtn" data-action="remove-user" data-userid="${escapeAttr(u.id)}" data-name="${escapeAttr(u.name)}" title="Odebrat přístup">✕</button>` : ''}
         </div>
       `).join('')}
-      <div class="formfoot">
-        <button type="button" class="btn secondary" data-action="auth-switch-inline">+ Přidat kolegu</button>
-      </div>
-      <p style="font-size:12px;color:var(--ink-soft);margin-top:10px;">
-        Přihlášení chrání jen jednoduché heslo přímo v appce — neslouží jako skutečné zabezpečení, jen jako rozlišení, kdo je kdo.
+      <p style="font-size:12px;color:var(--ink-soft);margin-top:14px;">
+        Noví kolegové se zaregistrují sami přes záložku „Registrace" na přihlašovací obrazovce — přihlašovací údaje spravuje Supabase Auth, appka hesla nikdy nevidí.
+        Odebrání přístupu zablokuje čtení/zápis sdílených dat; samotný účet dané osoby zůstává v Supabase (jde smazat v Supabase dashboardu, pokud je potřeba).
       </p>
     </div>
 
@@ -1914,7 +2008,14 @@ document.addEventListener('click', async (e)=>{
   const id = el.getAttribute('data-id');
 
   if(action==='auth-switch'){ state.authView = el.getAttribute('data-view'); state.authError=''; render(); }
-  else if(action==='logout'){ state.currentUser=null; state.authView='login'; state.view='dashboard'; render(); }
+  else if(action==='logout'){
+    await signOutRemote();
+    persistSession(null);
+    state.currentUser=null; state.currentUserId=null; state.users=[];
+    state.company=null; state.clients=[]; state.invoices=[];
+    state.authView='login'; state.view='dashboard';
+    render();
+  }
   else if(action==='nav'){ state.view = el.getAttribute('data-view'); state.editingInvoiceId=null; state.editingClientId=null; state.formItems=[]; render(); }
   else if(action==='new-invoice'){ state.view='invoice-form'; state.editingInvoiceId=null; state.formItems=[]; render(); }
   else if(action==='edit-invoice'){ state.view='invoice-form'; state.editingInvoiceId=id; state.formItems=[]; render(); }
@@ -1927,19 +2028,13 @@ document.addEventListener('click', async (e)=>{
   else if(action==='print-invoice'){ window.print(); }
   else if(action==='download-invoice-pdf'){ downloadInvoicePdf(id, el); }
   else if(action==='remove-user'){
+    const userId = el.getAttribute('data-userid');
     const name = el.getAttribute('data-name');
-    if(name===state.currentUser){ alert('Nemůžeš odebrat sám sebe, dokud jsi přihlášen.'); return; }
-    if(confirm(`Odebrat přístup pro „${name}“?`)){ state.users = state.users.filter(u=>u.name!==name); await saveUsers(); render(); }
-  }
-  else if(action==='auth-switch-inline'){
-    const name = (prompt('Jméno nového kolegy:')||'').trim();
-    if(!name) return;
-    if(state.users.find(u=>u.name.toLowerCase()===name.toLowerCase())){ alert('Toto jméno už existuje.'); return; }
-    const password = prompt(`Heslo pro „${name}“:`)||'';
-    if(!password){ alert('Heslo nesmí být prázdné.'); return; }
-    state.users.push({name, password});
-    await saveUsers();
-    render();
+    if(userId===state.currentUserId){ alert('Nemůžeš odebrat sám sebe, dokud jsi přihlášen.'); return; }
+    if(confirm(`Odebrat přístup pro „${name}“?`)){
+      try{ await removeTeamMember(userId); await loadTeam(); render(); }
+      catch(err){ alert('Odebrání se nepovedlo, zkus to prosím znovu.'); }
+    }
   }
   else if(action==='new-client'){ state.view='client-form'; state.editingClientId=null; render(); }
   else if(action==='edit-client'){ state.view='client-form'; state.editingClientId=id; render(); }
@@ -2133,7 +2228,14 @@ async function removeBrandingImage(field){
     pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
   }
   document.getElementById('app').innerHTML = '<div style="padding:60px;font-family:Inter,sans-serif;color:#5C6B66;">Načítám…</div>';
-  await loadUsers();
+  loadSessionFromStorage();
+  if(session){
+    const fresh = await ensureFreshSession();
+    if(fresh){
+      try{ await afterLogin(); return; }
+      catch(e){ console.error(e); persistSession(null); }
+    }
+  }
   render();
 })();
 </script>
