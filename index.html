@@ -241,7 +241,7 @@
     padding-bottom:24px;margin-bottom:24px;border-bottom:1px solid var(--line);
   }
   .invoice-sheet .inv-header-left{display:flex;align-items:center;gap:14px;min-width:0;}
-  .invoice-sheet .inv-logo{width:44px;height:44px;border-radius:10px;object-fit:cover;background:var(--paper);flex-shrink:0;}
+  .invoice-sheet .inv-logo{height:48px;width:auto;max-width:170px;object-fit:contain;flex-shrink:0;}
   .invoice-sheet .inv-logo-placeholder{
     width:44px;height:44px;border-radius:10px;background:var(--paper);
     border:1px dashed var(--line);display:flex;align-items:center;justify-content:center;
@@ -292,13 +292,10 @@
   /* signature / stamp row */
   .invoice-sheet .signoff{display:flex;justify-content:space-between;align-items:flex-end;margin-top:36px;gap:24px;}
   .invoice-sheet .signoff-terms{flex:1;font-size:11px;color:var(--ink-soft);line-height:1.5;white-space:pre-wrap;}
-  .invoice-sheet .signbox{width:200px;flex-shrink:0;text-align:center;position:relative;min-height:92px;}
-  .invoice-sheet .signbox .sig-stack{position:relative;height:60px;display:flex;align-items:flex-end;justify-content:center;}
-  .invoice-sheet .signbox img.sig-img{max-height:56px;max-width:180px;object-fit:contain;position:relative;z-index:2;}
-  .invoice-sheet .signbox img.co-stamp-img{
-    max-height:82px;max-width:120px;object-fit:contain;position:absolute;left:50%;bottom:-6px;
-    transform:translateX(-50%) rotate(-6deg);opacity:0.8;z-index:1;mix-blend-mode:multiply;
-  }
+  .invoice-sheet .signbox{width:260px;flex-shrink:0;text-align:center;min-height:92px;}
+  .invoice-sheet .signbox .sig-stack{display:flex;align-items:flex-end;justify-content:center;gap:18px;height:64px;}
+  .invoice-sheet .signbox img.sig-img{max-height:60px;max-width:130px;object-fit:contain;}
+  .invoice-sheet .signbox img.co-stamp-img{max-height:64px;max-width:120px;object-fit:contain;}
   .invoice-sheet .signbox .sig-line{border-top:1px solid var(--line);margin-top:6px;padding-top:6px;font-size:10px;color:var(--ink-soft);text-transform:uppercase;letter-spacing:0.5px;}
 
   .invoice-sheet .inv-footer{margin-top:28px;padding-top:16px;border-top:1px solid var(--line);display:flex;justify-content:space-between;font-size:10.5px;color:var(--ink-soft);}
