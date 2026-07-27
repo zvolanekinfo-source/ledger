@@ -655,8 +655,9 @@ async function loadAll(){
   try{ const r = await window.storage.get('clients', true); state.clients = r ? JSON.parse(r.value) : []; }catch(e){ state.clients = []; }
   try{ const r = await window.storage.get('invoices', true); state.invoices = r ? JSON.parse(r.value) : []; }catch(e){ state.invoices = []; }
   const companyDefaults = {
-    name:'', tagline:'', address:'', ico:'', dic:'', account:'', bankName:'', iban:'', swift:'', email:'', phone:'', website:'',
-    registration:'', prefix: new Date().getFullYear().toString(), nextNumber:1, defaultDueDays:14, defaultNote:'Děkujeme za spolupráci.',
+    name:'', tagline:'', address:blankAddr(), ico:'', dic:'', account:'', bankName:'', iban:'', swift:'', email:'', phone:'', website:'',
+    showRegistration:false, regDate:'', regCourt:'', regSection:'', regInsert:'',
+    prefix: new Date().getFullYear().toString(), nextNumber:1, defaultDueDays:14, defaultNote:'Děkujeme za spolupráci.',
     invoiceTerms:'Fakturovaná částka bude odečtena z uvedeného účtu. V případě prodlení s úhradou je odběratel povinen uhradit úrok z prodlení dle platné legislativy.',
     defaultPaymentMethod:'Bankovním převodem', invoiceAccent:'#1F5C4D',
     logo:'', signature:'', stamp:'', showLogo:true, showStamp:true, showSignature:true, showQr:true
@@ -1143,7 +1144,8 @@ function blankInvoice(){
   return {
     id:null, number:num, clientId: preselected, companyId: c.id,
     issueDate: todayISO(), taxDate: todayISO(), dueDate: addDays(todayISO(), c.defaultDueDays||14),
-    variableSymbol: num.replace(/\D/g,''), note: c.defaultNote||'', paid:false, paidDate:null,
+    variableSymbol: num.replace(/\D/g,''), constantSymbol:'', orderNumber:'', currency:'CZK', rounding:'none',
+    note: c.defaultNote||'', paid:false, paidDate:null,
     paymentMethod: c.defaultPaymentMethod || 'Bankovním převodem', colorMode:'color',
     includeStamp:true, includeSignature:true, includeQr:true
   };
@@ -1210,7 +1212,7 @@ function viewInvoiceForm(){
       </div>
       <div class="client-detail-box" id="client-detail-box" style="${selClient?'':'display:none;'}">
         <div class="field-row">
-          <div class="field"><label>Adresa odběratele</label><input name="clientAddress" id="client-detail-address" value="${escapeAttr(selClient?selClient.address||'':'')}"></div>
+          <div class="field"><label>Adresa odběratele</label><div id="client-detail-address" style="font-size:13px;color:var(--ink-soft);padding:9px 0;white-space:pre-line;">${selClient?escapeHtml(formatAddress(selClient.address))||'—':''}</div></div>
           <div class="field"><label>IČO</label><input name="clientIco" id="client-detail-ico" value="${escapeAttr(selClient?selClient.ico||'':'')}"></div>
         </div>
         <div class="field-row">
@@ -1221,7 +1223,7 @@ function viewInvoiceForm(){
           <div class="field"><label>Kontaktní telefon</label><input name="clientPhone" id="client-detail-phone" value="${escapeAttr(selClient?selClient.contactPhone||'':'')}"></div>
           <div class="field"></div>
         </div>
-        <p style="font-size:11.5px;color:var(--ink-soft);margin:-8px 0 4px 0;">Úpravy tady se po uložení faktury promítnou i do karty odběratele.</p>
+        <p style="font-size:11.5px;color:var(--ink-soft);margin:-8px 0 4px 0;">Adresu uprav v kartě odběratele. IČO/DIČ/kontakty tady se po uložení faktury promítnou i do karty odběratele.</p>
       </div>
       <div class="field-row">
         <div class="field"><label>Datum vystavení</label><input type="date" name="issueDate" value="${inv.issueDate}" required></div>
@@ -1232,9 +1234,26 @@ function viewInvoiceForm(){
         <div class="field"><label>Variabilní symbol</label><input name="variableSymbol" value="${inv.variableSymbol||''}"></div>
       </div>
       <div class="field-row">
+        <div class="field"><label>Konstantní symbol</label><input name="constantSymbol" value="${escapeAttr(inv.constantSymbol||'')}"></div>
+        <div class="field"><label>Číslo objednávky</label><input name="orderNumber" value="${escapeAttr(inv.orderNumber||'')}"></div>
+      </div>
+      <div class="field-row">
         <div class="field"><label>Forma úhrady</label>
           <select name="paymentMethod">
             ${['Bankovním převodem','Hotově','Kartou'].map(m=>`<option value="${m}" ${(inv.paymentMethod||'Bankovním převodem')===m?'selected':''}>${m}</option>`).join('')}
+          </select>
+        </div>
+        <div class="field"><label>Měna</label>
+          <select name="currency">
+            ${['CZK','EUR','USD'].map(m=>`<option value="${m}" ${(inv.currency||'CZK')===m?'selected':''}>${m}</option>`).join('')}
+          </select>
+        </div>
+      </div>
+      <div class="field-row">
+        <div class="field"><label>Zaokrouhlení</label>
+          <select name="rounding">
+            <option value="none" ${(inv.rounding||'none')==='none'?'selected':''}>Bez zaokrouhlení</option>
+            <option value="whole" ${inv.rounding==='whole'?'selected':''}>Na celé koruny</option>
           </select>
         </div>
         <div class="field"></div>
@@ -1314,13 +1333,16 @@ function viewInvoicePreview(){
   const c = clientById(inv.clientId);
   const co = companyById(inv.companyId) || state.companies[0];
   const t = invoiceTotals(inv);
+  const roundedTotal = inv.rounding==='whole' ? Math.round(t.total) : t.total;
+  const roundingAmount = roundedTotal - t.total;
+  const cur = inv.currency || 'CZK';
   const status = invoiceStatus(inv);
 
   const showQr = co.showQr!==false && inv.includeQr!==false;
   const showStamp = co.showStamp!==false && inv.includeStamp!==false && !!co.stamp;
   const showSignature = co.showSignature!==false && inv.includeSignature!==false && !!co.signature;
   const showLogo = co.showLogo!==false && !!co.logo;
-  const spayd = showQr ? buildSpayd(co, inv, t.total) : null;
+  const spayd = showQr ? buildSpayd(co, inv, roundedTotal) : null;
 
   const accent = co.invoiceAccent || '#1F5C4D';
   const sheetStyle = `--inv-accent:${accent};--inv-accent-soft:${hexToRgba(accent,0.12)};--inv-accent-tint:${hexToRgba(accent,0.05)};`;
@@ -1357,7 +1379,7 @@ function viewInvoicePreview(){
             <div class="info-card">
               <div class="k">Dodavatel</div>
               <div class="nm">${escapeHtml(co.name||'—')}</div>
-              <div>${nl2br(co.address)}</div>
+              <div>${nl2br(formatAddress(co.address))}</div>
               ${co.ico?`<div>IČO: ${escapeHtml(co.ico)}</div>`:''}
               ${co.dic?`<div>DIČ: ${escapeHtml(co.dic)}</div>`:''}
               ${co.email?`<div>${escapeHtml(co.email)}</div>`:''}
@@ -1372,19 +1394,22 @@ function viewInvoicePreview(){
                 <div class="meta-row"><span>Datum splatnosti</span><span>${inv.dueDate||''}</span></div>
                 <div class="meta-row"><span>Zd. plnění</span><span>${inv.taxDate||''}</span></div>
                 ${inv.variableSymbol?`<div class="meta-row"><span>Variabilní symbol</span><span>${escapeHtml(inv.variableSymbol)}</span></div>`:''}
+                ${inv.constantSymbol?`<div class="meta-row"><span>Konstantní symbol</span><span>${escapeHtml(inv.constantSymbol)}</span></div>`:''}
+                ${inv.orderNumber?`<div class="meta-row"><span>Číslo objednávky</span><span>${escapeHtml(inv.orderNumber)}</span></div>`:''}
                 ${!co.account && !co.iban ? `<div style="margin-top:6px;">Doplň platební údaje v nastavení.</div>` : ''}
               </div>
             </div>
             <div class="info-card">
               <div class="k">Odběratel</div>
               <div class="nm">${c?escapeHtml(c.name):'—'}</div>
-              <div>${c?nl2br(c.address):''}</div>
+              <div>${c?nl2br(formatAddress(c.address)):''}</div>
               ${c&&c.ico?`<div>IČO: ${escapeHtml(c.ico)}</div>`:''}
               ${c&&c.dic?`<div>DIČ: ${escapeHtml(c.dic)}</div>`:''}
               ${c&&c.contactPerson?`<div>K rukám: ${escapeHtml(c.contactPerson)}</div>`:''}
               ${c&&c.contactEmail?`<div>${escapeHtml(c.contactEmail)}</div>`:''}
               ${c&&c.contactPhone?`<div>${escapeHtml(c.contactPhone)}</div>`:''}
-              ${c&&c.deliveryAddress?`<div style="margin-top:8px;"><span style="opacity:.7;">Dodací adresa:</span><br>${nl2br(c.deliveryAddress)}</div>`:''}
+              ${c&&c.website?`<div>${escapeHtml(c.website)}</div>`:''}
+              ${c&&formatAddress(c.deliveryAddress)?`<div style="margin-top:8px;"><span style="opacity:.7;">Dodací adresa:</span><br>${nl2br(formatAddress(c.deliveryAddress))}</div>`:''}
             </div>
           </div>
 
@@ -1393,7 +1418,7 @@ function viewInvoicePreview(){
             <tbody>
               ${(inv.items||[]).map(it=>{
                 const lt=(it.qty||0)*(it.price||0)*(1+(it.vat||0)/100);
-                return `<tr><td>${escapeHtml(it.desc)}</td><td class="num">${it.qty} ${escapeHtml(it.unit||'')}</td><td class="num">${fmt(it.price)} Kč</td><td class="num">${it.vat}%</td><td class="num">${fmt(lt)} Kč</td></tr>`;
+                return `<tr><td>${escapeHtml(it.desc)}</td><td class="num">${it.qty} ${escapeHtml(it.unit||'')}</td><td class="num">${fmt(it.price)} ${cur}</td><td class="num">${it.vat}%</td><td class="num">${fmt(lt)} ${cur}</td></tr>`;
               }).join('')}
             </tbody>
           </table>
@@ -1405,9 +1430,10 @@ function viewInvoicePreview(){
               <div>QR platba</div>
             </div>` : ''}
             <div class="totals">
-              <div class="trow"><span>Základ daně</span><span>${fmt(t.base)} Kč</span></div>
-              <div class="trow"><span>DPH</span><span>${fmt(t.vat)} Kč</span></div>
-              <div class="trow grand"><span>K úhradě</span><span>${fmt(t.total)} Kč</span></div>
+              <div class="trow"><span>Základ daně</span><span>${fmt(t.base)} ${cur}</span></div>
+              ${co.vatPayer!==false?`<div class="trow"><span>DPH</span><span>${fmt(t.vat)} ${cur}</span></div>`:''}
+              ${roundingAmount!==0?`<div class="trow"><span>Zaokrouhlení</span><span>${roundingAmount>0?'+':''}${fmt(roundingAmount)} ${cur}</span></div>`:''}
+              <div class="trow grand"><span>K úhradě</span><span>${fmt(roundedTotal)} ${cur}</span></div>
             </div>
           </div>
 
@@ -1423,6 +1449,8 @@ function viewInvoicePreview(){
               <div class="sig-line">Podpis a razítko</div>
             </div>
           </div>
+
+          ${registrationSentence(co)?`<div class="signoff-terms" style="margin-top:6px;">${escapeHtml(registrationSentence(co))}</div>`:''}
 
           <div class="inv-footer">
             <span>${escapeHtml(co.name||'')}${co.ico?' · IČO '+escapeHtml(co.ico):''}</span>
@@ -1443,9 +1471,28 @@ function buildSpayd(co, inv, total){
   const acc = co.iban.replace(/\s+/g,'');
   const msg = stripDiacritics(`FAKTURA ${inv.number}`).toUpperCase();
   const vs = (inv.variableSymbol||'').replace(/\D/g,'');
-  let s = `SPD*1.0*ACC:${acc}*AM:${total.toFixed(2)}*CC:CZK*MSG:${msg}`;
+  const ks = (inv.constantSymbol||'').replace(/\D/g,'');
+  let s = `SPD*1.0*ACC:${acc}*AM:${total.toFixed(2)}*CC:${inv.currency||'CZK'}*MSG:${msg}`;
   if(vs) s += `*X-VS:${vs}`;
+  if(ks) s += `*X-KS:${ks}`;
   return s;
+}
+
+function registrationSentence(co){
+  if(!co.showRegistration) return '';
+  const parts = [];
+  if(co.regCourt) parts.push(`Městským soudem v ${co.regCourt}`);
+  if(co.regSection) parts.push(`oddíl ${co.regSection}`);
+  if(co.regInsert) parts.push(`vložka ${co.regInsert}`);
+  if(co.regDate) parts.push(`dne ${formatCzDate(co.regDate)}`);
+  if(!parts.length) return '';
+  return `Zapsáno v obchodním rejstříku vedeném ${parts.join(', ')}.`;
+}
+function formatCzDate(iso){
+  if(!iso) return '';
+  const d = new Date(iso+'T00:00:00');
+  if(isNaN(d)) return iso;
+  return d.toLocaleDateString('cs-CZ');
 }
 
 /* ---------- CLIENTS (ODBĚRATELÉ) ---------- */
@@ -1461,7 +1508,7 @@ function viewClientDetail(){
   const paidSum = invoices.filter(i=>i.status==='paid').reduce((s,i)=>s+i.t.total,0);
   const unpaidSum = revenue - paidSum;
 
-  const hasDelivery = c.deliveryAddress || c.deliveryContact || c.deliveryContactName;
+  const hasDelivery = formatAddress(c.deliveryAddress) || c.deliveryContact || c.deliveryContactName;
   const hasBiz = c.priceLevel || c.paymentTerms;
 
   return `
@@ -1485,14 +1532,14 @@ function viewClientDetail(){
       <div class="detail-grid">
         ${detailRow('IČO / DIČ', [c.ico, c.dic].filter(Boolean).join(' / '))}
         ${detailRow('Hlavní kontakt', [c.contactPerson, c.contactPhone, c.contactEmail].filter(Boolean).join(' · '))}
-        ${detailRow('Adresa', c.address, true)}
+        ${detailRow('Adresa', formatAddress(c.address), true)}
         ${detailRow('Číslo účtu', c.bankAccount)}
       </div>
 
       ${hasDelivery ? `
       <div class="section-title">Dodací údaje</div>
       <div class="detail-grid">
-        ${detailRow('Dodací adresa', c.deliveryAddress, true)}
+        ${detailRow('Dodací adresa', formatAddress(c.deliveryAddress), true)}
         ${detailRow('Kontakt pro převzetí', [c.deliveryContactName, c.deliveryContact].filter(Boolean).join(' · '))}
       </div>` : ''}
 
@@ -1528,11 +1575,7 @@ function sortedClients(){
 }
 
 function clientCity(c){
-  const addr = c.address || '';
-  const parts = addr.split(',').map(s=>s.trim()).filter(Boolean);
-  if(!parts.length) return '';
-  const last = parts[parts.length-1];
-  return last.replace(/^\d{3}\s?\d{2}\s*/,'').trim();
+  return addrGet(c.address, 'city');
 }
 
 function viewClients(){
@@ -1633,9 +1676,9 @@ function viewClientForm(){
     if(!state.newClientDraftId){ state.newClientDraftId = uid(); state.newClientDraftAttachments = []; }
     c = {
       id: state.newClientDraftId,
-      name:'', contactPerson:'', contactPhone:'', contactEmail:'',
-      ico:'', dic:'', address:'', bankAccount:'',
-      deliveryAddress:'', deliveryContactName:'', deliveryContact:'', priceLevel:'', paymentTerms:'',
+      name:'', contactPerson:'', contactPhone:'', contactEmail:'', website:'',
+      ico:'', dic:'', address:blankAddr(), bankAccount:'',
+      deliveryAddress:blankAddr(), deliveryContactName:'', deliveryContact:'', priceLevel:'', paymentTerms:'',
       attachments: state.newClientDraftAttachments
     };
   }
@@ -1654,17 +1697,17 @@ function viewClientForm(){
         <div class="field"><label>IČO</label><input name="ico" id="client-ico" value="${escapeAttr(c.ico)}"></div>
         <div class="field"><label>DIČ</label><input name="dic" id="client-dic" value="${escapeAttr(c.dic)}"></div>
       </div>
-      <p class="mini-label">Hlavní kontakt</p>
       <div class="field-row">
         <div class="field"><label>Jméno</label><input name="contactPerson" value="${escapeAttr(c.contactPerson||'')}"></div>
         <div class="field"><label>Telefon</label><input name="contactPhone" value="${escapeAttr(c.contactPhone||'')}"></div>
         <div class="field"><label>E-mail</label><input type="email" name="contactEmail" value="${escapeAttr(c.contactEmail||'')}"></div>
       </div>
-      ${addressFieldWithGeocode('address', 'Adresa', c.address, true)}
+      <div class="field"><label>Web</label><input name="website" value="${escapeAttr(c.website||'')}" placeholder="www.firma.cz" style="max-width:320px;"></div>
+      ${addressFieldGroup('client-address', 'Adresa', c.address)}
       <div class="field"><label>Číslo účtu</label><input name="bankAccount" value="${escapeAttr(c.bankAccount||'')}" style="max-width:260px;"></div>
 
       <div class="section-title">2. Dodací údaje (pokud se liší)</div>
-      ${addressFieldWithGeocode('deliveryAddress', 'Dodací adresa', c.deliveryAddress, false)}
+      ${addressFieldGroup('client-delivery-address', 'Dodací adresa', c.deliveryAddress)}
       <div class="field-row">
         <div class="field"><label>Jméno</label><input name="deliveryContactName" value="${escapeAttr(c.deliveryContactName||'')}" placeholder="Kontaktní osoba pro převzetí"></div>
         <div class="field"><label>Telefon</label><input name="deliveryContact" value="${escapeAttr(c.deliveryContact||'')}" placeholder="Telefon na sklad / příjem"></div>
@@ -1713,18 +1756,6 @@ function renderAttachmentsBox(c){
         <input type="file" id="attachment-file-input" style="font-size:13px;">
         <span id="attachment-status" style="font-size:12px;color:var(--ink-soft);"></span>
       </div>
-    </div>
-  `;
-}
-
-function addressFieldWithGeocode(fieldName, label, value, required, hint){
-  const id = 'addr-' + fieldName;
-  return `
-    <div class="field combo-field">
-      <label>${label}</label>
-      <textarea name="${fieldName}" id="${id}" ${required?'required':''} autocomplete="off">${value||''}</textarea>
-      <div class="combo-list" id="${id}-list"></div>
-      ${hint?`<p style="font-size:11.5px;color:var(--ink-soft);margin:4px 0 0 0;">${hint}</p>`:''}
     </div>
   `;
 }
@@ -1897,8 +1928,9 @@ function viewCompanyForm(){
   } else {
     if(!state.newCompanyDraftId){ state.newCompanyDraftId = uid(); state.newCompanyDraft = {logo:'',signature:'',stamp:''}; }
     co = {
-      id: state.newCompanyDraftId, name:'', tagline:'', address:'', ico:'', dic:'', account:'', bankName:'', iban:'', swift:'', email:'', phone:'', website:'',
-      registration:'', prefix: new Date().getFullYear().toString(), nextNumber:1, defaultDueDays:14, defaultNote:'Děkujeme za spolupráci.',
+      id: state.newCompanyDraftId, name:'', tagline:'', address:blankAddr(), ico:'', dic:'', account:'', bankName:'', iban:'', swift:'', email:'', phone:'', website:'',
+      showRegistration:false, regDate:'', regCourt:'', regSection:'', regInsert:'',
+      prefix: new Date().getFullYear().toString(), nextNumber:1, defaultDueDays:14, defaultNote:'Děkujeme za spolupráci.',
       invoiceTerms:'Fakturovaná částka bude odečtena z uvedeného účtu. V případě prodlení s úhradou je odběratel povinen uhradit úrok z prodlení dle platné legislativy.',
       defaultPaymentMethod:'Bankovním převodem', vatPayer:true,
       logo:state.newCompanyDraft.logo, signature:state.newCompanyDraft.signature, stamp:state.newCompanyDraft.stamp,
@@ -1915,7 +1947,6 @@ function companyFormMarkup(co, opts){
   opts = opts || {};
   return `
     <form id="company-form" class="form-card">
-      ${opts.notice?`<div class="login-error" style="background:var(--accent-soft);color:var(--accent);">${escapeHtml(opts.notice)}</div>`:''}
       <div class="section-title" style="margin-top:0;padding-top:0;border-top:none;">Firma</div>
       <div class="field combo-field">
         <label>Název firmy / jméno OSVČ</label>
@@ -1928,14 +1959,13 @@ function companyFormMarkup(co, opts){
         <div class="field"><label>IČO</label><input name="ico" id="co-ico" value="${escapeAttr(co.ico)}"></div>
         <div class="field"><label>DIČ</label><input name="dic" id="co-dic" value="${escapeAttr(co.dic)}"></div>
       </div>
-      ${companyAddressField('address','Adresa',co.address)}
+      ${addressFieldGroup('co-address','Adresa',co.address)}
       <div class="field-row">
         <div class="field"><label>Email</label><input type="email" name="email" value="${escapeAttr(co.email)}"></div>
         <div class="field"><label>Telefon</label><input name="phone" value="${escapeAttr(co.phone)}"></div>
       </div>
-      <div class="field-row">
-        <div class="field"><label>Web</label><input name="website" value="${escapeAttr(co.website)}" placeholder="www.firma.cz"></div>
-        <div class="field"><label>Zápis v rejstříku (nepovinné)</label><input name="registration" value="${escapeAttr(co.registration)}"></div>
+      <div class="field">
+        <div class="field"><label>Web</label><input name="website" value="${escapeAttr(co.website)}" placeholder="www.firma.cz" style="max-width:320px;"></div>
       </div>
 
       <div class="section-title">Platby</div>
@@ -1966,6 +1996,18 @@ function companyFormMarkup(co, opts){
       <div class="field"><label>Výchozí poznámka (na fakturu)</label><input name="defaultNote" value="${escapeAttr(co.defaultNote)}"></div>
       <div class="field"><label>Platební podmínky / patička faktury</label><textarea name="invoiceTerms" style="min-height:70px;">${co.invoiceTerms||''}</textarea></div>
 
+      <div class="section-title">Zápis v obchodním rejstříku</div>
+      <div class="toggle-row"><input type="checkbox" name="showRegistration" id="chk-showRegistration" value="1" ${co.showRegistration?'checked':''}><label for="chk-showRegistration">Zobrazovat zápis v obchodním rejstříku na faktuře</label></div>
+      <div class="field-row">
+        <div class="field"><label>Zápis obchodní rejstřík: dne</label><input type="date" name="regDate" value="${escapeAttr(co.regDate||'')}"></div>
+        <div class="field"><label>Městským soudem v</label><input name="regCourt" value="${escapeAttr(co.regCourt||'')}" placeholder="např. Praze"></div>
+      </div>
+      <div class="field-row">
+        <div class="field"><label>Oddíl</label><input name="regSection" value="${escapeAttr(co.regSection||'')}" placeholder="např. C"></div>
+        <div class="field"><label>Vložka</label><input name="regInsert" value="${escapeAttr(co.regInsert||'')}" placeholder="např. 12345"></div>
+      </div>
+      <p style="font-size:11.5px;color:var(--ink-soft);margin:-6px 0 4px 0;">Na faktuře se z toho poskládá věta: „Zapsáno v obchodním rejstříku vedeném Městským soudem v [soud], oddíl [oddíl], vložka [vložka], dne [datum].“</p>
+
       <div class="section-title">Vzhled faktury</div>
       <div class="brand-grid">
         ${brandSlot(co,'logo','Logo firmy','Zobrazí se v hlavičce faktury.','Logo firmy')}
@@ -1978,26 +2020,16 @@ function companyFormMarkup(co, opts){
       <div class="toggle-row"><input type="checkbox" name="showSignature" id="chk-showSignature" value="1" ${co.showSignature?'checked':''}><label for="chk-showSignature">Zobrazovat elektronický podpis na fakturách</label></div>
       <div class="toggle-row"><input type="checkbox" name="showQr" id="chk-showQr" value="1" ${co.showQr?'checked':''}><label for="chk-showQr">Zobrazovat QR platbu (vyžaduje vyplněný IBAN)</label></div>
 
-      <div class="formfoot">
+      <div class="formfoot" style="align-items:center;">
         <button type="submit" class="btn">${opts.submitLabel||'Uložit firmu'}</button>
         ${opts.showCancel?`<button type="button" class="btn secondary" data-action="nav" data-view="settings">Zrušit</button>`:''}
+        ${opts.notice?`<span style="font-size:13px;color:var(--accent);">${escapeHtml(opts.notice)}</span>`:''}
       </div>
       <input type="hidden" name="id" value="${co.id||''}">
     </form>
   `;
 }
 
-function companyAddressField(fieldName, label, value){
-  const id = 'co-addr-' + fieldName;
-  return `
-    <div class="field combo-field">
-      <label>${label}</label>
-      <textarea name="${fieldName}" id="${id}" autocomplete="off">${value||''}</textarea>
-      <div class="combo-list" id="${id}-list"></div>
-      <p style="font-size:11px;color:var(--ink-soft);margin:4px 0 0 0;">Začni psát město nebo ulici — appka nabídne adresy a doplní PSČ (zdroj: OpenStreetMap).</p>
-    </div>
-  `;
-}
 /* ---------- INVOICE IMPORT (upload old invoice, auto-extract) ---------- */
 function viewInvoiceImport(){
   return `
@@ -2251,7 +2283,7 @@ async function confirmImport(){
     state.companies[0] = {
       ...state.companies[0],
       name: state.companies[0].name || r.company.name || '',
-      address: state.companies[0].address || r.company.address || '',
+      address: formatAddress(state.companies[0].address) ? state.companies[0].address : (r.company.address || ''),
       ico: state.companies[0].ico || r.company.ico || '',
       dic: state.companies[0].dic || r.company.dic || '',
       email: state.companies[0].email || r.company.email || '',
@@ -2326,9 +2358,9 @@ function afterRender(){
   const clientForm = document.getElementById('client-form');
   if(clientForm){ clientForm.addEventListener('submit', onSubmitClient); }
   setupAresCombo();
-  ['addr-address','addr-deliveryAddress'].forEach(setupAddressAutocomplete);
-  setupAresCombo({ name:'co-name', list:'co-name-list', status:'co-ares-status', ico:'co-ico', dic:'co-dic', addr:'co-addr-address' });
-  setupAddressAutocomplete('co-addr-address');
+  ['client-address','client-delivery-address'].forEach(setupAddressGroupAutocomplete);
+  setupAresCombo({ name:'co-name', list:'co-name-list', status:'co-ares-status', ico:'co-ico', dic:'co-dic', addrPrefix:'co-address' });
+  setupAddressGroupAutocomplete('co-address');
   setupAttachmentUpload();
   const clientSearchInput = document.getElementById('client-search-input');
   if(clientSearchInput){
@@ -2424,6 +2456,51 @@ function afterRender(){
    https://ares.gov.cz/swagger-ui/ */
 const ARES_BASE = 'https://ares.gov.cz/ekonomicke-subjekty-v-be/rest/ekonomicke-subjekty';
 
+function blankAddr(){ return {street:'',number:'',zip:'',city:''}; }
+function addrGet(addr, key){
+  if(!addr) return '';
+  if(typeof addr === 'string') return key==='street' ? addr : '';
+  return addr[key] || '';
+}
+function formatAddress(addr){
+  if(!addr) return '';
+  if(typeof addr === 'string') return addr;
+  const line1 = [addr.street, addr.number].filter(Boolean).join(' ');
+  const line2 = [addr.zip, addr.city].filter(Boolean).join(' ');
+  return [line1, line2].filter(Boolean).join('\n');
+}
+function aresAddressToParts(sidlo){
+  if(!sidlo) return blankAddr();
+  const street = sidlo.nazevUlice || sidlo.nazevCastiObce || '';
+  const number = [sidlo.cisloDomovni, sidlo.cisloOrientacni].filter(Boolean).join('/');
+  return { street, number, zip: sidlo.psc?String(sidlo.psc):'', city: sidlo.nazevObce || '' };
+}
+function addressFieldGroup(prefix, label, addr){
+  return `
+    <div class="field">
+      <label>${label}</label>
+      <div class="field-row" style="grid-template-columns:2fr 1fr;margin-bottom:6px;">
+        <div class="field combo-field">
+          <input name="${prefix}-street" id="${prefix}-street" placeholder="Ulice" autocomplete="off" value="${escapeAttr(addrGet(addr,'street'))}">
+          <div class="combo-list" id="${prefix}-street-list"></div>
+        </div>
+        <div class="field"><input name="${prefix}-number" id="${prefix}-number" placeholder="Číslo" value="${escapeAttr(addrGet(addr,'number'))}"></div>
+      </div>
+      <div class="field-row" style="grid-template-columns:1fr 2fr;">
+        <div class="field"><input name="${prefix}-zip" id="${prefix}-zip" placeholder="PSČ" value="${escapeAttr(addrGet(addr,'zip'))}"></div>
+        <div class="field"><input name="${prefix}-city" id="${prefix}-city" placeholder="Město" value="${escapeAttr(addrGet(addr,'city'))}"></div>
+      </div>
+      <p style="font-size:11px;color:var(--ink-soft);margin:4px 0 0 0;">Začni psát ulici — appka nabídne shody a doplní číslo, PSČ i město.</p>
+    </div>
+  `;
+}
+function gatherAddrField(fd, prefix){
+  return {
+    street: fd.get(prefix+'-street')||'', number: fd.get(prefix+'-number')||'',
+    zip: fd.get(prefix+'-zip')||'', city: fd.get(prefix+'-city')||''
+  };
+}
+
 function aresAddressToText(sidlo){
   if(!sidlo) return '';
   if(sidlo.textovaAdresa) return sidlo.textovaAdresa;
@@ -2451,19 +2528,26 @@ async function aresSearchByName(name){
 }
 
 function applyAresEntityToForm(entity, ids){
-  ids = ids || { name:'client-name', ico:'client-ico', dic:'client-dic', addr:'addr-address' };
+  ids = ids || { name:'client-name', ico:'client-ico', dic:'client-dic', addrPrefix:'client-address' };
   const nameEl = document.getElementById(ids.name);
   const icoEl = document.getElementById(ids.ico);
   const dicEl = document.getElementById(ids.dic);
-  const addrEl = document.getElementById(ids.addr);
   if(nameEl) nameEl.value = entity.obchodniJmeno || nameEl.value;
   if(icoEl) icoEl.value = entity.ico || icoEl.value;
   if(dicEl && entity.dic) dicEl.value = entity.dic;
-  if(addrEl) addrEl.value = aresAddressToText(entity.sidlo) || addrEl.value;
+  const parts = aresAddressToParts(entity.sidlo);
+  const streetEl = document.getElementById(ids.addrPrefix+'-street');
+  const numberEl = document.getElementById(ids.addrPrefix+'-number');
+  const zipEl = document.getElementById(ids.addrPrefix+'-zip');
+  const cityEl = document.getElementById(ids.addrPrefix+'-city');
+  if(streetEl && parts.street) streetEl.value = parts.street;
+  if(numberEl && parts.number) numberEl.value = parts.number;
+  if(zipEl && parts.zip) zipEl.value = parts.zip;
+  if(cityEl && parts.city) cityEl.value = parts.city;
 }
 
 function setupAresCombo(ids){
-  ids = ids || { name:'client-name', list:'client-name-list', status:'ares-status', ico:'client-ico', dic:'client-dic', addr:'addr-address' };
+  ids = ids || { name:'client-name', list:'client-name-list', status:'ares-status', ico:'client-ico', dic:'client-dic', addrPrefix:'client-address' };
   const input = document.getElementById(ids.name);
   const list = document.getElementById(ids.list);
   const status = document.getElementById(ids.status);
@@ -2557,11 +2641,13 @@ async function osmSearchAddresses(q){
   return await res.json();
 }
 
-function setupAddressAutocomplete(elId){
-  const id = elId;
-  const textarea = document.getElementById(id);
-  const list = document.getElementById(id + '-list');
-  if(!textarea || !list) return;
+function setupAddressGroupAutocomplete(prefix){
+  const streetInput = document.getElementById(prefix+'-street');
+  const list = document.getElementById(prefix+'-street-list');
+  const numberInput = document.getElementById(prefix+'-number');
+  const zipInput = document.getElementById(prefix+'-zip');
+  const cityInput = document.getElementById(prefix+'-city');
+  if(!streetInput || !list) return;
   let debounceTimer = null;
   let cache = [];
 
@@ -2578,12 +2664,13 @@ function setupAddressAutocomplete(elId){
     list.classList.add('open');
   }
 
-  textarea.addEventListener('input', ()=>{
+  streetInput.addEventListener('input', ()=>{
     clearTimeout(debounceTimer);
-    const q = textarea.value.trim();
-    if(q.length < 5){ list.classList.remove('open'); return; }
+    const q = streetInput.value.trim();
+    if(q.length < 3){ list.classList.remove('open'); return; }
+    const queryStr = cityInput && cityInput.value ? `${q}, ${cityInput.value}` : q;
     debounceTimer = setTimeout(async ()=>{
-      try{ renderList(await osmSearchAddresses(q)); }
+      try{ renderList(await osmSearchAddresses(queryStr)); }
       catch(err){ list.classList.remove('open'); }
     }, 450);
   });
@@ -2593,12 +2680,18 @@ function setupAddressAutocomplete(elId){
     if(!item) return;
     e.preventDefault();
     const picked = cache[parseInt(item.getAttribute('data-idx'))];
-    if(picked) textarea.value = formatOsmAddress(picked);
+    if(picked){
+      const a = picked.address || {};
+      streetInput.value = a.road || a.pedestrian || a.footway || streetInput.value;
+      if(numberInput) numberInput.value = a.house_number || numberInput.value;
+      if(zipInput) zipInput.value = a.postcode || zipInput.value;
+      if(cityInput) cityInput.value = a.city||a.town||a.village||a.municipality||a.suburb || cityInput.value;
+    }
     list.classList.remove('open');
   });
 
   document.addEventListener('click', (e)=>{
-    if(e.target!==textarea && !list.contains(e.target)) list.classList.remove('open');
+    if(e.target!==streetInput && !list.contains(e.target)) list.classList.remove('open');
   });
 }
 
@@ -2742,7 +2835,7 @@ function setupClientCombo(){
     const dic = document.getElementById('client-detail-dic');
     const email = document.getElementById('client-detail-email');
     const phone = document.getElementById('client-detail-phone');
-    if(addr) addr.value = c.address||'';
+    if(addr) addr.textContent = formatAddress(c.address) || '—';
     if(ico) ico.value = c.ico||'';
     if(dic) dic.value = c.dic||'';
     if(email) email.value = c.contactEmail||'';
@@ -2960,7 +3053,6 @@ async function onSubmitInvoice(e){
   if(clientIdx > -1){
     state.clients[clientIdx] = {
       ...state.clients[clientIdx],
-      address: fd.get('clientAddress') ?? state.clients[clientIdx].address,
       ico: fd.get('clientIco') ?? state.clients[clientIdx].ico,
       dic: fd.get('clientDic') ?? state.clients[clientIdx].dic,
       contactEmail: fd.get('clientEmail') ?? state.clients[clientIdx].contactEmail,
@@ -2994,6 +3086,10 @@ async function onSubmitInvoice(e){
     dueDate: fd.get('dueDate'),
     taxDate: fd.get('taxDate'),
     variableSymbol: fd.get('variableSymbol'),
+    constantSymbol: fd.get('constantSymbol'),
+    orderNumber: fd.get('orderNumber'),
+    currency: fd.get('currency') || 'CZK',
+    rounding: fd.get('rounding') || 'none',
     paymentMethod: fd.get('paymentMethod') || 'Bankovním převodem',
     includeStamp: fd.get('includeStamp')==='1',
     colorMode: fd.get('colorMode')==='bw' ? 'bw' : 'color',
@@ -3031,9 +3127,10 @@ async function onSubmitClient(e){
     id: id || uid(),
     name: fd.get('name'),
     contactPerson: fd.get('contactPerson'), contactPhone: fd.get('contactPhone'), contactEmail: fd.get('contactEmail'),
+    website: fd.get('website'),
     ico: fd.get('ico'), dic: fd.get('dic'),
-    address: fd.get('address'), bankAccount: fd.get('bankAccount'),
-    deliveryAddress: fd.get('deliveryAddress'), deliveryContactName: fd.get('deliveryContactName'), deliveryContact: fd.get('deliveryContact'),
+    address: gatherAddrField(fd,'client-address'), bankAccount: fd.get('bankAccount'),
+    deliveryAddress: gatherAddrField(fd,'client-delivery-address'), deliveryContactName: fd.get('deliveryContactName'), deliveryContact: fd.get('deliveryContact'),
     priceLevel: fd.get('priceLevel'), paymentTerms: fd.get('paymentTerms'),
     createdAt: existing ? (existing.createdAt || new Date().toISOString()) : new Date().toISOString(),
     attachments: existing ? (existing.attachments||[]) : (state.newClientDraftAttachments||[])
@@ -3131,8 +3228,10 @@ async function onSubmitCompany(e){
   const isDraft = !existing && id === state.newCompanyDraftId;
   const co = {
     id: id || uid(),
-    name: fd.get('name'), tagline: fd.get('tagline'), address: fd.get('address'), ico: fd.get('ico'), dic: fd.get('dic'),
-    email: fd.get('email'), phone: fd.get('phone'), website: fd.get('website'), registration: fd.get('registration'),
+    name: fd.get('name'), tagline: fd.get('tagline'), address: gatherAddrField(fd,'co-address'), ico: fd.get('ico'), dic: fd.get('dic'),
+    email: fd.get('email'), phone: fd.get('phone'), website: fd.get('website'),
+    showRegistration: fd.get('showRegistration')==='1',
+    regDate: fd.get('regDate'), regCourt: fd.get('regCourt'), regSection: fd.get('regSection'), regInsert: fd.get('regInsert'),
     account: fd.get('account'), bankName: fd.get('bankName'), iban: fd.get('iban'), swift: fd.get('swift'),
     vatPayer: fd.get('vatPayer')==='1',
     prefix: fd.get('prefix'), nextNumber: parseInt(fd.get('nextNumber'))||1,
