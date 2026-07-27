@@ -1086,7 +1086,7 @@ function viewInvoices(){
     <div class="pagehead">
       <div><h1>Faktury</h1><p class="desc">${filtered.length} z ${state.invoices.length} faktur.</p></div>
       <div style="display:flex;gap:10px;">
-        <button class="btn secondary" data-action="goto-import">⇧ Nahrát starou fakturu</button>
+        <button class="btn secondary" data-action="goto-import">⇧ Nahrát faktury</button>
         <button class="btn secondary" data-action="goto-bulk-import">⇧ Hromadný import (CSV/Excel)</button>
         <button class="btn" data-action="new-invoice">+ Nová faktura</button>
       </div>
@@ -2036,7 +2036,7 @@ function companyFormMarkup(co, opts){
 function viewInvoiceImport(){
   return `
     <div class="pagehead">
-      <div><h1>Nahrát starou fakturu</h1><p class="desc">Nahraj PDF staré faktury (s textovou vrstvou) — přečte a rozpozná se přímo v prohlížeči, soubor nikam neodchází.</p></div>
+      <div><h1>Nahrát faktury</h1><p class="desc">Nahraj PDF faktury (s textovou vrstvou) — přečte a rozpozná se přímo v prohlížeči, soubor nikam neodchází.</p></div>
       <button class="btn secondary" data-action="nav" data-view="invoices">Zpět na faktury</button>
     </div>
     <div class="form-card">
@@ -2116,7 +2116,6 @@ async function handleImportFile(file){
 
     const buf = await file.arrayBuffer();
     const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
-    let fullText = '';
     const lines = [];
     for(let p=1; p<=pdf.numPages; p++){
       const page = await pdf.getPage(p);
@@ -2135,8 +2134,8 @@ async function handleImportFile(file){
         const lineText = rowItems.map(it=>it.str).join(' ').replace(/\s+/g,' ').trim();
         if(lineText) lines.push(lineText);
       });
-      fullText += lines.join('\n') + '\n';
     }
+    const fullText = lines.join('\n');
     if(!fullText.trim()) throw new Error('V PDF nebyl nalezen žádný text — jde nejspíš o naskenovaný obrázek, ten se lokálně přečíst nedá.');
 
     const parsed = parseInvoiceText(fullText, lines);
@@ -2232,27 +2231,46 @@ function parseInvoiceText(text, lines){
   const supplier = blockAfterLabel('Dodavatel');
   const customer = blockAfterLabel('Odb[ěe]ratel');
 
+  // e-maily/telefony: zkusíme najít v bloku dodavatele/odběratele podle pozice v textu,
+  // ne jen "první v celém dokumentu" — ať se e-mail odběratele neplete s e-mailem dodavatele
+  const emailRe = /[\w.\-]+@[\w.\-]+\.\w+/g;
+  const phoneRe = /(?:\+420\s?)?\b(?:\d{3}\s?\d{3}\s?\d{3})\b/g;
+  function findNear(label, re){
+    const idx = norm.search(new RegExp(label, 'i'));
+    if(idx===-1) return '';
+    const nextLabelIdx = (()=>{
+      const rest = norm.slice(idx+label.length);
+      const m = /\n\s*(Odb[ěe]ratel|Dodavatel|Splatnost|Vystaveno|Polo[žz]ky|Popis)\b/i.exec(rest);
+      return m ? idx+label.length+m.index : norm.length;
+    })();
+    const chunk = norm.slice(idx, Math.min(nextLabelIdx, idx+400));
+    const m = chunk.match(re);
+    return m ? m[0].trim() : '';
+  }
+  const supplierEmail = findNear('Dodavatel', emailRe);
+  const customerEmail = findNear('Odb[ěe]ratel', emailRe) || ([...norm.matchAll(emailRe)].map(m=>m[0]).find(e=>e!==supplierEmail) || '');
+  const supplierPhone = findNear('Dodavatel', phoneRe);
+  const customerPhone = findNear('Odb[ěe]ratel', phoneRe);
+
   const company = {
     name: supplier.name || '', address: supplier.address || '',
     ico: icos[0] || '', dic: dics[0] || '',
-    email: (()=>{ const m = /([\w.\-]+@[\w.\-]+\.\w+)/.exec(norm); return m ? m[1] : ''; })(),
-    phone: '', account: accounts[0] || '', iban: (ibans[0]||'').replace(/\s+/g,'')
+    email: supplierEmail, phone: supplierPhone, account: accounts[0] || '', iban: (ibans[0]||'').replace(/\s+/g,'')
   };
   const client = {
     name: customer.name || '', address: customer.address || '',
     ico: icos[1] || icos[0] || '', dic: dics[1] || dics[0] || '',
-    email: '', phone: ''
+    email: customerEmail, phone: customerPhone
   };
 
   // ---- items: look for lines that look like a table row — description
-  // followed by qty/unit/price/vat/total. Made more tolerant of spacing,
-  // "Kč"/"CZK", and templates that omit the unit column ----
-  // a row only counts as a line item if it actually ends in a currency amount —
-  // this also keeps header/label lines (invoice number, dates, VS…) out of the table
-  const itemLineRe = /^(.{2,80}?)\s+([\d]+(?:[.,]\d+)?)\s*(ks|hod|kg|g|m|den|dny|dní|m[ěe]s[íi]c|balen[íi]|l)?\.?\s*([\d\s]{1,12}(?:[.,]\d{1,2})?)\s*(?:K[čc]\.?|CZK)\s*(\d{1,2})?\s*%?\s*([\d\s]{1,12}(?:[.,]\d{1,2})?)\s*(?:K[čc]\.?|CZK)$/i;
-  const nonItemLineRe = /^(Faktura|Da[nň]ov[ýy]\s+doklad|[ČC]íslo\s+faktury|Variabiln[íi]\s+symbol|Datum|I[ČC]O|DI[ČC]|Splatnost|Vystaveno|Bankovn[íi])\b/i;
+  // followed by qty/unit/price/vat/total. Tolerantní na mezery, "Kč"/"CZK",
+  // nezalomenou mezeru (\u00A0) v částkách a šablony bez sloupce jednotky ----
+  const cleanedLines = lines.map(l=>l.replace(/\u00A0/g,' '));
+  const itemLineRe = /^(.{2,80}?)\s+([\d]+(?:[.,]\d+)?)\s*(ks|hod|kg|g|m|den|dny|dní|m[ěe]s[íi]c|balen[íi]|l)?\.?\s*([\d\s]{1,12}(?:[.,]\d{1,2})?)\s*(?:K[čc]\.?|CZK|EUR|€)?\s*(\d{1,2})?\s*%?\s*([\d\s]{1,12}(?:[.,]\d{1,2})?)\s*(?:K[čc]\.?|CZK|EUR|€)$/i;
+  const nonItemLineRe = /^(Faktura|Da[nň]ov[ýy]\s+doklad|[ČC]íslo\s+faktury|Variabiln[íi]\s+symbol|Datum|I[ČC]O|DI[ČC]|Splatnost|Vystaveno|Bankovn[íi]|Celkem|Z[áa]klad|Sou[čc]et)\b/i;
   const items = [];
-  lines.forEach(line=>{
+  cleanedLines.forEach(line=>{
     if(boundaryRe.test(line) || nonItemLineRe.test(line)) return;
     const m = itemLineRe.exec(line);
     if(m){
@@ -2267,6 +2285,20 @@ function parseInvoiceText(text, lines){
       });
     }
   });
+
+  // ---- záložní položka: když se přes regex nepodařilo rozpoznat žádný řádek,
+  // vezmeme aspoň celkovou částku k úhradě, ať se z faktury neztratí hodnota ----
+  if(!items.length){
+    const totalMatch = /(?:Celkem\s*k\s*[úu]hrad[ěe]|K\s*[úu]hrad[ěe]|Celkem)\D{0,10}([\d\s]{1,12}[.,]?\d{0,2})\s*(?:K[čc]\.?|CZK)/i.exec(norm);
+    if(totalMatch){
+      const total = parseFloat(totalMatch[1].replace(/\s/g,'').replace(',','.')) || 0;
+      if(total>0){
+        const vatMatch = /DPH\D{0,10}(\d{1,2})\s*%/i.exec(norm);
+        const vat = vatMatch ? parseInt(vatMatch[1]) : 21;
+        items.push({ desc:'Položky z importované faktury (nerozpoznány jednotlivě)', qty:1, unit:'ks', price: total/(1+vat/100), vat });
+      }
+    }
+  }
 
   return {
     company, client,
