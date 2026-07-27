@@ -419,6 +419,10 @@ let state = {
   newCompanyDraft: {logo:'',signature:'',stamp:''},
   accountError: '',
   accountNotice: '',
+  colleagueError: '',
+  editingUserCredsId: null,
+  userCredsError: '',
+  userCredsNotice: '',
   viewingClientId: null,
   newClientDraftId: null,
   newClientDraftAttachments: [],
@@ -548,6 +552,26 @@ async function updateOwnAuthUser(fields){
   const data = await res.json().catch(()=>({}));
   if(!res.ok) throw new Error(data.error_description || data.msg || 'Změna se nepovedla.');
   return data;
+}
+
+/* ---------- ADMIN SPRÁVA KOLEGŮ (Edge Function admin-users) ----------
+   Vyžaduje nasazenou funkci "admin-users" (viz admin-users/index.ts) a
+   volajícího s rolí "admin" v team_members — appka to jen volá, samotné
+   ověření a service-role klíč zůstávají bezpečně na serveru. */
+async function callAdminUsers(payload){
+  await ensureFreshSession();
+  const res = await fetch(`${SUPABASE_URL}/functions/v1/admin-users`, {
+    method: 'POST',
+    headers: { 'apikey': SUPABASE_KEY, 'Authorization': 'Bearer ' + (session?session.access_token:''), 'Content-Type':'application/json' },
+    body: JSON.stringify(payload)
+  });
+  const data = await res.json().catch(()=>({}));
+  if(!res.ok) throw new Error(data.error || 'Akce se nepovedla.');
+  return data;
+}
+function isCurrentUserAdmin(){
+  const me = state.users.find(u=>u.id===state.currentUserId);
+  return !!me && me.role==='admin';
 }
 
 async function sbRequest(path, options = {}){
@@ -827,7 +851,7 @@ function render(){
       <div class="navitem ${state.view==='dashboard'?'active':''}" data-action="nav" data-view="dashboard">Přehled</div>
       <div class="navitem ${state.view==='invoices'||state.view==='invoice-form'||state.view==='invoice-preview'||state.view==='invoice-import'?'active':''}" data-action="nav" data-view="invoices">Faktury</div>
       <div class="navitem ${state.view==='clients'||state.view==='client-form'||state.view==='client-detail'?'active':''}" data-action="nav" data-view="clients">Odběratelé</div>
-      <div class="navitem ${state.view==='settings'||state.view==='company-form'?'active':''}" data-action="nav" data-view="settings">Nastavení</div>
+      <div class="navitem ${['settings','company-form','account-form','colleague-form','user-creds-form'].includes(state.view)?'active':''}" data-action="nav" data-view="settings">Nastavení</div>
       <div class="sidebar-foot">
         <div class="whoami">
           <span class="name" title="${escapeAttr(state.currentUser)}">${escapeHtml(state.currentUser)}</span>
@@ -980,6 +1004,8 @@ function renderView(){
     case 'settings': return viewSettings();
     case 'company-form': return viewCompanyForm();
     case 'account-form': return viewAccountForm();
+    case 'colleague-form': return viewColleagueForm();
+    case 'user-creds-form': return viewUserCredsForm();
     default: return '';
   }
 }
@@ -1709,6 +1735,44 @@ function brandSlot(co, field, title, sub, imgAlt){
   `;
 }
 
+function viewColleagueForm(){
+  return `
+    <div class="pagehead"><div><h1>Přidat kolegu</h1><p class="desc">Založí mu rovnou účet s heslem — nemusí se sám registrovat.</p></div></div>
+    <form id="colleague-form" class="form-card">
+      ${state.colleagueError?`<div class="login-error">${escapeHtml(state.colleagueError)}</div>`:''}
+      <div class="field"><label>Jméno</label><input name="displayName" required autofocus></div>
+      <div class="field"><label>E-mail</label><input type="email" name="email" autocomplete="off" required></div>
+      <div class="field"><label>Heslo</label><input type="password" name="password" autocomplete="new-password" minlength="8" required></div>
+      <p style="font-size:11.5px;color:var(--ink-soft);margin:-6px 0 4px 0;">Předej kolegovi e-mail a heslo — po prvním přihlášení si ho může sám v appce změnit.</p>
+      <div class="formfoot">
+        <button type="submit" class="btn">Vytvořit účet</button>
+        <button type="button" class="btn secondary" data-action="nav" data-view="settings">Zrušit</button>
+      </div>
+    </form>
+  `;
+}
+
+function viewUserCredsForm(){
+  const u = state.users.find(x=>x.id===state.editingUserCredsId);
+  if(!u){
+    return emptyState('Kolega nenalezen','') + `<div class="formfoot"><button class="btn secondary" data-action="nav" data-view="settings">Zpět</button></div>`;
+  }
+  return `
+    <div class="pagehead"><div><h1>E-mail a heslo — ${escapeHtml(u.name)}</h1><p class="desc">Vyplň jen to, co chceš změnit.</p></div></div>
+    <form id="user-creds-form" class="form-card">
+      ${state.userCredsError?`<div class="login-error">${escapeHtml(state.userCredsError)}</div>`:''}
+      ${state.userCredsNotice?`<div class="login-error" style="background:var(--accent-soft);color:var(--accent);">${escapeHtml(state.userCredsNotice)}</div>`:''}
+      <div class="field"><label>Nový e-mail (nech prázdné, pokud ho nechceš měnit)</label><input type="email" name="email" value="" placeholder="${escapeAttr(u.email||'')}"></div>
+      <div class="field"><label>Nové heslo (nech prázdné, pokud ho nechceš měnit)</label><input type="password" name="password" autocomplete="new-password" minlength="8"></div>
+      <div class="formfoot">
+        <button type="submit" class="btn">Uložit</button>
+        <button type="button" class="btn secondary" data-action="nav" data-view="settings">Zrušit</button>
+      </div>
+      <input type="hidden" name="userId" value="${u.id}">
+    </form>
+  `;
+}
+
 function viewAccountForm(){
   const me = state.users.find(u=>u.id===state.currentUserId);
   return `
@@ -1767,17 +1831,21 @@ function viewSettings(){
             <br><span style="color:var(--ink-soft);font-size:12.5px;">${escapeHtml(u.email||'')}</span>
           </span>
           <span>
-            <button class="iconbtn" data-action="edit-user" data-id="${u.id}" title="Upravit">✎</button>
+            <button class="iconbtn" data-action="edit-user" data-id="${u.id}" title="Upravit jméno/roli">✎</button>
+            ${(isCurrentUserAdmin() && u.id!==state.currentUserId) ? `<button class="iconbtn" data-action="edit-user-creds" data-id="${u.id}" title="Nastavit e-mail/heslo">🔑</button>` : ''}
             ${(state.users.length>1 && u.id!==state.currentUserId) ? `<button class="iconbtn" data-action="remove-user" data-userid="${escapeAttr(u.id)}" data-name="${escapeAttr(u.name)}" title="Odebrat přístup">✕</button>` : ''}
           </span>
         </div>
       `).join('')}
       <div class="formfoot" style="margin-top:10px;">
         <button type="button" class="btn secondary" data-action="edit-own-account">✎ Můj e-mail a heslo</button>
+        ${isCurrentUserAdmin() ? `<button type="button" class="btn secondary" data-action="new-colleague">+ Přidat kolegu (e-mail a heslo)</button>` : ''}
       </div>
       <p style="font-size:12px;color:var(--ink-soft);margin-top:14px;">
-        Noví kolegové se zaregistrují sami přes záložku „Registrace" na přihlašovací obrazovce. Jméno a roli může kterýkoli člen týmu upravit tady;
-        vlastní e-mail a heslo si každý mění sám (tlačítko výše) — appka hesla nikdy nevidí, o vše se stará Supabase Auth.
+        ${isCurrentUserAdmin()
+          ? 'Jako admin můžeš kolegu přidat rovnou i s heslem (🔑 u jeho jména), nebo mu heslo/e-mail později kdykoli změnit. Jméno a roli může upravit kterýkoli člen týmu.'
+          : 'Noví kolegové se zaregistrují sami přes záložku „Registrace" na přihlašovací obrazovce, nebo je (i s heslem) může rovnou přidat kolega s rolí admin. Jméno a roli může upravit kterýkoli člen týmu; vlastní e-mail a heslo si každý mění sám (tlačítko výše).'}
+        Appka hesla nikdy neukládá ani nevidí — o vše se stará Supabase Auth.
       </p>
     </div>
 
@@ -2236,6 +2304,10 @@ function afterRender(){
   if(companyForm){ companyForm.addEventListener('submit', onSubmitCompany); }
   const accountForm = document.getElementById('account-form');
   if(accountForm){ accountForm.addEventListener('submit', onSubmitAccount); }
+  const colleagueForm = document.getElementById('colleague-form');
+  if(colleagueForm){ colleagueForm.addEventListener('submit', onSubmitColleague); }
+  const userCredsForm = document.getElementById('user-creds-form');
+  if(userCredsForm){ userCredsForm.addEventListener('submit', onSubmitUserCreds); }
   const clientForm = document.getElementById('client-form');
   if(clientForm){ clientForm.addEventListener('submit', onSubmitClient); }
   setupAresCombo();
@@ -2772,6 +2844,14 @@ document.addEventListener('click', async (e)=>{
     }catch(err){ alert('Úprava se nepovedla, zkus to prosím znovu.'); }
   }
   else if(action==='edit-own-account'){ state.view='account-form'; state.accountError=''; state.accountNotice=''; render(); }
+  else if(action==='new-colleague'){
+    if(!isCurrentUserAdmin()){ alert('Tohle smí jen člen týmu s rolí admin.'); return; }
+    state.view='colleague-form'; state.colleagueError=''; render();
+  }
+  else if(action==='edit-user-creds'){
+    if(!isCurrentUserAdmin()){ alert('Tohle smí jen člen týmu s rolí admin.'); return; }
+    state.view='user-creds-form'; state.editingUserCredsId=id; state.userCredsError=''; state.userCredsNotice=''; render();
+  }
   else if(action==='new-client'){ state.view='client-form'; state.editingClientId=null; state.newClientDraftId=null; state.newClientDraftAttachments=[]; render(); }
   else if(action==='edit-client'){ state.view='client-form'; state.editingClientId=id; render(); }
   else if(action==='new-company'){ state.view='company-form'; state.editingCompanyId=null; state.newCompanyDraftId=null; state.newCompanyDraft={logo:'',signature:'',stamp:''}; render(); }
@@ -2967,6 +3047,50 @@ async function onSubmitAccount(e){
     render();
   }catch(err){
     state.accountError = err.message || 'Změna se nepovedla.';
+    render();
+  }
+}
+
+async function onSubmitColleague(e){
+  e.preventDefault();
+  const fd = new FormData(e.target);
+  const display_name = (fd.get('displayName')||'').trim();
+  const email = (fd.get('email')||'').trim();
+  const password = fd.get('password')||'';
+  if(password.length<8){ state.colleagueError='Heslo musí mít aspoň 8 znaků.'; render(); return; }
+  const btn = e.target.querySelector('button[type="submit"]');
+  if(btn) btn.disabled = true;
+  try{
+    await callAdminUsers({ action:'create_user', email, password, display_name });
+    await loadTeam();
+    state.colleagueError='';
+    state.view='settings';
+    render();
+  }catch(err){
+    state.colleagueError = err.message || 'Vytvoření se nepovedlo.';
+    render();
+  }
+}
+
+async function onSubmitUserCreds(e){
+  e.preventDefault();
+  const fd = new FormData(e.target);
+  const userId = fd.get('userId');
+  const email = (fd.get('email')||'').trim();
+  const password = fd.get('password')||'';
+  if(!email && !password){ state.userCredsError='Vyplň e-mail nebo heslo, ať je co uložit.'; render(); return; }
+  if(password && password.length<8){ state.userCredsError='Heslo musí mít aspoň 8 znaků.'; render(); return; }
+  const btn = e.target.querySelector('button[type="submit"]');
+  if(btn) btn.disabled = true;
+  try{
+    if(email) await callAdminUsers({ action:'update_email', target_user_id:userId, email });
+    if(password) await callAdminUsers({ action:'update_password', target_user_id:userId, password });
+    await loadTeam();
+    state.userCredsError='';
+    state.userCredsNotice='Uloženo.';
+    render();
+  }catch(err){
+    state.userCredsError = err.message || 'Změna se nepovedla.';
     render();
   }
 }
