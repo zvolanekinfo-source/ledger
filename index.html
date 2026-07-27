@@ -151,6 +151,7 @@
     width:100%;padding:9px 11px;border:1px solid var(--line);border-radius:4px;font-size:14px;background:#fff;color:var(--ink);
   }
   .field input:focus,.field select:focus,.field textarea:focus{outline:none;border-color:var(--accent);}
+  input[type="date"]{accent-color:var(--ink);color-scheme:light;}
   .field textarea{resize:vertical;min-height:60px;}
   .section-title{font-size:12px;text-transform:uppercase;letter-spacing:1px;color:var(--ink-soft);margin:24px 0 12px 0;border-top:1px solid var(--line);padding-top:18px;}
   .section-title:first-child{border-top:none;padding-top:0;margin-top:0;}
@@ -2489,9 +2490,11 @@ function addressFieldGroup(prefix, label, addr){
       </div>
       <div class="field-row" style="grid-template-columns:1fr 2fr;">
         <div class="field"><input name="${prefix}-zip" id="${prefix}-zip" placeholder="PSČ" value="${escapeAttr(addrGet(addr,'zip'))}"></div>
-        <div class="field"><input name="${prefix}-city" id="${prefix}-city" placeholder="Město" value="${escapeAttr(addrGet(addr,'city'))}"></div>
+        <div class="field combo-field"><input name="${prefix}-city" id="${prefix}-city" placeholder="Město" autocomplete="off" value="${escapeAttr(addrGet(addr,'city'))}">
+          <div class="combo-list" id="${prefix}-city-list"></div>
+        </div>
       </div>
-      <p style="font-size:11px;color:var(--ink-soft);margin:4px 0 0 0;">Začni psát ulici — Ledger nabídne shody a doplní číslo, PSČ i město.</p>
+      <p style="font-size:11px;color:var(--ink-soft);margin:4px 0 0 0;">Začni psát ulici nebo město — Ledger nabídne shody a doplní zbytek adresy.</p>
     </div>
   `;
 }
@@ -2642,6 +2645,17 @@ async function osmSearchAddresses(q){
   return await res.json();
 }
 
+async function osmSearchCities(q){
+  const url = `https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&countrycodes=cz&limit=6&city=${encodeURIComponent(q)}`;
+  const res = await fetch(url, { headers: { 'Accept':'application/json' } });
+  if(!res.ok) throw new Error('Vyhledávání města selhalo.');
+  return await res.json();
+}
+function cityLabel(item){
+  const a = item.address || {};
+  return a.city || a.town || a.village || a.municipality || (item.display_name||'').split(',')[0] || '';
+}
+
 function setupAddressGroupAutocomplete(prefix){
   const streetInput = document.getElementById(prefix+'-street');
   const list = document.getElementById(prefix+'-street-list');
@@ -2712,6 +2726,49 @@ function setupAddressGroupAutocomplete(prefix){
           }
         }catch(err){}
       }, 500);
+    });
+  }
+
+  const cityList = document.getElementById(prefix+'-city-list');
+  if(cityInput && cityList){
+    let cityDebounce = null, cityCache = [];
+
+    function renderCityList(items){
+      cityCache = items;
+      if(!items.length){ cityList.classList.remove('open'); cityList.innerHTML=''; return; }
+      cityList.innerHTML = items.map((item,i)=>{
+        const name = cityLabel(item);
+        const psc = (item.address||{}).postcode || '';
+        return `<div class="combo-item" data-idx="${i}">${escapeHtml(name)}${psc?` <span class="sub">PSČ ${escapeHtml(psc)}</span>`:''}</div>`;
+      }).join('');
+      cityList.classList.add('open');
+    }
+
+    cityInput.addEventListener('input', ()=>{
+      clearTimeout(cityDebounce);
+      const q = cityInput.value.trim();
+      if(q.length < 2){ cityList.classList.remove('open'); return; }
+      cityDebounce = setTimeout(async ()=>{
+        try{ renderCityList(await osmSearchCities(q)); }
+        catch(err){ cityList.classList.remove('open'); }
+      }, 350);
+    });
+
+    cityList.addEventListener('mousedown', (e)=>{
+      const item = e.target.closest('.combo-item');
+      if(!item) return;
+      e.preventDefault();
+      const picked = cityCache[parseInt(item.getAttribute('data-idx'))];
+      if(picked){
+        const a = picked.address || {};
+        cityInput.value = cityLabel(picked) || cityInput.value;
+        if(zipInput && a.postcode) zipInput.value = a.postcode;
+      }
+      cityList.classList.remove('open');
+    });
+
+    document.addEventListener('click', (e)=>{
+      if(e.target!==cityInput && !cityList.contains(e.target)) cityList.classList.remove('open');
     });
   }
 }
