@@ -9,6 +9,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <style>
   :root{
     --ink:#182420;
@@ -416,6 +417,7 @@ let state = {
   editingInvoiceId: null,
   editingClientId: null,
   editingCompanyId: null,
+  bulkImport: null,
   newCompanyDraftId: null,
   newCompanyDraft: {logo:'',signature:'',stamp:''},
   accountError: '',
@@ -1010,6 +1012,7 @@ function renderView(){
     case 'invoice-form': return viewInvoiceForm();
     case 'invoice-preview': return viewInvoicePreview();
     case 'invoice-import': return viewInvoiceImport();
+    case 'bulk-import': return viewBulkImport();
     case 'clients': return viewClients();
     case 'client-form': return viewClientForm();
     case 'client-detail': return viewClientDetail();
@@ -1087,6 +1090,7 @@ function viewInvoices(){
       <div><h1>Faktury</h1><p class="desc">${filtered.length} z ${state.invoices.length} faktur.</p></div>
       <div style="display:flex;gap:10px;">
         <button class="btn secondary" data-action="goto-import">⇧ Nahrát starou fakturu</button>
+        <button class="btn secondary" data-action="goto-bulk-import">⇧ Hromadný import (CSV/Excel)</button>
         <button class="btn" data-action="new-invoice">+ Nová faktura</button>
       </div>
     </div>
@@ -2325,6 +2329,312 @@ async function confirmImport(){
   render();
 }
 
+/* ---------- HROMADNÝ IMPORT (CSV/Excel z libovolného zdroje) ---------- */
+const BULK_FIELDS = [
+  {key:'', label:'— Ignorovat —'},
+  {key:'clientName', label:'Odběratel — název'},
+  {key:'clientIco', label:'Odběratel — IČO'},
+  {key:'clientDic', label:'Odběratel — DIČ'},
+  {key:'clientEmail', label:'Odběratel — e-mail'},
+  {key:'clientPhone', label:'Odběratel — telefon'},
+  {key:'clientStreet', label:'Odběratel — ulice a číslo'},
+  {key:'clientZip', label:'Odběratel — PSČ'},
+  {key:'clientCity', label:'Odběratel — město'},
+  {key:'invoiceNumber', label:'Faktura — číslo'},
+  {key:'issueDate', label:'Faktura — datum vystavení'},
+  {key:'dueDate', label:'Faktura — datum splatnosti'},
+  {key:'variableSymbol', label:'Faktura — variabilní symbol'},
+  {key:'total', label:'Faktura — částka celkem (s DPH)'},
+  {key:'baseAmount', label:'Faktura — základ daně (bez DPH)'},
+  {key:'vatAmount', label:'Faktura — DPH (částka)'},
+  {key:'vatRate', label:'Faktura — sazba DPH (%)'},
+  {key:'paid', label:'Faktura — zaplaceno (ano/ne)'},
+  {key:'description', label:'Faktura — popis / položka'},
+  {key:'note', label:'Faktura — poznámka'},
+];
+
+const BULK_GUESS_RULES = [
+  [/variabiln/, 'variableSymbol'],
+  [/^(č|c)[íi]slo\s*faktury|faktura\s*č|inv(oice)?\s*(no|number|č)/, 'invoiceNumber'],
+  [/vystaven/, 'issueDate'],
+  [/splatnost|due/, 'dueDate'],
+  [/z[áa]klad/, 'baseAmount'],
+  [/sazba.*dph|dph.*%|vat\s*rate/, 'vatRate'],
+  [/dph|vat/, 'vatAmount'],
+  [/celkem|k\s*[úu]hrad|total|[čc][áa]stka/, 'total'],
+  [/zaplac|uhrazen|paid|stav/, 'paid'],
+  [[/psč|psc|zip|postal/, 'clientZip']],
+  [/m[ěe]sto|obec|city/, 'clientCity'],
+  [/ulice|adresa|address|street/, 'clientStreet'],
+  [/i[čc]o\b/, 'clientIco'],
+  [/di[čc]\b/, 'clientDic'],
+  [/e-?mail/, 'clientEmail'],
+  [/telefon|phone/, 'clientPhone'],
+  [/n[áa]zev|firma|odb[ěe]ratel|z[áa]kazn[íi]k|klient|customer|company/, 'clientName'],
+  [/pozn[áa]mka|note|coment/, 'note'],
+  [/polo[žz]ka|popis|description/, 'description'],
+  [/^č[íi]slo$/, 'invoiceNumber'],
+];
+function guessFieldForHeader(header){
+  const h = stripDiacritics(String(header||'')).toLowerCase().trim();
+  for(const rule of BULK_GUESS_RULES){
+    const [re, field] = Array.isArray(rule[0]) ? rule[0] : rule;
+    if(re.test(h)) return field;
+  }
+  return '';
+}
+function bulkParseBoolean(v){
+  const s = stripDiacritics(String(v==null?'':v)).toLowerCase().trim();
+  return ['ano','yes','true','1','x','zaplaceno','uhrazeno','paid'].includes(s);
+}
+function bulkParseNumber(v){
+  if(v==null || v==='') return null;
+  if(typeof v === 'number') return v;
+  const s = String(v).replace(/\s/g,'').replace(/[^\d,.\-]/g,'').replace(',', '.');
+  const n = parseFloat(s);
+  return isNaN(n) ? null : n;
+}
+function bulkParseDate(v){
+  if(v==null || v==='') return '';
+  if(v instanceof Date) return v.toISOString().slice(0,10);
+  const s = String(v).trim();
+  let m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if(m) return `${m[1]}-${m[2]}-${m[3]}`;
+  m = s.match(/^(\d{1,2})\.\s*(\d{1,2})\.\s*(\d{4})/);
+  if(m) return `${m[3]}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`;
+  m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+  if(m) return `${m[3]}-${m[1].padStart(2,'0')}-${m[2].padStart(2,'0')}`;
+  const asNum = Number(s);
+  if(!isNaN(asNum) && asNum > 20000 && asNum < 60000){
+    const d = new Date(Date.UTC(1899,11,30) + asNum*86400000);
+    return d.toISOString().slice(0,10);
+  }
+  return '';
+}
+
+async function handleBulkFile(file){
+  if(!file) return;
+  state.bulkImport.error = '';
+  state.bulkImport.fileName = file.name;
+  try{
+    const buf = await file.arrayBuffer();
+    const wb = XLSX.read(buf, { type:'array', cellDates:true });
+    const sheet = wb.Sheets[wb.SheetNames[0]];
+    const rows = XLSX.utils.sheet_to_json(sheet, { defval:'' });
+    if(!rows.length){ state.bulkImport.error = 'Soubor neobsahuje žádná data.'; render(); return; }
+    const headers = Object.keys(rows[0]);
+    const mapping = {};
+    headers.forEach(h=>{ mapping[h] = guessFieldForHeader(h); });
+    state.bulkImport.headers = headers;
+    state.bulkImport.rows = rows;
+    state.bulkImport.mapping = mapping;
+    state.bulkImport.step = 'mapping';
+  }catch(err){
+    console.error(err);
+    state.bulkImport.error = 'Soubor se nepodařilo přečíst. Zkus ho uložit jako .xlsx nebo .csv a nahrát znovu.';
+  }
+  render();
+}
+
+function computeBulkPreview(){
+  const bi = state.bulkImport;
+  const mapping = bi.mapping;
+  const fieldToHeader = {};
+  Object.entries(mapping).forEach(([h,f])=>{ if(f) fieldToHeader[f]=h; });
+  const get = (row, field) => fieldToHeader[field] ? row[fieldToHeader[field]] : undefined;
+
+  const clientMap = new Map(); // key -> {data, isNew, existingId}
+  const invoices = [];
+  let skipped = 0;
+
+  function keyFor(name, ico){
+    const icoNorm = stripDiacritics(String(ico||'')).replace(/\D/g,'');
+    if(icoNorm) return 'ico:'+icoNorm;
+    const nameNorm = stripDiacritics(String(name||'')).toLowerCase().replace(/[^a-z0-9]/g,'');
+    return nameNorm ? 'name:'+nameNorm : null;
+  }
+
+  bi.rows.forEach(row=>{
+    const name = (get(row,'clientName')||'').toString().trim();
+    const ico = (get(row,'clientIco')||'').toString().trim();
+    const invNumber = (get(row,'invoiceNumber')||'').toString().trim();
+    const total = bulkParseNumber(get(row,'total'));
+    if(!name && !invNumber && total==null){ skipped++; return; }
+
+    const key = keyFor(name, ico) || ('row:'+invoices.length);
+    let entry = clientMap.get(key);
+    if(!entry){
+      const existing = state.clients.find(c=>
+        (ico && stripDiacritics(String(c.ico||'')).replace(/\D/g,'')===stripDiacritics(ico).replace(/\D/g,'') && c.ico) ||
+        (!ico && c.name && stripDiacritics(c.name).toLowerCase()===stripDiacritics(name).toLowerCase())
+      );
+      entry = {
+        key, name: name || (existing?existing.name:'') || 'Neznámý odběratel',
+        ico, dic: (get(row,'clientDic')||'').toString().trim(),
+        email: (get(row,'clientEmail')||'').toString().trim(),
+        phone: (get(row,'clientPhone')||'').toString().trim(),
+        street: (get(row,'clientStreet')||'').toString().trim(),
+        zip: (get(row,'clientZip')||'').toString().trim(),
+        city: (get(row,'clientCity')||'').toString().trim(),
+        isExisting: !!existing, existingId: existing?existing.id:null,
+        count: 0
+      };
+      clientMap.set(key, entry);
+    }
+    entry.count++;
+
+    const baseAmount = bulkParseNumber(get(row,'baseAmount'));
+    const vatAmount = bulkParseNumber(get(row,'vatAmount'));
+    let vatRate = bulkParseNumber(get(row,'vatRate'));
+    let base = baseAmount;
+    if(base==null && total!=null && vatRate!=null) base = total/(1+vatRate/100);
+    if(base==null && total!=null && vatAmount!=null) base = total - vatAmount;
+    if(base==null) base = total!=null ? total : 0;
+    if(vatRate==null && base && vatAmount!=null) vatRate = Math.round((vatAmount/base)*100);
+    if(vatRate==null) vatRate = 0;
+
+    invoices.push({
+      clientKey: key,
+      number: invNumber || '',
+      issueDate: bulkParseDate(get(row,'issueDate')),
+      dueDate: bulkParseDate(get(row,'dueDate')),
+      variableSymbol: (get(row,'variableSymbol')||'').toString().trim(),
+      paid: bulkParseBoolean(get(row,'paid')),
+      note: (get(row,'note')||'').toString().trim(),
+      desc: (get(row,'description')||'').toString().trim() || 'Import',
+      base: base||0, vat: vatRate||0
+    });
+  });
+
+  bi.preview = {
+    clients: Array.from(clientMap.values()),
+    invoices, skipped,
+    newClientsCount: Array.from(clientMap.values()).filter(c=>!c.isExisting).length,
+    matchedClientsCount: Array.from(clientMap.values()).filter(c=>c.isExisting).length
+  };
+}
+
+async function confirmBulkImport(){
+  const bi = state.bulkImport;
+  if(!bi || !bi.preview) return;
+  const companyId = bi.companyId || (state.companies[0] && state.companies[0].id);
+  const idForKey = {};
+  for(const c of bi.preview.clients){
+    if(c.isExisting){ idForKey[c.key] = c.existingId; continue; }
+    const newClient = {
+      id: uid(), name: c.name, ico: c.ico, dic: c.dic,
+      contactEmail: c.email, contactPhone: c.phone,
+      address: { street: c.street, number:'', zip: c.zip, city: c.city },
+      createdAt: new Date().toISOString(), attachments: []
+    };
+    state.clients.push(newClient);
+    idForKey[c.key] = newClient.id;
+  }
+  await saveClients();
+
+  for(const inv of bi.preview.invoices){
+    const clientId = idForKey[inv.clientKey];
+    state.invoices.push({
+      id: uid(),
+      number: inv.number || `IMP-${state.invoices.length+1}`,
+      clientId, companyId,
+      issueDate: inv.issueDate||'', dueDate: inv.dueDate||'', taxDate: inv.issueDate||'',
+      variableSymbol: inv.variableSymbol||'', note: inv.note||'',
+      items: [{desc: inv.desc, qty:1, unit:'ks', price: inv.base, vat: inv.vat}],
+      paid: inv.paid, paidDate: inv.paid ? (inv.dueDate||inv.issueDate||todayISO()) : null,
+      createdBy: state.currentUser, colorMode:'color', currency:'CZK', rounding:'none'
+    });
+  }
+  await saveInvoices();
+  state.bulkImport = null;
+  state.view = 'invoices';
+  render();
+}
+
+function viewBulkImport(){
+  const bi = state.bulkImport;
+  const step = bi.step;
+  return `
+    <div class="pagehead"><div><h1>Hromadný import</h1><p class="desc">Nahraj export z libovolného účetního systému (CSV nebo Excel) — sloupce si spolu doladíme.</p></div></div>
+    <div class="form-card">
+      ${bi.error?`<div class="login-error">${escapeHtml(bi.error)}</div>`:''}
+      ${step==='upload' ? `
+        <p style="font-size:13px;color:var(--ink-soft);">
+          Podporované formáty: .xlsx, .xls, .csv. Nahraj export faktur (ideálně s údaji o odběrateli u každého řádku — appka odběratele buď spáruje s existujícím, nebo založí nového).
+        </p>
+        <div class="formfoot" style="margin-top:14px;">
+          <button type="button" class="btn" data-action="trigger-bulk-file">Vybrat soubor</button>
+          <button type="button" class="btn secondary" data-action="nav" data-view="invoices">Zrušit</button>
+        </div>
+        <input type="file" id="bulk-file-input" accept=".csv,.xlsx,.xls" style="display:none;">
+      ` : ''}
+      ${step==='mapping' ? `
+        <p style="font-size:13px;color:var(--ink-soft);">
+          Soubor <strong>${escapeHtml(bi.fileName)}</strong> — ${bi.rows.length} řádků. Appka sloupce odhadla sama, zkontroluj a případně uprav.
+        </p>
+        <table>
+          <thead><tr><th>Sloupec v souboru</th><th>Ukázka hodnoty</th><th>Co to je</th></tr></thead>
+          <tbody>
+            ${bi.headers.map(h=>`
+              <tr>
+                <td>${escapeHtml(h)}</td>
+                <td style="color:var(--ink-soft);font-size:12.5px;">${escapeHtml(String(bi.rows[0][h]??'').slice(0,40))}</td>
+                <td>
+                  <select data-action="bulk-map" data-header="${escapeAttr(h)}">
+                    ${BULK_FIELDS.map(f=>`<option value="${f.key}" ${bi.mapping[h]===f.key?'selected':''}>${f.label}</option>`).join('')}
+                  </select>
+                </td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+        <div class="field" style="max-width:320px;margin-top:14px;">
+          <label>Dodavatel na importovaných fakturách</label>
+          <select id="bulk-company-select">
+            ${state.companies.map(co=>`<option value="${co.id}" ${(bi.companyId||state.companies[0].id)===co.id?'selected':''}>${escapeHtml(co.name||'(bez názvu)')}</option>`).join('')}
+          </select>
+        </div>
+        <div class="formfoot" style="margin-top:14px;">
+          <button type="button" class="btn" data-action="bulk-to-preview">Zkontrolovat před importem</button>
+          <button type="button" class="btn secondary" data-action="nav" data-view="invoices">Zrušit</button>
+        </div>
+      ` : ''}
+      ${step==='preview' && bi.preview ? `
+        <div class="cards" style="margin-bottom:16px;">
+          <div class="card"><div class="label">Nových odběratelů</div><div class="value">${bi.preview.newClientsCount}</div></div>
+          <div class="card"><div class="label">Spárováno s existujícími</div><div class="value">${bi.preview.matchedClientsCount}</div></div>
+          <div class="card"><div class="label">Faktur k importu</div><div class="value">${bi.preview.invoices.length}</div></div>
+          <div class="card"><div class="label">Přeskočeno (prázdné řádky)</div><div class="value">${bi.preview.skipped}</div></div>
+        </div>
+        <table>
+          <thead><tr><th>Odběratel</th><th></th><th>Č. faktury</th><th>Vystaveno</th><th>Celkem</th><th>Stav</th></tr></thead>
+          <tbody>
+            ${bi.preview.invoices.slice(0,50).map(inv=>{
+              const c = bi.preview.clients.find(x=>x.key===inv.clientKey);
+              const total = inv.base*(1+inv.vat/100);
+              return `<tr>
+                <td>${escapeHtml(c?c.name:'—')}</td>
+                <td>${c&&c.isExisting?'<span class="badge">existující</span>':'<span class="badge">nový</span>'}</td>
+                <td class="num">${escapeHtml(inv.number||'—')}</td>
+                <td class="num">${inv.issueDate||'—'}</td>
+                <td class="num">${fmt(total)} Kč</td>
+                <td>${inv.paid?'Zaplaceno':'Čeká na platbu'}</td>
+              </tr>`;
+            }).join('')}
+          </tbody>
+        </table>
+        ${bi.preview.invoices.length>50?`<p style="font-size:12px;color:var(--ink-soft);">…a dalších ${bi.preview.invoices.length-50} faktur.</p>`:''}
+        <div class="formfoot" style="margin-top:14px;">
+          <button type="button" class="btn" data-action="bulk-confirm">Potvrdit a importovat</button>
+          <button type="button" class="btn secondary" data-action="bulk-back-to-mapping">Zpět na sloupce</button>
+        </div>
+      ` : ''}
+    </div>
+  `;
+}
+
+
+
 /* ---------- HELPERS ---------- */
 function escapeHtml(s){ if(s==null) return ''; return String(s).replace(/[&<>"']/g, m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
 function escapeAttr(s){ return escapeHtml(s); }
@@ -2416,6 +2726,13 @@ function afterRender(){
   if(restoreFileInput){
     restoreFileInput.addEventListener('change', ()=>{ if(restoreFileInput.files[0]) restoreFromUploadedFile(restoreFileInput.files[0]); });
   }
+  const bulkFileInput = document.getElementById('bulk-file-input');
+  if(bulkFileInput){
+    bulkFileInput.addEventListener('change', ()=>{ if(bulkFileInput.files[0]) handleBulkFile(bulkFileInput.files[0]); });
+  }
+  document.querySelectorAll('select[data-action="bulk-map"]').forEach(sel=>{
+    sel.addEventListener('change', ()=>{ state.bulkImport.mapping[sel.getAttribute('data-header')] = sel.value; });
+  });
   const brandingFileInput = document.getElementById('branding-file-input');
   if(brandingFileInput){
     brandingFileInput.addEventListener('change', ()=>{
@@ -3068,6 +3385,25 @@ document.addEventListener('click', async (e)=>{
   else if(action==='add-item'){ state.formItems.push({desc:'',qty:1,unit:'ks',price:0,vat:21}); render(); }
   else if(action==='remove-item'){ const idx = parseInt(el.getAttribute('data-index')); state.formItems.splice(idx,1); if(!state.formItems.length) state.formItems.push({desc:'',qty:1,unit:'ks',price:0,vat:21}); render(); }
   else if(action==='goto-import'){ state.view='invoice-import'; state.importError=''; state.importResult=null; render(); }
+  else if(action==='goto-bulk-import'){
+    state.view='bulk-import';
+    state.bulkImport = { step:'upload', error:'', fileName:'', headers:[], rows:[], mapping:{}, preview:null, companyId:null };
+    render();
+  }
+  else if(action==='trigger-bulk-file'){ const fi=document.getElementById('bulk-file-input'); if(fi) fi.click(); }
+  else if(action==='bulk-to-preview'){
+    const sel = document.getElementById('bulk-company-select');
+    if(sel) state.bulkImport.companyId = sel.value;
+    computeBulkPreview();
+    state.bulkImport.step = 'preview';
+    render();
+  }
+  else if(action==='bulk-back-to-mapping'){ state.bulkImport.step='mapping'; render(); }
+  else if(action==='bulk-confirm'){
+    const btn = el; btn.disabled = true; btn.textContent = 'Importuji…';
+    try{ await confirmBulkImport(); }
+    catch(err){ alert('Import se nepovedl, zkus to prosím znovu.'); btn.disabled=false; btn.textContent='Potvrdit a importovat'; }
+  }
   else if(action==='dash-preset'){
     const preset = el.getAttribute('data-preset');
     const range = applyDateRangeFromPreset(preset);
