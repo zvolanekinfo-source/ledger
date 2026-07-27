@@ -164,6 +164,7 @@
   .items-table .col-unit{width:9%;}
   .items-table .col-price{width:14%;}
   .items-table .col-vat{width:11%;}
+  .items-table.no-vat .col-vat{display:none;}
   .items-table .col-total{width:17%;}
   .items-table .col-remove{width:32px;}
   .items-table-wrap{overflow-x:auto;}
@@ -230,6 +231,7 @@
     -webkit-print-color-adjust:exact;print-color-adjust:exact;color-adjust:exact;
   }
   .invoice-sheet .inv-body{padding:48px 52px 48px 52px;}
+  .invoice-sheet.bw-mode{filter:grayscale(1) contrast(1.05);}
 
   /* header */
   .invoice-sheet .inv-header{
@@ -413,6 +415,8 @@ let state = {
   editingInvoiceId: null,
   editingClientId: null,
   editingCompanyId: null,
+  accountError: '',
+  accountNotice: '',
   viewingClientId: null,
   newClientDraftId: null,
   newClientDraftAttachments: [],
@@ -420,6 +424,8 @@ let state = {
   formItems: [],
   loaded: false,
   clientSearch: '',
+  clientSort: 'newest',
+  clientFilterField: 'all',
   preselectClientId: null,
   importBusy: false,
   importError: '',
@@ -530,6 +536,18 @@ async function signOutRemote(){
   }catch(e){}
 }
 
+async function updateOwnAuthUser(fields){
+  await ensureFreshSession();
+  const res = await fetch(SUPABASE_AUTH + '/user', {
+    method: 'PUT',
+    headers: { 'apikey': SUPABASE_KEY, 'Authorization': 'Bearer ' + session.access_token, 'Content-Type':'application/json' },
+    body: JSON.stringify(fields)
+  });
+  const data = await res.json().catch(()=>({}));
+  if(!res.ok) throw new Error(data.error_description || data.msg || 'Změna se nepovedla.');
+  return data;
+}
+
 async function sbRequest(path, options = {}){
   await ensureFreshSession();
   const headers = {
@@ -576,16 +594,23 @@ window.storage = {
    ke sdíleným datům (viz RLS na app_storage v supabase-setup.sql). */
 async function loadTeam(){
   try{
-    const res = await sbRequest('/team_members?select=user_id,email,display_name&order=created_at.asc');
+    const res = await sbRequest('/team_members?select=user_id,email,display_name,role&order=created_at.asc');
     const rows = await res.json();
-    state.users = rows.map(r=>({ id:r.user_id, name:r.display_name, email:r.email }));
+    state.users = rows.map(r=>({ id:r.user_id, name:r.display_name, email:r.email, role:r.role||'member' }));
   }catch(e){ console.error(e); state.users = []; }
 }
 async function insertTeamMember(user_id, email, display_name){
   await sbRequest('/team_members', {
     method:'POST',
     headers:{ 'Prefer':'return=minimal' },
-    body: JSON.stringify({ user_id, email, display_name })
+    body: JSON.stringify({ user_id, email, display_name, role:'member' })
+  });
+}
+async function updateTeamMember(user_id, fields){
+  await sbRequest(`/team_members?user_id=eq.${encodeURIComponent(user_id)}`, {
+    method:'PATCH',
+    headers:{ 'Prefer':'return=minimal' },
+    body: JSON.stringify(fields)
   });
 }
 async function removeTeamMember(user_id){
@@ -618,9 +643,9 @@ async function loadAll(){
   state.loaded = true;
 }
 function companyById(id){ return state.companies.find(co=>co.id===id); }
-async function saveCompanies(){ try{ await window.storage.set('companies', JSON.stringify(state.companies), true); }catch(e){ console.error(e); } saveSnapshotBackup(); }
-async function saveClients(){ try{ await window.storage.set('clients', JSON.stringify(state.clients), true); }catch(e){ console.error(e); } saveSnapshotBackup(); }
-async function saveInvoices(){ try{ await window.storage.set('invoices', JSON.stringify(state.invoices), true); }catch(e){ console.error(e); } saveSnapshotBackup(); }
+async function saveCompanies(){ await window.storage.set('companies', JSON.stringify(state.companies), true); saveSnapshotBackup(); }
+async function saveClients(){ await window.storage.set('clients', JSON.stringify(state.clients), true); saveSnapshotBackup(); }
+async function saveInvoices(){ await window.storage.set('invoices', JSON.stringify(state.invoices), true); saveSnapshotBackup(); }
 
 /* ---------- BACKUP / SNAPSHOTS ---------- */
 async function loadBackupIndex(){
@@ -952,6 +977,7 @@ function renderView(){
     case 'client-detail': return viewClientDetail();
     case 'settings': return viewSettings();
     case 'company-form': return viewCompanyForm();
+    case 'account-form': return viewAccountForm();
     default: return '';
   }
 }
@@ -1080,7 +1106,7 @@ function blankInvoice(){
     id:null, number:num, clientId: preselected, companyId: c.id,
     issueDate: todayISO(), taxDate: todayISO(), dueDate: addDays(todayISO(), c.defaultDueDays||14),
     variableSymbol: num.replace(/\D/g,''), note: c.defaultNote||'', paid:false, paidDate:null,
-    paymentMethod: c.defaultPaymentMethod || 'Bankovním převodem',
+    paymentMethod: c.defaultPaymentMethod || 'Bankovním převodem', colorMode:'color',
     includeStamp:true, includeSignature:true, includeQr:true
   };
 }
@@ -1099,6 +1125,10 @@ function viewInvoiceForm(){
     `;
   }
   const selClient = clientById(inv.clientId);
+  const activeCompanyId = state.formCompanyId || inv.companyId;
+  const activeCo = companyById(activeCompanyId) || state.companies[0];
+  const vatPayerNow = activeCo.vatPayer !== false;
+  if(!vatPayerNow){ state.formItems.forEach(it=>{ it.vat = 0; }); }
   return `
     <div class="pagehead"><div><h1>${editing?'Upravit fakturu':'Nová faktura'}</h1></div></div>
     <form id="invoice-form" class="form-card">
@@ -1173,13 +1203,22 @@ function viewInvoiceForm(){
       </div>
 
       <div class="section-title">Vzhled této faktury</div>
+      <div class="field" style="max-width:320px;">
+        <label>Vzhled faktury</label>
+        <select name="colorMode">
+          <option value="color" ${(inv.colorMode||'color')==='color'?'selected':''}>Barevná faktura</option>
+          <option value="bw" ${inv.colorMode==='bw'?'selected':''}>Černobílá faktura (úsporná pro tisk)</option>
+        </select>
+      </div>
       <div class="toggle-row"><input type="checkbox" name="includeStamp" id="chk-inc-stamp" value="1" ${inv.includeStamp!==false?'checked':''}><label for="chk-inc-stamp">Zobrazit razítko (pokud je nahrané v nastavení)</label></div>
       <div class="toggle-row"><input type="checkbox" name="includeSignature" id="chk-inc-sig" value="1" ${inv.includeSignature!==false?'checked':''}><label for="chk-inc-sig">Zobrazit elektronický podpis (pokud je nahraný)</label></div>
       <div class="toggle-row"><input type="checkbox" name="includeQr" id="chk-inc-qr" value="1" ${inv.includeQr!==false?'checked':''}><label for="chk-inc-qr">Zobrazit QR platbu (vyžaduje IBAN)</label></div>
 
       <div class="section-title">Položky</div>
+      <p id="vat-off-note" style="font-size:12px;color:var(--ink-soft);margin-top:-4px;${vatPayerNow?'display:none;':''}">Vybraná firma není plátce DPH — faktura se vystaví bez DPH.</p>
       <div class="items-table-wrap">
-      <table class="items-table">
+      <datalist id="vat-rate-options">${VAT_RATES.map(r=>`<option value="${r}">`).join('')}</datalist>
+      <table class="items-table ${vatPayerNow?'':'no-vat'}">
         <thead><tr><th class="col-desc">Popis</th><th class="col-qty">Množství</th><th class="col-unit">Jedn.</th><th class="col-price">Cena/ks</th><th class="col-vat">DPH</th><th class="col-total num">Celkem</th><th class="col-remove"></th></tr></thead>
         <tbody id="items-body">${renderItemRows()}</tbody>
       </table>
@@ -1187,7 +1226,7 @@ function viewInvoiceForm(){
       <button type="button" class="btn secondary small no-print" data-action="add-item">+ Přidat položku</button>
 
       <div class="section-title">Souhrn</div>
-      <div class="totals-box" id="totals-box">${renderTotalsBox()}</div>
+      <div class="totals-box" id="totals-box">${renderTotalsBox(vatPayerNow)}</div>
 
       <div class="section-title">Poznámka</div>
       <div class="field"><textarea name="note">${inv.note||''}</textarea></div>
@@ -1211,19 +1250,21 @@ function renderItemRows(){
       <td class="col-qty"><input type="number" step="0.01" data-field="qty" data-index="${idx}" value="${it.qty}"></td>
       <td class="col-unit"><input data-field="unit" data-index="${idx}" value="${escapeAttr(it.unit||'ks')}"></td>
       <td class="col-price"><input type="number" step="0.01" data-field="price" data-index="${idx}" value="${it.price}"></td>
-      <td class="col-vat"><select data-field="vat" data-index="${idx}">${VAT_RATES.map(r=>`<option value="${r}" ${r==it.vat?'selected':''}>${r}%</option>`).join('')}</select></td>
+      <td class="col-vat">
+        <input type="number" step="0.1" min="0" max="100" list="vat-rate-options" data-field="vat" data-index="${idx}" value="${it.vat}">
+      </td>
       <td class="col-total num" style="white-space:nowrap;padding-top:14px;">${fmt(lineTotal)} Kč</td>
       <td class="col-remove"><button type="button" class="iconbtn no-print" data-action="remove-item" data-index="${idx}">✕</button></td>
     </tr>`;
   }).join('');
 }
 
-function renderTotalsBox(){
+function renderTotalsBox(vatPayerNow){
   let base=0, vat=0;
   state.formItems.forEach(it=>{ const b=(it.qty||0)*(it.price||0); base+=b; vat+=b*((it.vat||0)/100); });
   return `
     <div class="trow"><span>Základ daně</span><span class="num">${fmt(base)} Kč</span></div>
-    <div class="trow"><span>DPH</span><span class="num">${fmt(vat)} Kč</span></div>
+    ${vatPayerNow!==false?`<div class="trow"><span>DPH</span><span class="num">${fmt(vat)} Kč</span></div>`:''}
     <div class="trow grand"><span>Celkem</span><span>${fmt(base+vat)} Kč</span></div>
   `;
 }
@@ -1257,7 +1298,7 @@ function viewInvoicePreview(){
       </div>
     </div>
     <div class="preview-wrap">
-      <div class="invoice-sheet" id="invoice-sheet" style="${sheetStyle}">
+      <div class="invoice-sheet ${inv.colorMode==='bw'?'bw-mode':''}" id="invoice-sheet" style="${sheetStyle}">
         <div class="inv-body">
         <div class="inv-header">
           <div class="inv-header-left">
@@ -1438,23 +1479,67 @@ function detailRow(label, value, multiline){
   return `<div class="detail-row"><div class="k">${escapeHtml(label)}</div><div>${multiline?nl2br(value):escapeHtml(value)}</div></div>`;
 }
 
+function sortedClients(){
+  const arr = [...state.clients];
+  const sort = state.clientSort || 'newest';
+  if(sort==='newest') arr.sort((a,b)=> (b.createdAt||'').localeCompare(a.createdAt||''));
+  else if(sort==='oldest') arr.sort((a,b)=> (a.createdAt||'').localeCompare(b.createdAt||''));
+  else if(sort==='az') arr.sort((a,b)=> (a.name||'').localeCompare(b.name||'','cs'));
+  else if(sort==='za') arr.sort((a,b)=> (b.name||'').localeCompare(a.name||'','cs'));
+  return arr;
+}
+
+function clientCity(c){
+  const addr = c.address || '';
+  const parts = addr.split(',').map(s=>s.trim()).filter(Boolean);
+  if(!parts.length) return '';
+  const last = parts[parts.length-1];
+  return last.replace(/^\d{3}\s?\d{2}\s*/,'').trim();
+}
+
 function viewClients(){
+  const sort = state.clientSort || 'newest';
+  const filterField = state.clientFilterField || 'all';
   return `
     <div class="pagehead">
       <div><h1>Odběratelé</h1><p class="desc">${state.clients.length} odběratelů v evidenci. Klikni na odběratele pro detail, faktury a obrat.</p></div>
       <button class="btn" data-action="new-client">+ Přidat odběratele</button>
     </div>
     ${state.clients.length ? `
-    <div class="search-row">
-      <input type="text" id="client-search-input" class="search-input" placeholder="Hledat odběratele (název, IČO, kontaktní osoba, email, telefon)…" value="${escapeAttr(state.clientSearch)}">
+    <div class="search-row" style="gap:10px;flex-wrap:wrap;">
+      <select id="client-sort-select" style="max-width:200px;">
+        <option value="newest" ${sort==='newest'?'selected':''}>Od nejnovějších</option>
+        <option value="oldest" ${sort==='oldest'?'selected':''}>Od nejstarších</option>
+        <option value="az" ${sort==='az'?'selected':''}>Abecedně A–Z</option>
+        <option value="za" ${sort==='za'?'selected':''}>Abecedně Z–A</option>
+      </select>
+      <select id="client-filter-field-select" style="max-width:180px;">
+        <option value="all" ${filterField==='all'?'selected':''}>Ve všem</option>
+        <option value="name" ${filterField==='name'?'selected':''}>Název firmy</option>
+        <option value="ico" ${filterField==='ico'?'selected':''}>IČO</option>
+        <option value="dic" ${filterField==='dic'?'selected':''}>DIČ</option>
+        <option value="city" ${filterField==='city'?'selected':''}>Město</option>
+        <option value="contact" ${filterField==='contact'?'selected':''}>Kontaktní osoba</option>
+        <option value="email" ${filterField==='email'?'selected':''}>E-mail</option>
+        <option value="phone" ${filterField==='phone'?'selected':''}>Telefon</option>
+      </select>
+      <input type="text" id="client-search-input" class="search-input" placeholder="Hledat…" value="${escapeAttr(state.clientSearch)}" style="flex:1;min-width:180px;">
     </div>
     <table>
       <thead><tr><th>Název</th><th>IČO</th><th>Kontaktní osoba</th><th>Kontaktní e-mail</th><th>Telefon</th><th></th></tr></thead>
       <tbody id="clients-tbody">
-        ${state.clients.map(c=>{
-          const searchBlob = escapeAttr(stripDiacritics(`${c.name} ${c.ico||''} ${c.contactPerson||''} ${c.contactEmail||''} ${c.contactPhone||''}`).toLowerCase());
+        ${sortedClients().map(c=>{
+          const city = clientCity(c);
           return `
-          <tr class="rowlink" data-action="view-client" data-id="${c.id}" data-search="${searchBlob}">
+          <tr class="rowlink" data-action="view-client" data-id="${c.id}"
+              data-search="${escapeAttr(stripDiacritics(`${c.name} ${c.ico||''} ${c.dic||''} ${city} ${c.contactPerson||''} ${c.contactEmail||''} ${c.contactPhone||''}`).toLowerCase())}"
+              data-name="${escapeAttr(stripDiacritics(c.name||'').toLowerCase())}"
+              data-ico="${escapeAttr(stripDiacritics(c.ico||'').toLowerCase())}"
+              data-dic="${escapeAttr(stripDiacritics(c.dic||'').toLowerCase())}"
+              data-city="${escapeAttr(stripDiacritics(city).toLowerCase())}"
+              data-contact="${escapeAttr(stripDiacritics(c.contactPerson||'').toLowerCase())}"
+              data-email="${escapeAttr(stripDiacritics(c.contactEmail||'').toLowerCase())}"
+              data-phone="${escapeAttr(stripDiacritics(c.contactPhone||'').toLowerCase())}">
             <td>${escapeHtml(c.name)}</td>
             <td class="num">${escapeHtml(c.ico||'—')}</td>
             <td>${escapeHtml(c.contactPerson||'—')}</td>
@@ -1472,13 +1557,14 @@ function viewClients(){
   `;
 }
 
-function filterClientRows(query){
+function filterClientRows(query, field){
   const q = stripDiacritics(query||'').toLowerCase().trim();
+  const attr = ({name:'data-name', ico:'data-ico', dic:'data-dic', city:'data-city', contact:'data-contact', email:'data-email', phone:'data-phone'})[field] || 'data-search';
   const tbody = document.getElementById('clients-tbody');
   if(!tbody) return;
   let visibleCount = 0;
   tbody.querySelectorAll('tr[data-search]').forEach(row=>{
-    const match = !q || row.getAttribute('data-search').includes(q);
+    const match = !q || (row.getAttribute(attr)||'').includes(q);
     row.style.display = match ? '' : 'none';
     if(match) visibleCount++;
   });
@@ -1621,101 +1707,48 @@ function brandSlot(co, field, title, sub, imgAlt){
   `;
 }
 
-function viewSettings(){
-  const co = state.companies[0];
+function viewAccountForm(){
+  const me = state.users.find(u=>u.id===state.currentUserId);
   return `
-    <div class="pagehead"><div><h1>Nastavení</h1><p class="desc">Údaje o firmě, fakturaci a vzhledu faktur — nic tu nemusí chybět.</p></div></div>
-    <form id="settings-form" class="form-card">
-      <div class="section-title" style="margin-top:0;padding-top:0;border-top:none;">Výchozí dodavatel</div>
-      <div class="field"><label>Název firmy / jméno OSVČ</label><input name="name" value="${escapeAttr(co.name)}" required></div>
-      <div class="field"><label>Podtitulek / obor činnosti</label><input name="tagline" value="${escapeAttr(co.tagline)}" placeholder="např. Profesionální služby"></div>
-      <div class="field"><label>Adresa</label><textarea name="address">${co.address||''}</textarea></div>
-      <div class="field-row">
-        <div class="field"><label>IČO</label><input name="ico" value="${escapeAttr(co.ico)}"></div>
-        <div class="field"><label>DIČ</label><input name="dic" value="${escapeAttr(co.dic)}"></div>
-      </div>
-      <div class="field-row">
-        <div class="field"><label>Email</label><input type="email" name="email" value="${escapeAttr(co.email)}"></div>
-        <div class="field"><label>Telefon</label><input name="phone" value="${escapeAttr(co.phone)}"></div>
-      </div>
-      <div class="field-row">
-        <div class="field"><label>Web</label><input name="website" value="${escapeAttr(co.website)}" placeholder="www.firma.cz"></div>
-        <div class="field"><label>Zápis v rejstříku (nepovinné)</label><input name="registration" value="${escapeAttr(co.registration)}" placeholder="Zapsáno v OR vedeném..."></div>
-      </div>
-
-      <div class="section-title">Platby</div>
-      <div class="field-row">
-        <div class="field"><label>Číslo účtu</label><input name="account" value="${escapeAttr(co.account)}" placeholder="123456789/0300"></div>
-        <div class="field"><label>Banka</label><input name="bankName" value="${escapeAttr(co.bankName)}" placeholder="např. Fio banka"></div>
-      </div>
-      <div class="field-row">
-        <div class="field"><label>IBAN (pro QR platbu)</label><input name="iban" value="${escapeAttr(co.iban)}" placeholder="CZ..."></div>
-        <div class="field"><label>SWIFT / BIC</label><input name="swift" value="${escapeAttr(co.swift)}"></div>
-      </div>
-
-      <div class="section-title">Fakturace</div>
-      <div class="field-row">
-        <div class="field"><label>Prefix čísla faktury</label><input name="prefix" value="${escapeAttr(co.prefix)}"></div>
-        <div class="field"><label>Další pořadové číslo</label><input type="number" name="nextNumber" value="${co.nextNumber}"></div>
-      </div>
-      <div class="field-row">
-        <div class="field"><label>Výchozí splatnost (dny)</label><input type="number" name="defaultDueDays" value="${co.defaultDueDays}"></div>
-        <div class="field"><label>Výchozí forma úhrady</label>
-          <select name="defaultPaymentMethod">
-            ${['Bankovním převodem','Hotově','Kartou'].map(m=>`<option value="${m}" ${co.defaultPaymentMethod===m?'selected':''}>${m}</option>`).join('')}
-          </select>
-        </div>
-      </div>
-      <div class="field"><label>Výchozí poznámka (na fakturu)</label><input name="defaultNote" value="${escapeAttr(co.defaultNote)}"></div>
-      <div class="field"><label>Platební podmínky / patička faktury</label><textarea name="invoiceTerms" style="min-height:70px;">${co.invoiceTerms||''}</textarea></div>
-
-      <div class="section-title">Vzhled faktury</div>
-      <div class="field">
-        <label>Barva zvýraznění na faktuře</label>
-        <div class="color-row">
-          <input type="color" name="invoiceAccent" value="${co.invoiceAccent||'#1F5C4D'}">
-          <span style="font-size:12.5px;color:var(--ink-soft);">Výchozí je světle zelená stejná jako v appce — klidně uprav dle svého brandu.</span>
-        </div>
-      </div>
-      <div class="toggle-row"><input type="checkbox" name="showLogo" id="chk-showLogo" value="1" ${co.showLogo?'checked':''}><label for="chk-showLogo">Zobrazovat logo na fakturách</label></div>
-      <div class="toggle-row"><input type="checkbox" name="showStamp" id="chk-showStamp" value="1" ${co.showStamp?'checked':''}><label for="chk-showStamp">Zobrazovat razítko na fakturách</label></div>
-      <div class="toggle-row"><input type="checkbox" name="showSignature" id="chk-showSignature" value="1" ${co.showSignature?'checked':''}><label for="chk-showSignature">Zobrazovat elektronický podpis na fakturách</label></div>
-      <div class="toggle-row"><input type="checkbox" name="showQr" id="chk-showQr" value="1" ${co.showQr?'checked':''}><label for="chk-showQr">Zobrazovat QR platbu (vyžaduje vyplněný IBAN)</label></div>
-
+    <div class="pagehead"><div><h1>Můj e-mail a heslo</h1><p class="desc">Přihlašovací údaje spravuje Supabase Auth — appka heslo nikdy nevidí.</p></div></div>
+    <form id="account-form" class="form-card">
+      ${state.accountError?`<div class="login-error">${escapeHtml(state.accountError)}</div>`:''}
+      ${state.accountNotice?`<div class="login-error" style="background:var(--accent-soft);color:var(--accent);">${escapeHtml(state.accountNotice)}</div>`:''}
+      <div class="field"><label>E-mail</label><input type="email" name="email" value="${escapeAttr(me?me.email:'')}"></div>
+      <div class="field"><label>Nové heslo (nech prázdné, pokud ho nechceš měnit)</label><input type="password" name="password" autocomplete="new-password" minlength="8"></div>
+      <div class="field"><label>Nové heslo znovu</label><input type="password" name="password2" autocomplete="new-password" minlength="8"></div>
       <div class="formfoot">
-        <button type="submit" class="btn">Uložit nastavení</button>
+        <button type="submit" class="btn">Uložit</button>
+        <button type="button" class="btn secondary" data-action="nav" data-view="settings">Zrušit</button>
       </div>
     </form>
+  `;
+}
 
-    <div class="section-title" style="margin-top:30px;">Logo, podpis a razítko</div>
+function viewSettings(){
+  return `
+    <div class="pagehead"><div><h1>Nastavení</h1><p class="desc">Firmy, kolegové a zálohy — všechno na jednom místě.</p></div></div>
+
+    <div class="section-title" style="margin-top:0;padding-top:0;border-top:none;">Firmy</div>
     <div class="form-card">
       <p style="font-size:12.5px;color:var(--ink-soft);margin-top:0;">
-        Nahraj logo firmy, obrázek svého podpisu a fotku razítka — objeví se na fakturách přesně tak, jak si je nastavíš výše.
+        Hlavní firma je vždy první a appka ji používá jako výchozí. Fakturuješ z víc firem nebo jako víc OSVČ? Přidej je sem.
       </p>
-      <div class="brand-grid">
-        ${brandSlot(co,'logo','Logo firmy','Zobrazí se v hlavičce faktury.','Logo firmy')}
-        ${brandSlot(co,'signature','Elektronický podpis','Foto nebo scan podpisu.','Podpis')}
-        ${brandSlot(co,'stamp','Razítko','Foto razítka firmy.','Razítko')}
-      </div>
-      <input type="file" id="branding-file-input" accept="image/*" style="display:none;">
-    </div>
-
-    <div class="section-title" style="margin-top:30px;">Další dodavatelé</div>
-    <div class="form-card">
-      <p style="font-size:12.5px;color:var(--ink-soft);margin-top:0;">
-        Fakturuješ z víc firem nebo jako víc OSVČ? Přidej je sem — při vystavování faktury si pak dodavatele vybereš.
-      </p>
-      ${state.companies.length>1 ? state.companies.slice(1).map(extraCo=>`
+      ${state.companies.map((co,i)=>`
         <div class="user-row">
-          <span>${escapeHtml(extraCo.name||'(bez názvu)')} ${extraCo.ico?`<span style="color:var(--ink-soft);font-size:12.5px;">IČO: ${escapeHtml(extraCo.ico)}</span>`:''}</span>
           <span>
-            <button class="iconbtn" data-action="edit-company" data-id="${extraCo.id}" title="Upravit">✎</button>
-            <button class="iconbtn" data-action="delete-company" data-id="${extraCo.id}" title="Smazat">✕</button>
+            ${i===0?'<span class="badge">hlavní firma</span> ':''}
+            ${escapeHtml(co.name||'(bez názvu)')}
+            ${co.ico?`<span style="color:var(--ink-soft);font-size:12.5px;">IČO: ${escapeHtml(co.ico)}</span>`:''}
+          </span>
+          <span>
+            <button class="iconbtn" data-action="edit-company" data-id="${co.id}" title="Upravit">✎</button>
+            ${i>0?`<button class="iconbtn" data-action="delete-company" data-id="${co.id}" title="Smazat">✕</button>`:''}
           </span>
         </div>
-      `).join('') : `<p style="font-size:13px;color:var(--ink-soft);">Zatím žádní další dodavatelé.</p>`}
+      `).join('')}
       <div class="formfoot" style="margin-top:10px;">
-        <button type="button" class="btn secondary" data-action="new-company">+ Přidat dodavatele</button>
+        <button type="button" class="btn secondary" data-action="new-company">+ Přidat firmu</button>
       </div>
     </div>
 
@@ -1723,20 +1756,30 @@ function viewSettings(){
     <div class="form-card">
       ${state.users.map(u=>`
         <div class="user-row">
-          <span>${escapeHtml(u.name)}${u.id===state.currentUserId?' (ty)':''} <span style="color:var(--ink-soft);font-size:12.5px;">${escapeHtml(u.email||'')}</span></span>
-          ${(state.users.length>1 && u.id!==state.currentUserId) ? `<button class="iconbtn" data-action="remove-user" data-userid="${escapeAttr(u.id)}" data-name="${escapeAttr(u.name)}" title="Odebrat přístup">✕</button>` : ''}
+          <span>
+            <span style="font-weight:600;">${escapeHtml(u.name)}</span>${u.id===state.currentUserId?' (ty)':''}
+            ${u.role==='admin'?' <span class="badge">admin</span>':''}
+            <br><span style="color:var(--ink-soft);font-size:12.5px;">${escapeHtml(u.email||'')}</span>
+          </span>
+          <span>
+            <button class="iconbtn" data-action="edit-user" data-id="${u.id}" title="Upravit">✎</button>
+            ${(state.users.length>1 && u.id!==state.currentUserId) ? `<button class="iconbtn" data-action="remove-user" data-userid="${escapeAttr(u.id)}" data-name="${escapeAttr(u.name)}" title="Odebrat přístup">✕</button>` : ''}
+          </span>
         </div>
       `).join('')}
+      <div class="formfoot" style="margin-top:10px;">
+        <button type="button" class="btn secondary" data-action="edit-own-account">✎ Můj e-mail a heslo</button>
+      </div>
       <p style="font-size:12px;color:var(--ink-soft);margin-top:14px;">
-        Noví kolegové se zaregistrují sami přes záložku „Registrace" na přihlašovací obrazovce — přihlašovací údaje spravuje Supabase Auth, appka hesla nikdy nevidí.
-        Odebrání přístupu zablokuje čtení/zápis sdílených dat; samotný účet dané osoby zůstává v Supabase (jde smazat v Supabase dashboardu, pokud je potřeba).
+        Noví kolegové se zaregistrují sami přes záložku „Registrace" na přihlašovací obrazovce. Jméno a roli může kterýkoli člen týmu upravit tady;
+        vlastní e-mail a heslo si každý mění sám (tlačítko výše) — appka hesla nikdy nevidí, o vše se stará Supabase Auth.
       </p>
     </div>
 
     <div class="section-title" style="margin-top:30px;">Zálohování dat</div>
     <div class="form-card">
       <p style="font-size:13px;color:var(--ink-soft);margin-top:0;">
-        Data appky (odběratelé, faktury, firma) žijí v uložišti napojeném na tuto appku, ne v tomto souboru.
+        Data appky (odběratelé, faktury, firmy) žijí v uložišti napojeném na tuto appku, ne v tomto souboru.
         Aby ses nikdy nespoléhal jen na to, doporučujeme si čas od času stáhnout zálohu na vlastní počítač —
         navíc appka sama každý den, kdy něco uložíš, vytvoří automatický záložní snímek (posledních 10 dní).
       </p>
@@ -1760,24 +1803,30 @@ function viewSettings(){
 
 function viewCompanyForm(){
   const editing = state.editingCompanyId ? companyById(state.editingCompanyId) : null;
+  const isPrimary = editing && state.companies[0] && editing.id === state.companies[0].id;
   const co = editing || {
     id:'', name:'', tagline:'', address:'', ico:'', dic:'', account:'', bankName:'', iban:'', swift:'', email:'', phone:'', website:'',
     registration:'', prefix: new Date().getFullYear().toString(), nextNumber:1, defaultDueDays:14, defaultNote:'Děkujeme za spolupráci.',
     invoiceTerms:'Fakturovaná částka bude odečtena z uvedeného účtu. V případě prodlení s úhradou je odběratel povinen uhradit úrok z prodlení dle platné legislativy.',
-    defaultPaymentMethod:'Bankovním převodem', invoiceAccent:'#1F5C4D',
+    defaultPaymentMethod:'Bankovním převodem', vatPayer:true,
     logo:'', signature:'', stamp:'', showLogo:true, showStamp:true, showSignature:true, showQr:true
   };
   return `
-    <div class="pagehead"><div><h1>${editing?'Upravit dodavatele':'Nový dodavatel'}</h1></div></div>
+    <div class="pagehead"><div><h1>${editing?`Upravit firmu${isPrimary?' (hlavní)':''}`:'Nová firma'}</h1></div></div>
     <form id="company-form" class="form-card">
       <div class="section-title" style="margin-top:0;padding-top:0;border-top:none;">Firma</div>
-      <div class="field"><label>Název firmy / jméno OSVČ</label><input name="name" value="${escapeAttr(co.name)}" required></div>
-      <div class="field"><label>Podtitulek / obor činnosti</label><input name="tagline" value="${escapeAttr(co.tagline)}" placeholder="např. Profesionální služby"></div>
-      <div class="field"><label>Adresa</label><textarea name="address">${co.address||''}</textarea></div>
-      <div class="field-row">
-        <div class="field"><label>IČO</label><input name="ico" value="${escapeAttr(co.ico)}"></div>
-        <div class="field"><label>DIČ</label><input name="dic" value="${escapeAttr(co.dic)}"></div>
+      <div class="field combo-field">
+        <label>Název firmy / jméno OSVČ</label>
+        <input name="name" id="co-name" value="${escapeAttr(co.name)}" placeholder="Začni psát a appka nabídne shody z ARES…" autocomplete="off" required>
+        <div class="combo-list" id="co-name-list"></div>
       </div>
+      <p id="co-ares-status" style="font-size:12px;color:var(--ink-soft);margin:-6px 0 14px 0;"></p>
+      <div class="field"><label>Podtitulek / obor činnosti</label><input name="tagline" value="${escapeAttr(co.tagline)}" placeholder="např. Profesionální služby"></div>
+      <div class="field-row">
+        <div class="field"><label>IČO</label><input name="ico" id="co-ico" value="${escapeAttr(co.ico)}"></div>
+        <div class="field"><label>DIČ</label><input name="dic" id="co-dic" value="${escapeAttr(co.dic)}"></div>
+      </div>
+      ${companyAddressField('address','Adresa',co.address)}
       <div class="field-row">
         <div class="field"><label>Email</label><input type="email" name="email" value="${escapeAttr(co.email)}"></div>
         <div class="field"><label>Telefon</label><input name="phone" value="${escapeAttr(co.phone)}"></div>
@@ -1798,6 +1847,8 @@ function viewCompanyForm(){
       </div>
 
       <div class="section-title">Fakturace</div>
+      <div class="toggle-row"><input type="checkbox" name="vatPayer" id="chk-vatPayer" value="1" ${co.vatPayer?'checked':''}><label for="chk-vatPayer">Firma je plátce DPH</label></div>
+      <p style="font-size:11.5px;color:var(--ink-soft);margin:-6px 0 14px 0;">Když firma není plátce DPH, faktury z ní se vystaví automaticky bez DPH a nastavení sazby se na nich nezobrazí.</p>
       <div class="field-row">
         <div class="field"><label>Prefix čísla faktury</label><input name="prefix" value="${escapeAttr(co.prefix)}"></div>
         <div class="field"><label>Další pořadové číslo</label><input type="number" name="nextNumber" value="${co.nextNumber}"></div>
@@ -1814,35 +1865,37 @@ function viewCompanyForm(){
       <div class="field"><label>Platební podmínky / patička faktury</label><textarea name="invoiceTerms" style="min-height:70px;">${co.invoiceTerms||''}</textarea></div>
 
       <div class="section-title">Vzhled faktury</div>
-      <div class="field">
-        <label>Barva zvýraznění na faktuře</label>
-        <div class="color-row">
-          <input type="color" name="invoiceAccent" value="${co.invoiceAccent||'#1F5C4D'}">
+      ${editing ? `
+        <div class="brand-grid">
+          ${brandSlot(co,'logo','Logo firmy','Zobrazí se v hlavičce faktury.','Logo firmy')}
+          ${brandSlot(co,'signature','Elektronický podpis','Foto nebo scan podpisu.','Podpis')}
+          ${brandSlot(co,'stamp','Razítko','Foto razítka firmy.','Razítko')}
         </div>
-      </div>
-      <div class="toggle-row"><input type="checkbox" name="showLogo" id="chk-showLogo" value="1" ${co.showLogo?'checked':''}><label for="chk-showLogo">Zobrazovat logo na fakturách</label></div>
+        <input type="file" id="branding-file-input" accept="image/*" style="display:none;">
+      ` : `<p style="font-size:12.5px;color:var(--ink-soft);">Logo, podpis a razítko půjde nahrát, jakmile firmu nejdřív uložíš.</p>`}
+      <div class="toggle-row" style="margin-top:14px;"><input type="checkbox" name="showLogo" id="chk-showLogo" value="1" ${co.showLogo?'checked':''}><label for="chk-showLogo">Zobrazovat logo na fakturách</label></div>
       <div class="toggle-row"><input type="checkbox" name="showStamp" id="chk-showStamp" value="1" ${co.showStamp?'checked':''}><label for="chk-showStamp">Zobrazovat razítko na fakturách</label></div>
       <div class="toggle-row"><input type="checkbox" name="showSignature" id="chk-showSignature" value="1" ${co.showSignature?'checked':''}><label for="chk-showSignature">Zobrazovat elektronický podpis na fakturách</label></div>
       <div class="toggle-row"><input type="checkbox" name="showQr" id="chk-showQr" value="1" ${co.showQr?'checked':''}><label for="chk-showQr">Zobrazovat QR platbu (vyžaduje vyplněný IBAN)</label></div>
 
       <div class="formfoot">
-        <button type="submit" class="btn">Uložit dodavatele</button>
+        <button type="submit" class="btn">Uložit firmu</button>
         <button type="button" class="btn secondary" data-action="nav" data-view="settings">Zrušit</button>
       </div>
       <input type="hidden" name="id" value="${co.id||''}">
     </form>
+  `;
+}
 
-    ${editing ? `
-    <div class="section-title" style="margin-top:30px;">Logo, podpis a razítko</div>
-    <div class="form-card">
-      <div class="brand-grid">
-        ${brandSlot(co,'logo','Logo firmy','Zobrazí se v hlavičce faktury.','Logo firmy')}
-        ${brandSlot(co,'signature','Elektronický podpis','Foto nebo scan podpisu.','Podpis')}
-        ${brandSlot(co,'stamp','Razítko','Foto razítka firmy.','Razítko')}
-      </div>
-      <input type="file" id="branding-file-input" accept="image/*" style="display:none;">
+function companyAddressField(fieldName, label, value){
+  const id = 'co-addr-' + fieldName;
+  return `
+    <div class="field combo-field">
+      <label>${label}</label>
+      <textarea name="${fieldName}" id="${id}" autocomplete="off">${value||''}</textarea>
+      <div class="combo-list" id="${id}-list"></div>
+      <p style="font-size:11px;color:var(--ink-soft);margin:4px 0 0 0;">Začni psát město nebo ulici — appka nabídne adresy a doplní PSČ (zdroj: OpenStreetMap).</p>
     </div>
-    ` : `<p style="font-size:12.5px;color:var(--ink-soft);">Logo, podpis a razítko půjde nahrát, jakmile dodavatele nejdřív uložíš.</p>`}
   `;
 }
 /* ---------- INVOICE IMPORT (upload old invoice, auto-extract) ---------- */
@@ -2164,15 +2217,25 @@ function afterRender(){
   setupInvoiceCompanySelect();
   const companyForm = document.getElementById('company-form');
   if(companyForm){ companyForm.addEventListener('submit', onSubmitCompany); }
+  const accountForm = document.getElementById('account-form');
+  if(accountForm){ accountForm.addEventListener('submit', onSubmitAccount); }
   const clientForm = document.getElementById('client-form');
   if(clientForm){ clientForm.addEventListener('submit', onSubmitClient); }
   setupAresCombo();
-  ['address','deliveryAddress'].forEach(setupAddressAutocomplete);
+  ['addr-address','addr-deliveryAddress'].forEach(setupAddressAutocomplete);
+  setupAresCombo({ name:'co-name', list:'co-name-list', status:'co-ares-status', ico:'co-ico', dic:'co-dic', addr:'co-addr-address' });
+  setupAddressAutocomplete('co-addr-address');
   setupAttachmentUpload();
   const clientSearchInput = document.getElementById('client-search-input');
   if(clientSearchInput){
-    clientSearchInput.addEventListener('input', (e)=>{ state.clientSearch = e.target.value; filterClientRows(e.target.value); });
-    if(state.clientSearch) filterClientRows(state.clientSearch);
+    clientSearchInput.addEventListener('input', (e)=>{ state.clientSearch = e.target.value; filterClientRows(e.target.value, state.clientFilterField); });
+    if(state.clientSearch) filterClientRows(state.clientSearch, state.clientFilterField);
+  }
+  const clientSortSelect = document.getElementById('client-sort-select');
+  if(clientSortSelect){ clientSortSelect.addEventListener('change', (e)=>{ state.clientSort = e.target.value; render(); }); }
+  const clientFilterFieldSelect = document.getElementById('client-filter-field-select');
+  if(clientFilterFieldSelect){
+    clientFilterFieldSelect.addEventListener('change', (e)=>{ state.clientFilterField = e.target.value; filterClientRows(state.clientSearch, state.clientFilterField); });
   }
   setupClientCombo();
   setupImportDropzone();
@@ -2212,8 +2275,6 @@ function afterRender(){
     });
     if(state.invoiceFilter.search) filterInvoiceRows(state.invoiceFilter.search);
   }
-  const settingsForm = document.getElementById('settings-form');
-  if(settingsForm){ settingsForm.addEventListener('submit', onSubmitSettings); }
   const restoreFileInput = document.getElementById('restore-file-input');
   if(restoreFileInput){
     restoreFileInput.addEventListener('change', ()=>{ if(restoreFileInput.files[0]) restoreFromUploadedFile(restoreFileInput.files[0]); });
@@ -2239,7 +2300,9 @@ function afterRender(){
       state.formItems[idx][f]=val;
       // live update row total + totals box without full rerender (keeps focus)
       const totalsBox = document.getElementById('totals-box');
-      if(totalsBox) totalsBox.innerHTML = renderTotalsBox();
+      const itemsTableEl = document.querySelector('.items-table');
+      const vatPayerNow = !(itemsTableEl && itemsTableEl.classList.contains('no-vat'));
+      if(totalsBox) totalsBox.innerHTML = renderTotalsBox(vatPayerNow);
       const row = e.target.closest('tr');
       if(row){
         const it = state.formItems[idx];
@@ -2283,21 +2346,23 @@ async function aresSearchByName(name){
   return data.ekonomickeSubjekty || [];
 }
 
-function applyAresEntityToForm(entity){
-  const nameEl = document.getElementById('client-name');
-  const icoEl = document.getElementById('client-ico');
-  const dicEl = document.getElementById('client-dic');
-  const addrEl = document.getElementById('addr-address');
+function applyAresEntityToForm(entity, ids){
+  ids = ids || { name:'client-name', ico:'client-ico', dic:'client-dic', addr:'addr-address' };
+  const nameEl = document.getElementById(ids.name);
+  const icoEl = document.getElementById(ids.ico);
+  const dicEl = document.getElementById(ids.dic);
+  const addrEl = document.getElementById(ids.addr);
   if(nameEl) nameEl.value = entity.obchodniJmeno || nameEl.value;
   if(icoEl) icoEl.value = entity.ico || icoEl.value;
   if(dicEl && entity.dic) dicEl.value = entity.dic;
   if(addrEl) addrEl.value = aresAddressToText(entity.sidlo) || addrEl.value;
 }
 
-function setupAresCombo(){
-  const input = document.getElementById('client-name');
-  const list = document.getElementById('client-name-list');
-  const status = document.getElementById('ares-status');
+function setupAresCombo(ids){
+  ids = ids || { name:'client-name', list:'client-name-list', status:'ares-status', ico:'client-ico', dic:'client-dic', addr:'addr-address' };
+  const input = document.getElementById(ids.name);
+  const list = document.getElementById(ids.list);
+  const status = document.getElementById(ids.status);
   if(!input || !list) return;
   let debounceTimer = null;
 
@@ -2357,7 +2422,7 @@ function setupAresCombo(){
     try{ cache = JSON.parse(list.dataset.cache||'[]'); }catch(err){}
     const entity = item.hasAttribute('data-idx') ? cache[parseInt(item.getAttribute('data-idx'))] : cache[0];
     if(entity){
-      applyAresEntityToForm(entity);
+      applyAresEntityToForm(entity, ids);
       input.value = entity.obchodniJmeno || '';
       setStatus('Údaje doplněny z ARES — zkontroluj je a případně uprav.');
     }
@@ -2388,8 +2453,8 @@ async function osmSearchAddresses(q){
   return await res.json();
 }
 
-function setupAddressAutocomplete(fieldName){
-  const id = 'addr-' + fieldName;
+function setupAddressAutocomplete(elId){
+  const id = elId;
   const textarea = document.getElementById(id);
   const list = document.getElementById(id + '-list');
   if(!textarea || !list) return;
@@ -2522,6 +2587,29 @@ function setupInvoiceCompanySelect(){
   if(!select || !box) return;
   const isEditing = !!state.editingInvoiceId;
 
+  function applyVat(companyId){
+    const co = companyById(companyId) || state.companies[0];
+    const vatPayerNow = co.vatPayer !== false;
+    const table = document.querySelector('.items-table');
+    const note = document.getElementById('vat-off-note');
+    if(table) table.classList.toggle('no-vat', !vatPayerNow);
+    if(note) note.style.display = vatPayerNow ? 'none' : '';
+    if(!vatPayerNow){
+      state.formItems.forEach(it=>{ it.vat = 0; });
+      document.querySelectorAll('#items-body input[data-field="vat"]').forEach(inp=>{ inp.value = 0; });
+      const totalsBox = document.getElementById('totals-box');
+      if(totalsBox) totalsBox.innerHTML = renderTotalsBox(false);
+      document.querySelectorAll('#items-body tr').forEach((row,idx)=>{
+        const it = state.formItems[idx];
+        const totalCell = row.querySelector('.col-total');
+        if(it && totalCell) totalCell.textContent = fmt((it.qty||0)*(it.price||0)) + ' Kč';
+      });
+    } else {
+      const totalsBox = document.getElementById('totals-box');
+      if(totalsBox) totalsBox.innerHTML = renderTotalsBox(true);
+    }
+  }
+
   function apply(){
     const val = select.value;
     box.style.display = val==='__new__' ? '' : 'none';
@@ -2529,9 +2617,9 @@ function setupInvoiceCompanySelect(){
       const co = companyById(val);
       if(co) numberInput.value = `${co.prefix||''}${String(co.nextNumber||1).padStart(4,'0')}`;
     }
+    if(val!=='__new__'){ state.formCompanyId = val; applyVat(val); }
   }
   select.addEventListener('change', apply);
-  apply();
 }
 
 function setupClientCombo(){
@@ -2605,8 +2693,8 @@ document.addEventListener('click', async (e)=>{
     state.authView='login'; state.view='dashboard';
     render();
   }
-  else if(action==='nav'){ state.view = el.getAttribute('data-view'); state.editingInvoiceId=null; state.editingClientId=null; state.viewingClientId=null; state.newClientDraftId=null; state.newClientDraftAttachments=[]; state.editingCompanyId=null; state.formItems=[]; render(); }
-  else if(action==='new-invoice'){ state.view='invoice-form'; state.editingInvoiceId=null; state.formItems=[]; render(); }
+  else if(action==='nav'){ state.view = el.getAttribute('data-view'); state.editingInvoiceId=null; state.editingClientId=null; state.viewingClientId=null; state.newClientDraftId=null; state.newClientDraftAttachments=[]; state.editingCompanyId=null; state.formItems=[]; state.formCompanyId=null; render(); }
+  else if(action==='new-invoice'){ state.view='invoice-form'; state.editingInvoiceId=null; state.formItems=[]; state.formCompanyId=null; render(); }
   else if(action==='open-attachment'){
     el.textContent = '…';
     try{
@@ -2628,7 +2716,7 @@ document.addEventListener('click', async (e)=>{
       render();
     }catch(err){ alert('Smazání se nepovedlo, zkus to prosím znovu.'); }
   }
-  else if(action==='edit-invoice'){ state.view='invoice-form'; state.editingInvoiceId=id; state.formItems=[]; render(); }
+  else if(action==='edit-invoice'){ state.view='invoice-form'; state.editingInvoiceId=id; state.formItems=[]; state.formCompanyId=null; render(); }
   else if(action==='preview-invoice'){ state.view='invoice-preview'; state.previewId=id; render(); }
   else if(action==='delete-invoice'){ if(confirm('Smazat tuto fakturu?')){ state.invoices = state.invoices.filter(i=>i.id!==id); await saveInvoices(); render(); } }
   else if(action==='toggle-paid'){
@@ -2646,6 +2734,27 @@ document.addEventListener('click', async (e)=>{
       catch(err){ alert('Odebrání se nepovedlo, zkus to prosím znovu.'); }
     }
   }
+  else if(action==='edit-user'){
+    const u = state.users.find(x=>x.id===id);
+    if(!u) return;
+    const newName = prompt('Jméno kolegy:', u.name);
+    if(newName===null) return;
+    const trimmed = newName.trim();
+    if(!trimmed){ alert('Jméno nesmí být prázdné.'); return; }
+    let newRole = u.role;
+    if(u.id!==state.currentUserId){
+      const roleInput = prompt('Role ("member" nebo "admin"):', u.role||'member');
+      if(roleInput===null) return;
+      newRole = (roleInput.trim().toLowerCase()==='admin') ? 'admin' : 'member';
+    }
+    try{
+      await updateTeamMember(u.id, { display_name: trimmed, role: newRole });
+      await loadTeam();
+      if(u.id===state.currentUserId) state.currentUser = trimmed;
+      render();
+    }catch(err){ alert('Úprava se nepovedla, zkus to prosím znovu.'); }
+  }
+  else if(action==='edit-own-account'){ state.view='account-form'; state.accountError=''; state.accountNotice=''; render(); }
   else if(action==='new-client'){ state.view='client-form'; state.editingClientId=null; state.newClientDraftId=null; state.newClientDraftAttachments=[]; render(); }
   else if(action==='edit-client'){ state.view='client-form'; state.editingClientId=id; render(); }
   else if(action==='new-company'){ state.view='company-form'; state.editingCompanyId=null; render(); }
@@ -2660,7 +2769,7 @@ document.addEventListener('click', async (e)=>{
   }
   else if(action==='view-client'){ state.view='client-detail'; state.viewingClientId=id; render(); }
   else if(action==='delete-client'){ if(confirm('Smazat tohoto odběratele?')){ state.clients = state.clients.filter(c=>c.id!==id); await saveClients(); render(); } }
-  else if(action==='client-to-invoice'){ state.preselectClientId=id; state.view='invoice-form'; state.editingInvoiceId=null; state.formItems=[]; render(); }
+  else if(action==='client-to-invoice'){ state.preselectClientId=id; state.view='invoice-form'; state.editingInvoiceId=null; state.formItems=[]; state.formCompanyId=null; render(); }
   else if(action==='add-item'){ state.formItems.push({desc:'',qty:1,unit:'ks',price:0,vat:21}); render(); }
   else if(action==='remove-item'){ const idx = parseInt(el.getAttribute('data-index')); state.formItems.splice(idx,1); if(!state.formItems.length) state.formItems.push({desc:'',qty:1,unit:'ks',price:0,vat:21}); render(); }
   else if(action==='goto-import'){ state.view='invoice-import'; state.importError=''; state.importResult=null; render(); }
@@ -2762,6 +2871,7 @@ async function onSubmitInvoice(e){
     variableSymbol: fd.get('variableSymbol'),
     paymentMethod: fd.get('paymentMethod') || 'Bankovním převodem',
     includeStamp: fd.get('includeStamp')==='1',
+    colorMode: fd.get('colorMode')==='bw' ? 'bw' : 'color',
     includeSignature: fd.get('includeSignature')==='1',
     includeQr: fd.get('includeQr')==='1',
     note: fd.get('note'),
@@ -2781,6 +2891,7 @@ async function onSubmitInvoice(e){
   await saveCompanies();
   await saveInvoices();
   state.formItems = [];
+  state.formCompanyId = null;
   state.previewId = invoice.id;
   state.view = 'invoice-preview';
   render();
@@ -2799,6 +2910,7 @@ async function onSubmitClient(e){
     address: fd.get('address'), bankAccount: fd.get('bankAccount'),
     deliveryAddress: fd.get('deliveryAddress'), deliveryContactName: fd.get('deliveryContactName'), deliveryContact: fd.get('deliveryContact'),
     priceLevel: fd.get('priceLevel'), paymentTerms: fd.get('paymentTerms'),
+    createdAt: existing ? (existing.createdAt || new Date().toISOString()) : new Date().toISOString(),
     attachments: existing ? (existing.attachments||[]) : (state.newClientDraftAttachments||[])
   };
   if(existing){ const idx = state.clients.findIndex(c=>c.id===id); state.clients[idx]=client; }
@@ -2811,23 +2923,35 @@ async function onSubmitClient(e){
   render();
 }
 
-async function onSubmitSettings(e){
+async function onSubmitAccount(e){
   e.preventDefault();
   const fd = new FormData(e.target);
-  state.companies[0] = {
-    ...state.companies[0],
-    name: fd.get('name'), tagline: fd.get('tagline'), address: fd.get('address'), ico: fd.get('ico'), dic: fd.get('dic'),
-    email: fd.get('email'), phone: fd.get('phone'), website: fd.get('website'), registration: fd.get('registration'),
-    account: fd.get('account'), bankName: fd.get('bankName'), iban: fd.get('iban'), swift: fd.get('swift'),
-    prefix: fd.get('prefix'), nextNumber: parseInt(fd.get('nextNumber'))||1,
-    defaultDueDays: parseInt(fd.get('defaultDueDays'))||14, defaultNote: fd.get('defaultNote'),
-    invoiceTerms: fd.get('invoiceTerms'), defaultPaymentMethod: fd.get('defaultPaymentMethod'),
-    invoiceAccent: fd.get('invoiceAccent') || '#1F5C4D',
-    showLogo: fd.get('showLogo')==='1', showStamp: fd.get('showStamp')==='1',
-    showSignature: fd.get('showSignature')==='1', showQr: fd.get('showQr')==='1'
-  };
-  await saveCompanies();
-  render();
+  const email = (fd.get('email')||'').trim();
+  const password = fd.get('password');
+  const password2 = fd.get('password2');
+  if(password || password2){
+    if(password.length<8){ state.accountError='Nové heslo musí mít aspoň 8 znaků.'; render(); return; }
+    if(password!==password2){ state.accountError='Zadaná hesla se neshodují.'; render(); return; }
+  }
+  const fields = {};
+  const me = state.users.find(u=>u.id===state.currentUserId);
+  if(email && me && email!==me.email) fields.email = email;
+  if(password) fields.password = password;
+  if(!Object.keys(fields).length){ state.accountError='Nezměnil jsi nic k uložení.'; render(); return; }
+  try{
+    await updateOwnAuthUser(fields);
+    if(fields.email && me){
+      try{ await updateTeamMember(me.id, { email: fields.email }); await loadTeam(); }catch(err){}
+    }
+    state.accountError='';
+    state.accountNotice = fields.email
+      ? 'Uloženo. Pokud se měnil e-mail, Supabase ti pošle potvrzovací odkaz — do té doby se přihlašuj starým e-mailem.'
+      : 'Heslo bylo změněno.';
+    render();
+  }catch(err){
+    state.accountError = err.message || 'Změna se nepovedla.';
+    render();
+  }
 }
 
 async function onSubmitCompany(e){
@@ -2840,19 +2964,30 @@ async function onSubmitCompany(e){
     name: fd.get('name'), tagline: fd.get('tagline'), address: fd.get('address'), ico: fd.get('ico'), dic: fd.get('dic'),
     email: fd.get('email'), phone: fd.get('phone'), website: fd.get('website'), registration: fd.get('registration'),
     account: fd.get('account'), bankName: fd.get('bankName'), iban: fd.get('iban'), swift: fd.get('swift'),
+    vatPayer: fd.get('vatPayer')==='1',
     prefix: fd.get('prefix'), nextNumber: parseInt(fd.get('nextNumber'))||1,
     defaultDueDays: parseInt(fd.get('defaultDueDays'))||14, defaultNote: fd.get('defaultNote'),
     invoiceTerms: fd.get('invoiceTerms'), defaultPaymentMethod: fd.get('defaultPaymentMethod'),
-    invoiceAccent: fd.get('invoiceAccent') || '#1F5C4D',
     showLogo: fd.get('showLogo')==='1', showStamp: fd.get('showStamp')==='1',
     showSignature: fd.get('showSignature')==='1', showQr: fd.get('showQr')==='1',
     logo: existing?existing.logo:'', signature: existing?existing.signature:'', stamp: existing?existing.stamp:''
   };
+  const isNew = !existing;
   if(existing){ const idx = state.companies.findIndex(c=>c.id===id); state.companies[idx]=co; }
   else{ state.companies.push(co); }
-  await saveCompanies();
-  state.view='company-form';
-  state.editingCompanyId=co.id;
+  try{
+    await saveCompanies();
+  }catch(err){
+    alert('Uložení firmy se nepovedlo, zkus to prosím znovu. (' + (err && err.message ? err.message : 'neznámá chyba') + ')');
+    return;
+  }
+  if(isNew){
+    state.view='company-form';
+    state.editingCompanyId=co.id;
+  } else {
+    state.view='settings';
+    state.editingCompanyId=null;
+  }
   render();
 }
 
@@ -2903,6 +3038,12 @@ async function removeBrandingImage(field, companyId){
   await saveCompanies();
   render();
 }
+
+window.addEventListener('unhandledrejection', (e)=>{
+  console.error('Unhandled error:', e.reason);
+  const msg = (e.reason && e.reason.message) ? e.reason.message : String(e.reason||'neznámá chyba');
+  alert('Něco se nepovedlo uložit nebo načíst. Zkus akci prosím zopakovat.\n\nPodrobnost: ' + msg);
+});
 
 /* ---------- INIT ---------- */
 (async function(){
