@@ -930,7 +930,16 @@ function afterRenderAuth(){
 
 async function afterLogin(){
   await loadTeam();
-  const me = state.users.find(u=>u.id===session.user.id);
+  let me = state.users.find(u=>u.id===session.user.id);
+  if(!me){
+    // Účet existuje v Supabase Auth, ale ještě nemá záznam v týmu
+    // (typicky když se přihlásí poprvé po potvrzení e-mailu) — doplníme ho.
+    try{
+      await insertTeamMember(session.user.id, session.user.email, session.user.email);
+      await loadTeam();
+      me = state.users.find(u=>u.id===session.user.id);
+    }catch(err){ console.error('Nepovedlo se založit záznam v týmu:', err); }
+  }
   state.currentUser = me ? me.name : session.user.email;
   state.currentUserId = session.user.id;
   await loadAll();
