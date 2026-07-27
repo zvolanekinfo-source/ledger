@@ -419,6 +419,7 @@ let state = {
   newCompanyDraft: {logo:'',signature:'',stamp:''},
   accountError: '',
   accountNotice: '',
+  companyNotice: '',
   colleagueError: '',
   editingUserCredsId: null,
   userCredsError: '',
@@ -1806,7 +1807,7 @@ function viewSettings(){
     <div class="pagehead"><div><h1>Nastavení</h1><p class="desc">Firmy, kolegové a zálohy — všechno na jednom místě.</p></div></div>
 
     <div class="section-title" style="margin-top:0;padding-top:0;border-top:none;">Hlavní firma <span class="badge">výchozí ve fakturách</span></div>
-    ${companyFormMarkup(primary, { showCancel:false, submitLabel:'Uložit hlavní firmu' })}
+    ${companyFormMarkup(primary, { showCancel:false, submitLabel:'Uložit hlavní firmu', notice: state.companyNotice })}
 
     <div class="section-title" style="margin-top:30px;">Další firmy</div>
     <div class="form-card">
@@ -1906,7 +1907,7 @@ function viewCompanyForm(){
   }
   return `
     <div class="pagehead"><div><h1>${editing?`Upravit firmu${isPrimary?' (hlavní)':''}`:'Nová firma'}</h1></div></div>
-    ${companyFormMarkup(co, { showCancel:true })}
+    ${companyFormMarkup(co, { showCancel:true, notice: state.companyNotice })}
   `;
 }
 
@@ -1914,6 +1915,7 @@ function companyFormMarkup(co, opts){
   opts = opts || {};
   return `
     <form id="company-form" class="form-card">
+      ${opts.notice?`<div class="login-error" style="background:var(--accent-soft);color:var(--accent);">${escapeHtml(opts.notice)}</div>`:''}
       <div class="section-title" style="margin-top:0;padding-top:0;border-top:none;">Firma</div>
       <div class="field combo-field">
         <label>Název firmy / jméno OSVČ</label>
@@ -2795,7 +2797,7 @@ document.addEventListener('click', async (e)=>{
     state.authView='login'; state.view='dashboard';
     render();
   }
-  else if(action==='nav'){ state.view = el.getAttribute('data-view'); state.editingInvoiceId=null; state.editingClientId=null; state.viewingClientId=null; state.newClientDraftId=null; state.newClientDraftAttachments=[]; state.editingCompanyId=null; state.newCompanyDraftId=null; state.newCompanyDraft={logo:'',signature:'',stamp:''}; state.formItems=[]; state.formCompanyId=null; render(); }
+  else if(action==='nav'){ state.view = el.getAttribute('data-view'); state.editingInvoiceId=null; state.editingClientId=null; state.viewingClientId=null; state.newClientDraftId=null; state.newClientDraftAttachments=[]; state.editingCompanyId=null; state.newCompanyDraftId=null; state.newCompanyDraft={logo:'',signature:'',stamp:''}; state.companyNotice=''; state.formItems=[]; state.formCompanyId=null; render(); }
   else if(action==='new-invoice'){ state.view='invoice-form'; state.editingInvoiceId=null; state.formItems=[]; state.formCompanyId=null; render(); }
   else if(action==='open-attachment'){
     el.textContent = '…';
@@ -2880,8 +2882,8 @@ document.addEventListener('click', async (e)=>{
   }
   else if(action==='new-client'){ state.view='client-form'; state.editingClientId=null; state.newClientDraftId=null; state.newClientDraftAttachments=[]; render(); }
   else if(action==='edit-client'){ state.view='client-form'; state.editingClientId=id; render(); }
-  else if(action==='new-company'){ state.view='company-form'; state.editingCompanyId=null; state.newCompanyDraftId=null; state.newCompanyDraft={logo:'',signature:'',stamp:''}; render(); }
-  else if(action==='edit-company'){ state.view='company-form'; state.editingCompanyId=id; render(); }
+  else if(action==='new-company'){ state.view='company-form'; state.editingCompanyId=null; state.newCompanyDraftId=null; state.newCompanyDraft={logo:'',signature:'',stamp:''}; state.companyNotice=''; render(); }
+  else if(action==='edit-company'){ state.view='company-form'; state.editingCompanyId=id; state.companyNotice=''; render(); }
   else if(action==='delete-company'){
     if(state.companies.length<=1){ alert('Musí zůstat aspoň jeden dodavatel.'); return; }
     const usedOnInvoice = state.invoices.some(i=>i.companyId===id);
@@ -3156,9 +3158,13 @@ async function onSubmitCompany(e){
   if(isNew){
     state.view='company-form';
     state.editingCompanyId=co.id;
+    state.companyNotice='Firma byla vytvořena. Teď můžeš nahrát logo, podpis a razítko.';
   } else {
     state.view='settings';
     state.editingCompanyId=null;
+    state.companyNotice = (state.companies[0] && state.companies[0].id===co.id)
+      ? 'Hlavní firma byla uložena.'
+      : `Firma „${co.name||'bez názvu'}“ byla uložena.`;
   }
   render();
 }
