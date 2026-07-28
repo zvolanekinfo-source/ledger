@@ -181,8 +181,9 @@
   .detail-row{display:grid;grid-template-columns:180px 1fr;gap:14px;font-size:13.5px;padding:6px 0;border-bottom:1px solid var(--line);}
   .detail-row:last-child{border-bottom:none;}
   .detail-row .k{color:var(--ink-soft);}
-  .attachment-row{display:flex;align-items:center;justify-content:space-between;padding:9px 12px;border:1px solid var(--line);border-radius:6px;margin-bottom:6px;font-size:13.5px;background:var(--paper);}
-  .attachment-row .att-actions{display:flex;gap:14px;}
+  .attachment-row{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:9px 12px;border:1px solid var(--line);border-radius:6px;margin-bottom:6px;font-size:13.5px;background:var(--paper);}
+  .attachment-row .att-actions{display:flex;gap:14px;flex-shrink:0;}
+  .attachment-row .att-note{font-size:12px;color:var(--ink-soft);}
   .attachment-row .att-actions .btn-link{padding:0;font-size:12.5px;}
 
   /* SEARCH */
@@ -1746,13 +1747,17 @@ function renderAttachmentsBox(c){
       <div id="attachments-list">
         ${files.length ? files.map(f=>`
           <div class="attachment-row" data-path="${escapeAttr(f.path)}">
-            <span class="att-name">📄 ${escapeHtml(f.name)}</span>
+            <span>
+              <span class="att-name">📄 ${escapeHtml(f.name)}</span>
+              ${f.note?`<br><span class="att-note">${escapeHtml(f.note)}</span>`:''}
+            </span>
             <span class="att-actions">
               <button type="button" class="btn-link" data-action="open-attachment" data-path="${escapeAttr(f.path)}">Otevřít</button>
+              <button type="button" class="btn-link" data-action="note-attachment" data-path="${escapeAttr(f.path)}" data-note="${escapeAttr(f.note||'')}">${f.note?'Upravit poznámku':'Přidat poznámku'}</button>
               <button type="button" class="btn-link" data-action="delete-attachment" data-path="${escapeAttr(f.path)}" data-name="${escapeAttr(f.name)}" style="color:var(--red);">Smazat</button>
             </span>
           </div>
-        `).join('') : `<p style="font-size:13px;color:var(--ink-soft);margin:0 0 10px 0;">Zatím žádné soubory (smlouva, objednávka…).</p>`}
+        `).join('') : `<p style="font-size:13px;color:var(--ink-soft);margin:0 0 10px 0;">Zatím žádné soubory (faktury, smlouvy, objednávky…).</p>`}
       </div>
       <div style="margin-top:10px;display:flex;align-items:center;gap:10px;">
         <input type="file" id="attachment-file-input" style="font-size:13px;">
@@ -3322,6 +3327,22 @@ document.addEventListener('click', async (e)=>{
       window.open(url, '_blank');
     }catch(err){ alert('Soubor se nepovedlo otevřít, zkus to prosím znovu.'); }
     finally{ el.textContent = 'Otevřít'; }
+  }
+  else if(action==='note-attachment'){
+    const path = el.getAttribute('data-path');
+    const current = el.getAttribute('data-note') || '';
+    const newNote = prompt('Poznámka k souboru:', current);
+    if(newNote===null) return;
+    const cid = document.getElementById('attachments-box')?.getAttribute('data-client-id');
+    const c = clientById(cid);
+    if(c){
+      const f = (c.attachments||[]).find(x=>x.path===path);
+      if(f){ f.note = newNote.trim(); await saveClients(); }
+    } else if(cid === state.newClientDraftId){
+      const f = state.newClientDraftAttachments.find(x=>x.path===path);
+      if(f) f.note = newNote.trim();
+    }
+    render();
   }
   else if(action==='delete-attachment'){
     const path = el.getAttribute('data-path');
