@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Ledger — fakturační kniha</title>
+<title>ledgers — fakturační kniha</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
@@ -458,7 +458,7 @@ function hexToRgba(hex, alpha){
 }
 
 /* ---------- SUPABASE STORAGE + AUTH ----------
-   Ukládání dat běží nad Supabase REST API, aby Ledger fungoval i po nahrání
+   Ukládání dat běží nad Supabase REST API, aby ledgers fungoval i po nahrání
    na GitHub Pages / kamkoliv jinam mimo Claude.
    Přístup k datům je řízený skutečným přihlášením přes Supabase Auth
    (hesla hashuje a spravuje Supabase, tento kód s nimi nikdy nepracuje
@@ -557,7 +557,7 @@ async function updateOwnAuthUser(fields){
 
 /* ---------- ADMIN SPRÁVA KOLEGŮ (Edge Function admin-users) ----------
    Vyžaduje nasazenou funkci "admin-users" (viz admin-users/index.ts) a
-   volajícího s rolí "admin" v team_members — Ledger to jen volá, samotné
+   volajícího s rolí "admin" v team_members — ledgers to jen volá, samotné
    ověření a service-role klíč zůstávají bezpečně na serveru. */
 async function callAdminUsers(payload){
   await ensureFreshSession();
@@ -647,7 +647,7 @@ async function removeTeamMember(user_id){
 async function loadAll(){
   try{ const r = await window.storage.get('companies', true); state.companies = r ? JSON.parse(r.value) : null; }catch(e){ state.companies = null; }
   if(!state.companies){
-    // migrace ze staršího Ledgeru, který měl jen jednu firmu pod klíčem "company"
+    // migrace ze staršího ledgersu, který měl jen jednu firmu pod klíčem "company"
     let legacy = null;
     try{ const r = await window.storage.get('company', true); legacy = r ? JSON.parse(r.value) : null; }catch(e){}
     state.companies = legacy ? [{ ...legacy, id: legacy.id || uid() }] : [];
@@ -743,7 +743,7 @@ async function restoreFromUploadedFile(file){
     await restoreFromBackupObject(data, 'z nahraného souboru');
   }catch(e){
     console.error(e);
-    alert('Soubor se nepodařilo přečíst — zkontroluj, že je to platná záloha (.json) z Ledgeru.');
+    alert('Soubor se nepodařilo přečíst — zkontroluj, že je to platná záloha (.json) z ledgersu.');
   }
 }
 
@@ -847,7 +847,7 @@ function render(){
   app.innerHTML = `
     <div class="sidebar">
       <div class="brand">
-        <div class="display">Ledger</div>
+        <div class="display">ledgers</div>
         <div class="sub">Fakturační kniha</div>
       </div>
       <div class="navitem ${state.view==='dashboard'?'active':''}" data-action="nav" data-view="dashboard">Přehled</div>
@@ -874,10 +874,10 @@ function renderAuth(){
       <div class="login-side">
         <div class="side-top">
           <div class="side-mark">L</div>
-          <div class="side-brand">Ledger</div>
+          <div class="side-brand">ledgers</div>
           <div class="side-sub">Sdílená fakturační kniha pro tebe a tvůj tým — jedno místo pro faktury, odběratele a přehledy.</div>
         </div>
-        <div class="side-foot">© ${new Date().getFullYear()} · Ledger</div>
+        <div class="side-foot">© ${new Date().getFullYear()} · ledgers</div>
       </div>
       <div class="login-form-side">
         <div class="login-card">
@@ -912,7 +912,7 @@ function renderLoginForm(){
 
 function renderRegisterForm(){
   return `
-    <div class="auth-subtitle">Vytvoř si účet pro sdílenou fakturaci. Přihlašovací údaje spravuje a hashuje Supabase Auth, Ledger je nikdy neuvidí v čitelné podobě.</div>
+    <div class="auth-subtitle">Vytvoř si účet pro sdílenou fakturaci. Přihlašovací údaje spravuje a hashuje Supabase Auth, ledgers je nikdy neuvidí v čitelné podobě.</div>
     <form id="register-form">
       <div class="field"><label>Jméno (zobrazí se kolegům)</label><input name="displayName" required autofocus></div>
       <div class="field"><label>E-mail</label><input name="email" type="email" autocomplete="username" required></div>
@@ -1738,7 +1738,7 @@ function viewClientForm(){
       <div class="section-title" style="margin-top:0;padding-top:0;border-top:none;">1. Základní, kontaktní a fakturační údaje</div>
       <div class="field combo-field">
         <label>Název firmy (nebo jméno OSVČ)</label>
-        <input name="name" id="client-name" value="${escapeAttr(c.name)}" placeholder="Začni psát a Ledger nabídne shody z ARES…" autocomplete="off" required>
+        <input name="name" id="client-name" value="${escapeAttr(c.name)}" placeholder="Začni psát a ledgers nabídne shody z ARES…" autocomplete="off" required>
         <div class="combo-list" id="client-name-list"></div>
       </div>
       <p id="ares-status" style="font-size:12px;color:var(--ink-soft);margin:-6px 0 14px 0;"></p>
@@ -1870,7 +1870,7 @@ function viewUserCredsForm(){
 function viewAccountForm(){
   const me = state.users.find(u=>u.id===state.currentUserId);
   return `
-    <div class="pagehead"><div><h1>Můj e-mail a heslo</h1><p class="desc">Přihlašovací údaje spravuje Supabase Auth — Ledger heslo nikdy nevidí.</p></div></div>
+    <div class="pagehead"><div><h1>Můj e-mail a heslo</h1><p class="desc">Přihlašovací údaje spravuje Supabase Auth — ledgers heslo nikdy nevidí.</p></div></div>
     <form id="account-form" class="form-card">
       ${state.accountError?`<div class="login-error">${escapeHtml(state.accountError)}</div>`:''}
       ${state.accountNotice?`<div class="login-error" style="background:var(--accent-soft);color:var(--accent);">${escapeHtml(state.accountNotice)}</div>`:''}
@@ -1951,9 +1951,9 @@ function viewSettings(){
     <div class="section-title" style="margin-top:30px;">Zálohování dat</div>
     <div class="form-card">
       <p style="font-size:13px;color:var(--ink-soft);margin-top:0;">
-        Data (odběratelé, faktury, firmy) žijí v uložišti napojeném na Ledger, ne v tomto souboru.
+        Data (odběratelé, faktury, firmy) žijí v uložišti napojeném na ledgers, ne v tomto souboru.
         Aby ses nikdy nespoléhal jen na to, doporučujeme si čas od času stáhnout zálohu na vlastní počítač —
-        navíc Ledger sám každý den, kdy něco uložíš, vytvoří automatický záložní snímek (posledních 10 dní).
+        navíc ledgers sám každý den, kdy něco uložíš, vytvoří automatický záložní snímek (posledních 10 dní).
       </p>
       <div class="formfoot" style="margin-top:6px;">
         <button type="button" class="btn secondary" data-action="export-backup">⬇ Stáhnout zálohu (.json)</button>
@@ -2004,7 +2004,7 @@ function companyFormMarkup(co, opts){
       <div class="section-title" style="margin-top:0;padding-top:0;border-top:none;">Firma</div>
       <div class="field combo-field">
         <label>Název firmy / jméno OSVČ</label>
-        <input name="name" id="co-name" value="${escapeAttr(co.name)}" placeholder="Začni psát a Ledger nabídne shody z ARES…" autocomplete="off" required>
+        <input name="name" id="co-name" value="${escapeAttr(co.name)}" placeholder="Začni psát a ledgers nabídne shody z ARES…" autocomplete="off" required>
         <div class="combo-list" id="co-name-list"></div>
       </div>
       <p id="co-ares-status" style="font-size:12px;color:var(--ink-soft);margin:-6px 0 14px 0;"></p>
@@ -2604,7 +2604,7 @@ function addressFieldGroup(prefix, label, addr){
           <div class="combo-list" id="${prefix}-city-list"></div>
         </div>
       </div>
-      <p style="font-size:11px;color:var(--ink-soft);margin:4px 0 0 0;">Začni psát ulici nebo město — Ledger nabídne shody a doplní zbytek adresy.</p>
+      <p style="font-size:11px;color:var(--ink-soft);margin:4px 0 0 0;">Začni psát ulici nebo město — ledgers nabídne shody a doplní zbytek adresy.</p>
     </div>
   `;
 }
