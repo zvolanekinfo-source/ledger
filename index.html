@@ -125,6 +125,7 @@
 
   /* FILTER BAR */
   .filter-bar{background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:16px 18px;margin-bottom:20px;}
+  .bulk-bar{display:flex;align-items:center;justify-content:space-between;gap:14px;background:var(--accent-soft);border:1px solid var(--accent);border-radius:6px;padding:10px 16px;margin-bottom:14px;font-size:13.5px;color:var(--ink);flex-wrap:wrap;}
   .filter-presets{display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;}
   .chip{border:1px solid var(--line);background:transparent;color:var(--ink-soft);padding:6px 14px;border-radius:20px;font-size:12.5px;font-weight:500;}
   .chip:hover{background:var(--paper);}
@@ -415,6 +416,8 @@ let state = {
   editingClientId: null,
   editingCompanyId: null,
   bulkImport: null,
+  selectedInvoiceIds: new Set(),
+  selectedClientIds: new Set(),
   newCompanyDraftId: null,
   newCompanyDraft: {logo:'',signature:'',stamp:''},
   accountError: '',
@@ -1098,14 +1101,20 @@ function viewInvoices(){
       </div>
       ${anyFilterActive?`<button type="button" class="filter-clear" data-action="inv-clear-filters">Zrušit filtry</button>`:''}
     </div>
-    ${sorted.length ? renderInvoiceTable(sorted, 'invoices-tbody') : emptyState(state.invoices.length?'Žádné faktury pro tento filtr':'Žádné faktury', state.invoices.length?'Zkus upravit nebo zrušit filtr.':'Klikni na „Nová faktura“ a vystav první doklad.')}
+    ${renderBulkBar(state.selectedInvoiceIds.size, 'faktur', `
+      <button type="button" class="btn secondary small" data-action="bulk-mark-paid">Označit jako zaplacené</button>
+      <button type="button" class="btn secondary small" data-action="bulk-mark-unpaid">Označit jako nezaplacené</button>
+      <button type="button" class="btn danger small" data-action="bulk-delete-invoices">Smazat vybrané</button>
+    `)}
+    ${sorted.length ? renderInvoiceTable(sorted, 'invoices-tbody', true) : emptyState(state.invoices.length?'Žádné faktury pro tento filtr':'Žádné faktury', state.invoices.length?'Zkus upravit nebo zrušit filtr.':'Klikni na „Nová faktura“ a vystav první doklad.')}
   `;
 }
 
-function renderInvoiceTable(list, tbodyId){
+function renderInvoiceTable(list, tbodyId, selectable){
   return `
   <table>
     <thead><tr>
+      ${selectable?`<th style="width:28px;"><input type="checkbox" data-action="toggle-select-all-invoices" ${list.length && list.every(i=>state.selectedInvoiceIds.has(i.id))?'checked':''}></th>`:''}
       <th>Číslo</th><th>Odběratel</th><th>Vystaveno</th><th>Splatnost</th><th>Částka</th><th>Stav</th><th>Vytvořil</th><th></th>
     </tr></thead>
     <tbody ${tbodyId?`id="${tbodyId}"`:''}>
@@ -1115,6 +1124,7 @@ function renderInvoiceTable(list, tbodyId){
         const s = invoiceStatus(inv);
         const searchKey = stripDiacritics(`${inv.number||''} ${c?c.name:''}`).toLowerCase();
         return `<tr class="rowlink" data-action="preview-invoice" data-id="${inv.id}" data-search="${escapeAttr(searchKey)}">
+          ${selectable?`<td class="no-print"><input type="checkbox" data-action="toggle-invoice-select" data-id="${inv.id}" ${state.selectedInvoiceIds.has(inv.id)?'checked':''}></td>`:''}
           <td class="num">${inv.number}</td>
           <td>${c ? escapeHtml(c.name) : '—'}</td>
           <td class="num">${inv.issueDate||''}</td>
@@ -1128,9 +1138,22 @@ function renderInvoiceTable(list, tbodyId){
           </td>
         </tr>`;
       }).join('')}
-      ${tbodyId?`<tr id="invoices-empty-row" style="display:none;"><td colspan="8" style="text-align:center;color:var(--ink-soft);padding:24px;">Žádná faktura neodpovídá hledání.</td></tr>`:''}
+      ${tbodyId?`<tr id="invoices-empty-row" style="display:none;"><td colspan="9" style="text-align:center;color:var(--ink-soft);padding:24px;">Žádná faktura neodpovídá hledání.</td></tr>`:''}
     </tbody>
   </table>`;
+}
+
+function renderBulkBar(count, entityLabel, actions){
+  if(!count) return '';
+  return `
+    <div class="bulk-bar no-print">
+      <span>${count} ${entityLabel} vybráno</span>
+      <span style="display:flex;gap:8px;flex-wrap:wrap;">
+        ${actions}
+        <button type="button" class="btn-link" data-action="bulk-clear-selection">Zrušit výběr</button>
+      </span>
+    </div>
+  `;
 }
 
 function blankInvoice(){
@@ -1626,8 +1649,13 @@ function viewClients(){
         </select></div>
       </div>
     </div>
+    ${renderBulkBar(state.selectedClientIds.size, 'odběratelů', `
+      <button type="button" class="btn danger small" data-action="bulk-delete-clients">Smazat vybrané</button>
+    `)}
     <table>
-      <thead><tr><th>Název</th><th>IČO</th><th>Kontaktní osoba</th><th>Kontaktní e-mail</th><th>Telefon</th><th></th></tr></thead>
+      <thead><tr>
+        <th style="width:28px;"><input type="checkbox" data-action="toggle-select-all-clients" ${state.clients.length && state.clients.every(c=>state.selectedClientIds.has(c.id))?'checked':''}></th>
+        <th>Název</th><th>IČO</th><th>Kontaktní osoba</th><th>Kontaktní e-mail</th><th>Telefon</th><th></th></tr></thead>
       <tbody id="clients-tbody">
         ${sortedClients().map(c=>{
           const city = clientCity(c);
@@ -1641,6 +1669,7 @@ function viewClients(){
               data-contact="${escapeAttr(stripDiacritics(c.contactPerson||'').toLowerCase())}"
               data-email="${escapeAttr(stripDiacritics(c.contactEmail||'').toLowerCase())}"
               data-phone="${escapeAttr(stripDiacritics(c.contactPhone||'').toLowerCase())}">
+            <td class="no-print"><input type="checkbox" data-action="toggle-client-select" data-id="${c.id}" ${state.selectedClientIds.has(c.id)?'checked':''}></td>
             <td>${escapeHtml(c.name)}</td>
             <td class="num">${escapeHtml(c.ico||'—')}</td>
             <td>${escapeHtml(c.contactPerson||'—')}</td>
@@ -1652,7 +1681,7 @@ function viewClients(){
               <button class="iconbtn" data-action="delete-client" data-id="${c.id}" title="Smazat">✕</button>
             </td>
           </tr>`;}).join('')}
-        <tr id="clients-empty-row" style="display:none;"><td colspan="6" class="empty">Žádný odběratel neodpovídá hledání.</td></tr>
+        <tr id="clients-empty-row" style="display:none;"><td colspan="7" class="empty">Žádný odběratel neodpovídá hledání.</td></tr>
       </tbody>
     </table>` : emptyState('Žádní odběratelé', 'Přidej prvního odběratele, aby ses mu mohl fakturovat.')}
   `;
@@ -3062,8 +3091,60 @@ document.addEventListener('click', async (e)=>{
     state.authView='login'; state.view='dashboard';
     render();
   }
-  else if(action==='nav'){ state.view = el.getAttribute('data-view'); state.editingInvoiceId=null; state.editingClientId=null; state.viewingClientId=null; state.newClientDraftId=null; state.newClientDraftAttachments=[]; state.editingCompanyId=null; state.newCompanyDraftId=null; state.newCompanyDraft={logo:'',signature:'',stamp:''}; state.companyNotice=''; state.formItems=[]; state.formCompanyId=null; render(); }
+  else if(action==='nav'){ state.view = el.getAttribute('data-view'); state.editingInvoiceId=null; state.editingClientId=null; state.viewingClientId=null; state.newClientDraftId=null; state.newClientDraftAttachments=[]; state.editingCompanyId=null; state.newCompanyDraftId=null; state.newCompanyDraft={logo:'',signature:'',stamp:''}; state.companyNotice=''; state.formItems=[]; state.formCompanyId=null; state.selectedInvoiceIds.clear(); state.selectedClientIds.clear(); render(); }
   else if(action==='new-invoice'){ state.view='invoice-form'; state.editingInvoiceId=null; state.formItems=[]; state.formCompanyId=null; render(); }
+  else if(action==='toggle-invoice-select'){
+    const cid = el.getAttribute('data-id');
+    if(state.selectedInvoiceIds.has(cid)) state.selectedInvoiceIds.delete(cid); else state.selectedInvoiceIds.add(cid);
+    render();
+  }
+  else if(action==='toggle-select-all-invoices'){
+    const checked = el.checked;
+    document.querySelectorAll('#invoices-tbody input[data-action="toggle-invoice-select"]').forEach(cb=>{
+      const cid = cb.getAttribute('data-id');
+      if(checked) state.selectedInvoiceIds.add(cid); else state.selectedInvoiceIds.delete(cid);
+    });
+    render();
+  }
+  else if(action==='bulk-clear-selection'){ state.selectedInvoiceIds.clear(); state.selectedClientIds.clear(); render(); }
+  else if(action==='bulk-mark-paid' || action==='bulk-mark-unpaid'){
+    const paid = action==='bulk-mark-paid';
+    state.invoices.forEach(inv=>{
+      if(state.selectedInvoiceIds.has(inv.id)){ inv.paid = paid; inv.paidDate = paid ? (inv.paidDate||todayISO()) : null; }
+    });
+    try{ await saveInvoices(); }catch(err){ alert('Uložení se nepovedlo, zkus to prosím znovu.'); }
+    state.selectedInvoiceIds.clear();
+    render();
+  }
+  else if(action==='bulk-delete-invoices'){
+    const n = state.selectedInvoiceIds.size;
+    if(!confirm(`Opravdu smazat ${n} vybraných faktur?`)) return;
+    state.invoices = state.invoices.filter(inv=>!state.selectedInvoiceIds.has(inv.id));
+    try{ await saveInvoices(); }catch(err){ alert('Smazání se nepovedlo, zkus to prosím znovu.'); }
+    state.selectedInvoiceIds.clear();
+    render();
+  }
+  else if(action==='toggle-client-select'){
+    const cid = el.getAttribute('data-id');
+    if(state.selectedClientIds.has(cid)) state.selectedClientIds.delete(cid); else state.selectedClientIds.add(cid);
+    render();
+  }
+  else if(action==='toggle-select-all-clients'){
+    const checked = el.checked;
+    document.querySelectorAll('#clients-tbody input[data-action="toggle-client-select"]').forEach(cb=>{
+      const cid = cb.getAttribute('data-id');
+      if(checked) state.selectedClientIds.add(cid); else state.selectedClientIds.delete(cid);
+    });
+    render();
+  }
+  else if(action==='bulk-delete-clients'){
+    const n = state.selectedClientIds.size;
+    if(!confirm(`Opravdu smazat ${n} vybraných odběratelů? Faktury, které na ně odkazují, zůstanou zachovány.`)) return;
+    state.clients = state.clients.filter(c=>!state.selectedClientIds.has(c.id));
+    try{ await saveClients(); }catch(err){ alert('Smazání se nepovedlo, zkus to prosím znovu.'); }
+    state.selectedClientIds.clear();
+    render();
+  }
   else if(action==='open-attachment'){
     el.textContent = '…';
     try{
