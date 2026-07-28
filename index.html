@@ -1903,6 +1903,7 @@ function viewSettings(){
             ${(amAdmin && !isMe) ? `<button class="btn secondary small" data-action="toggle-admin" data-id="${u.id}" data-name="${escapeAttr(u.name)}" data-role="${u.role||'member'}">${u.role==='admin'?'Zrušit administrátora':'Nastavit administrátorem'}</button>` : ''}
             ${(amAdmin && !isMe) ? `<button class="btn secondary small" data-action="edit-user-creds" data-id="${u.id}">Nastavit e-mail a heslo</button>` : ''}
             ${(amAdmin && !isMe) ? `<button class="btn danger small" data-action="remove-user" data-userid="${escapeAttr(u.id)}" data-name="${escapeAttr(u.name)}">Odebrat přístup</button>` : ''}
+            ${(amAdmin && !isMe) ? `<button class="btn danger small" data-action="delete-user-account" data-id="${u.id}" data-name="${escapeAttr(u.name)}">Smazat účet natrvalo</button>` : ''}
           </span>
         </div>
       `;}).join('')}
@@ -1912,7 +1913,7 @@ function viewSettings(){
       </div>
       <p style="font-size:12px;color:var(--ink-soft);margin-top:14px;">
         ${isCurrentUserAdmin()
-          ? 'Jako admin můžeš kolegu přidat rovnou i s heslem a spravovat jméno, roli i přihlašovací údaje kohokoli v týmu (i svoje vlastní jméno).'
+          ? 'Jako admin můžeš kolegu přidat rovnou i s heslem, spravovat jméno, roli i přihlašovací údaje kohokoli v týmu (i svoje vlastní jméno) a v případě potřeby jeho účet i trvale smazat (ne jen zrušit přístup).'
           : 'Noví kolegové se zaregistrují sami přes záložku „Registrace" na přihlašovací obrazovce, nebo je (i s heslem) může rovnou přidat kolega s rolí admin. Jméno, roli i přihlašovací údaje ostatních spravuje jen admin.'}
         Appka hesla nikdy neukládá ani nevidí — o vše se stará Supabase Auth.
       </p>
@@ -3117,6 +3118,22 @@ document.addEventListener('click', async (e)=>{
     if(confirm(`Odebrat přístup pro „${name}“?`)){
       try{ await removeTeamMember(userId); await loadTeam(); render(); }
       catch(err){ alert('Odebrání se nepovedlo, zkus to prosím znovu.'); }
+    }
+  }
+  else if(action==='delete-user-account'){
+    if(!isCurrentUserAdmin()){ alert('Smazat účet smí jen admin.'); return; }
+    const userId = el.getAttribute('data-id');
+    const name = el.getAttribute('data-name');
+    if(userId===state.currentUserId){ alert('Nemůžeš smazat sám sebe, dokud jsi přihlášen.'); return; }
+    if(!confirm(`Opravdu TRVALE smazat účet „${name}“? Přihlašovací účet (e-mail i heslo) se smaže úplně a nedá se vrátit zpět — pokud jen chceš zrušit přístup k datům a účet zachovat, použij „Odebrat přístup“.`)) return;
+    el.disabled = true; el.textContent = 'Mažu…';
+    try{
+      await callAdminUsers({ action:'delete_user', target_user_id:userId });
+      await loadTeam();
+      render();
+    }catch(err){
+      alert('Smazání se nepovedlo: ' + (err.message||'zkus to prosím znovu.'));
+      el.disabled = false; el.textContent = 'Smazat účet natrvalo';
     }
   }
   else if(action==='edit-user-name'){
