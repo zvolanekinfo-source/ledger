@@ -1178,7 +1178,11 @@ function viewInvoiceForm(){
             <option value="__new__">+ Napsat nového dodavatele…</option>
           </select>
         </div>
-        <div class="field"><label>Číslo faktury</label><input name="number" value="${inv.number}" required></div>
+        <div class="field"><label>Číslo faktury</label><input name="number" id="inv-number-input" value="${inv.number}" required></div>
+      </div>
+      <div class="field-row">
+        <div class="field"></div>
+        <div class="field"><label>Číslo objednávky</label><input name="orderNumber" id="inv-order-number-input" value="${escapeAttr(inv.orderNumber||'')}"></div>
       </div>
       <div class="client-detail-box" id="new-company-box" style="display:none;">
         <div class="field-row">
@@ -1232,7 +1236,7 @@ function viewInvoiceForm(){
       </div>
       <div class="field-row">
         <div class="field"><label>Konstantní symbol</label><input name="constantSymbol" value="${escapeAttr(inv.constantSymbol||'')}"></div>
-        <div class="field"><label>Číslo objednávky</label><input name="orderNumber" value="${escapeAttr(inv.orderNumber||'')}"></div>
+        <div class="field"></div>
       </div>
       <div class="field-row">
         <div class="field"><label>Forma úhrady</label>
@@ -1602,24 +1606,28 @@ function viewClients(){
       </div>
     </div>
     ${state.clients.length ? `
-    <div class="search-row" style="gap:10px;flex-wrap:wrap;">
-      <select id="client-sort-select" style="max-width:200px;">
-        <option value="newest" ${sort==='newest'?'selected':''}>Od nejnovějších</option>
-        <option value="oldest" ${sort==='oldest'?'selected':''}>Od nejstarších</option>
-        <option value="az" ${sort==='az'?'selected':''}>Abecedně A–Z</option>
-        <option value="za" ${sort==='za'?'selected':''}>Abecedně Z–A</option>
-      </select>
-      <select id="client-filter-field-select" style="max-width:180px;">
-        <option value="all" ${filterField==='all'?'selected':''}>Ve všem</option>
-        <option value="name" ${filterField==='name'?'selected':''}>Název firmy</option>
-        <option value="ico" ${filterField==='ico'?'selected':''}>IČO</option>
-        <option value="dic" ${filterField==='dic'?'selected':''}>DIČ</option>
-        <option value="city" ${filterField==='city'?'selected':''}>Město</option>
-        <option value="contact" ${filterField==='contact'?'selected':''}>Kontaktní osoba</option>
-        <option value="email" ${filterField==='email'?'selected':''}>E-mail</option>
-        <option value="phone" ${filterField==='phone'?'selected':''}>Telefon</option>
-      </select>
-      <input type="text" id="client-search-input" class="search-input" placeholder="Hledat…" value="${escapeAttr(state.clientSearch)}" style="flex:1;min-width:180px;">
+    <div class="filter-bar no-print">
+      <div class="search-row" style="margin-bottom:14px;">
+        <input type="text" id="client-search-input" class="search-input" placeholder="Hledat…" value="${escapeAttr(state.clientSearch)}">
+      </div>
+      <div class="filter-row">
+        <div class="field"><label>Řazení</label><select id="client-sort-select">
+          <option value="newest" ${sort==='newest'?'selected':''}>Od nejnovějších</option>
+          <option value="oldest" ${sort==='oldest'?'selected':''}>Od nejstarších</option>
+          <option value="az" ${sort==='az'?'selected':''}>Abecedně A–Z</option>
+          <option value="za" ${sort==='za'?'selected':''}>Abecedně Z–A</option>
+        </select></div>
+        <div class="field"><label>Filtrovat podle</label><select id="client-filter-field-select">
+          <option value="all" ${filterField==='all'?'selected':''}>Ve všem</option>
+          <option value="name" ${filterField==='name'?'selected':''}>Název firmy</option>
+          <option value="ico" ${filterField==='ico'?'selected':''}>IČO</option>
+          <option value="dic" ${filterField==='dic'?'selected':''}>DIČ</option>
+          <option value="city" ${filterField==='city'?'selected':''}>Město</option>
+          <option value="contact" ${filterField==='contact'?'selected':''}>Kontaktní osoba</option>
+          <option value="email" ${filterField==='email'?'selected':''}>E-mail</option>
+          <option value="phone" ${filterField==='phone'?'selected':''}>Telefon</option>
+        </select></div>
+      </div>
     </div>
     <table>
       <thead><tr><th>Název</th><th>IČO</th><th>Kontaktní osoba</th><th>Kontaktní e-mail</th><th>Telefon</th><th></th></tr></thead>
@@ -2417,6 +2425,7 @@ function afterRender(){
     invoiceForm.addEventListener('submit', onSubmitInvoice);
   }
   setupInvoiceCompanySelect();
+  setupOrderNumberSync();
   const companyForm = document.getElementById('company-form');
   if(companyForm){ companyForm.addEventListener('submit', onSubmitCompany); }
   const accountForm = document.getElementById('account-form');
@@ -2926,6 +2935,19 @@ function setupAttachmentUpload(){
     }catch(err){
       if(status) status.textContent = 'Nahrání se nepovedlo, zkus to prosím znovu.';
     }
+  });
+}
+
+function setupOrderNumberSync(){
+  const numberInput = document.getElementById('inv-number-input');
+  const orderInput = document.getElementById('inv-order-number-input');
+  if(!numberInput || !orderInput) return;
+  const isNewInvoice = !state.editingInvoiceId;
+  let touched = !!orderInput.value.trim() || !isNewInvoice;
+  if(!touched && numberInput.value.trim()) orderInput.value = numberInput.value;
+  orderInput.addEventListener('input', ()=>{ touched = true; });
+  numberInput.addEventListener('input', ()=>{
+    if(!touched) orderInput.value = numberInput.value;
   });
 }
 
