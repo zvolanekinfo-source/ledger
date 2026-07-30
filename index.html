@@ -227,7 +227,7 @@
   .badge{display:inline-block;font-size:11px;padding:2px 8px;border-radius:10px;background:var(--accent-soft);color:var(--accent);margin-left:6px;}
   .iconbtn{background:transparent;border:none;color:var(--ink-soft);font-size:13px;padding:4px 6px;}
   .iconbtn:hover{color:var(--red);}
-  .actions-cell{display:flex;gap:8px;}
+  .actions-cell{display:flex;gap:8px;justify-content:flex-end;}
 
   /* INVOICE PREVIEW */
   .preview-wrap{display:flex;gap:24px;align-items:flex-start;}
@@ -1279,7 +1279,7 @@ function renderInvoiceTable(list, tbodyId, selectable){
   <table>
     <thead><tr>
       ${selectable?`<th style="width:36px;"><input type="checkbox" data-action="toggle-select-all-invoices" ${list.length && list.every(i=>state.selectedInvoiceIds.has(i.id))?'checked':''}></th>`:''}
-      <th>Číslo</th><th>Odběratel</th><th>Vystaveno</th><th>Splatnost</th><th>Částka</th><th>Stav</th><th>Vytvořil</th><th></th>
+      <th>Číslo</th><th>Odběratel</th><th>Vystaveno</th><th>Splatnost</th><th>Částka</th><th>Stav</th><th>Vytvořil</th><th style="width:70px;"></th>
     </tr></thead>
     <tbody ${tbodyId?`id="${tbodyId}"`:''}>
       ${list.map(inv=>{
@@ -1974,7 +1974,7 @@ function viewClients(){
     <table>
       <thead><tr>
         <th style="width:36px;"><input type="checkbox" data-action="toggle-select-all-clients" ${state.clients.length && state.clients.every(c=>state.selectedClientIds.has(c.id))?'checked':''}></th>
-        <th>Název</th><th>IČO</th><th>Kontaktní osoba</th><th>Kontaktní e-mail</th><th>Telefon</th><th></th></tr></thead>
+        <th>Název</th><th>IČO</th><th>Kontaktní osoba</th><th>Kontaktní e-mail</th><th>Telefon</th><th style="width:90px;"></th></tr></thead>
       <tbody id="clients-tbody">
         ${sortedClients().map(c=>{
           const city = clientCity(c);
@@ -3119,7 +3119,7 @@ function viewSuppliers(){
     </div>
     ${list.length ? `
     <table>
-      <thead><tr><th>Název</th><th>IČO</th><th>Kontaktní osoba</th><th>E-mail</th><th>Telefon</th><th>Produktů</th><th></th></tr></thead>
+      <thead><tr><th>Název</th><th>IČO</th><th>Kontaktní osoba</th><th>E-mail</th><th>Telefon</th><th>Produktů</th><th style="width:70px;"></th></tr></thead>
       <tbody>
         ${list.map(s=>{
           const n = state.products.filter(p=>p.supplierId===s.id).length;
@@ -3909,7 +3909,7 @@ function viewStock(){
     <div class="section-title">Blížící se expirace</div>
     ${expiring.length ? `
     <table>
-      <thead><tr><th>Produkt</th><th>Expirace</th><th>Zbývá dní</th><th>Skladem</th><th>Umístění</th><th></th></tr></thead>
+      <thead><tr><th>Produkt</th><th>Expirace</th><th>Zbývá dní</th><th>Skladem</th><th>Umístění</th><th style="width:50px;"></th></tr></thead>
       <tbody>
         ${expiring.map(p=>`
           <tr>
