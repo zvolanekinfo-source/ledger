@@ -464,7 +464,7 @@
   .code-only-block:last-child{page-break-after:auto;}
   .code-only-block svg{width:auto;height:auto;max-width:100mm;max-height:45mm;}
   @media print{
-    html,body{height:auto !important;}
+    html,body{height:auto !important;min-height:0 !important;}
     #barcode-print-sheet.printing,#product-code-print-sheet.printing,#product-info-print-sheet.printing{
       display:block !important;background:#fff;padding:0;margin:0;
     }
@@ -474,7 +474,8 @@
 
   @media print{
     .sidebar,.pagehead,.preview-side,.no-print{display:none !important;}
-    body,.main{background:#fff;padding:0;margin:0;}
+    body,.main{background:#fff;padding:0;margin:0;min-height:0 !important;height:auto !important;}
+    #app{min-height:0 !important;}
     .preview-wrap{display:block;}
     .invoice-sheet{box-shadow:none;border:none;width:auto;border-radius:0;}
     * { -webkit-print-color-adjust:exact !important;print-color-adjust:exact !important;color-adjust:exact !important; }
@@ -2842,40 +2843,53 @@ function blankSupplier(){
 function productById(id){ return state.products.find(p=>p.id===id); }
 function supplierById(id){ return state.suppliers.find(s=>s.id===id); }
 
-function computeProductStockValue(p){
-  const method = (state.companies[0] && state.companies[0].inventoryValuationMethod) || 'average';
+function productValuationMethod(){
+  return (state.companies[0] && state.companies[0].inventoryValuationMethod) || 'average';
+}
+function productCostLayers(p){
   const movements = (p.movements||[]).slice().sort((a,b)=> new Date(a.date)-new Date(b.date));
-  if(!movements.length) return (p.purchasePrice||0) * (p.stockCurrent||0);
-  if(method==='fifo'){
-    const layers = [];
-    movements.forEach(m=>{
-      if(m.qty>0){ layers.push({ qty:m.qty, unitCost: (m.unitCost!=null?m.unitCost:(p.purchasePrice||0)) }); }
-      else if(m.qty<0){
-        let toRemove = -m.qty;
-        while(toRemove>0 && layers.length){
-          const layer = layers[0];
-          const take = Math.min(layer.qty, toRemove);
-          layer.qty -= take; toRemove -= take;
-          if(layer.qty<=0) layers.shift();
-        }
+  const layers = [];
+  movements.forEach(m=>{
+    if(m.qty>0){ layers.push({ qty:m.qty, unitCost: (m.unitCost!=null?m.unitCost:(p.purchasePrice||0)) }); }
+    else if(m.qty<0){
+      let toRemove = -m.qty;
+      while(toRemove>0 && layers.length){
+        const layer = layers[0];
+        const take = Math.min(layer.qty, toRemove);
+        layer.qty -= take; toRemove -= take;
+        if(layer.qty<=0) layers.shift();
       }
-    });
-    return layers.reduce((s,l)=> s + l.qty*l.unitCost, 0);
+    }
+  });
+  return layers;
+}
+function productUnitCost(p){
+  // Efektivní nákladová cena za kus podle metody oceňování nastavené u aktuální (hlavní) firmy.
+  const movements = p.movements||[];
+  if(!movements.length) return p.purchasePrice||0;
+  if(productValuationMethod()==='fifo'){
+    const layers = productCostLayers(p);
+    return layers.length ? layers[0].unitCost : (p.purchasePrice||0);
   }
-  // průměrné náklady (weighted average)
   const incoming = movements.filter(m=>m.qty>0);
   const totalQty = incoming.reduce((s,m)=>s+m.qty,0);
   const totalCost = incoming.reduce((s,m)=> s + m.qty*(m.unitCost!=null?m.unitCost:(p.purchasePrice||0)), 0);
-  const avgCost = totalQty>0 ? totalCost/totalQty : (p.purchasePrice||0);
-  return avgCost * (p.stockCurrent||0);
+  return totalQty>0 ? totalCost/totalQty : (p.purchasePrice||0);
+}
+function computeProductStockValue(p){
+  if(!(p.movements||[]).length) return (p.purchasePrice||0) * (p.stockCurrent||0);
+  if(productValuationMethod()==='fifo'){
+    return productCostLayers(p).reduce((s,l)=> s + l.qty*l.unitCost, 0);
+  }
+  return productUnitCost(p) * (p.stockCurrent||0);
 }
 function productMargin(p){
-  const purchase = p.purchasePrice||0, sale = p.salePrice||0, costs = p.costs||0;
+  const purchase = productUnitCost(p), sale = p.salePrice||0, costs = p.costs||0;
   const totalCost = purchase + costs;
   const profit = sale - totalCost;
   const marginPct = sale>0 ? (profit/sale*100) : 0;
   const markupPct = totalCost>0 ? (profit/totalCost*100) : 0;
-  return { profit, marginPct, markupPct, totalCost };
+  return { profit, marginPct, markupPct, totalCost, unitCost: purchase };
 }
 function stockAvailable(p){ return (p.stockCurrent||0) - (p.stockReserved||0); }
 function stockStatus(p){
@@ -3886,7 +3900,11 @@ function printProductCodeOnly(productIds){
   sheet.innerHTML = products.map((p,i)=>`<div class="code-only-block"><svg id="product-code-only-svg-${i}"></svg></div>`).join('');
   products.forEach((p,i)=>{
     const svg = document.getElementById('product-code-only-svg-'+i);
-    if(svg) renderAutoBarcodeToSvg(svg, p.number || p.ean || '');
+    if(!svg || !barcodeLibReady()) return;
+    const v = String(p.number || p.ean || '');
+    const format = /^\d{13}$/.test(v) ? 'EAN13' : /^\d{8}$/.test(v) ? 'EAN8' : 'CODE128';
+    try{ JsBarcode(svg, v, { format, displayValue:false, margin:4, background:'#ffffff', lineColor:'#182420' }); }
+    catch(e){ try{ JsBarcode(svg, v, { format:'CODE128', displayValue:false, margin:4, background:'#ffffff', lineColor:'#182420' }); }catch(e2){ console.error(e2); } }
   });
   sheet.classList.add('printing');
   document.body.classList.add('printing-barcodes');
