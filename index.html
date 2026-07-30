@@ -2703,13 +2703,22 @@ function renderBarcodeToSvg(svgEl, source, type){
 }
 function renderAutoBarcodeToSvg(svgEl, rawValue){
   // Pro náhled zadaného/naskenovaného EAN nahoře — zobrazí přesně to, co bylo zadáno,
-  // formát (EAN-13/EAN-8/Code128) se pozná podle délky.
+  // formát (EAN-13/EAN-8/Code128) se pozná podle délky. Pokud selže kontrolní součet
+  // (např. při rozepsaném čísle), spadne to na Code128, ať se obrázek zobrazí vždy.
+  const v = String(rawValue||'');
+  const format = /^\d{13}$/.test(v) ? 'EAN13' : /^\d{8}$/.test(v) ? 'EAN8' : 'CODE128';
   try{
-    const v = String(rawValue||'');
-    const format = /^\d{13}$/.test(v) ? 'EAN13' : /^\d{8}$/.test(v) ? 'EAN8' : 'CODE128';
     JsBarcode(svgEl, v, { format, displayValue:true, fontSize:13, height:46, margin:6, background:'#ffffff', lineColor:'#182420' });
     return true;
-  }catch(e){ console.error('Barcode render failed', e); return false; }
+  }catch(e){
+    try{
+      JsBarcode(svgEl, v, { format:'CODE128', displayValue:true, fontSize:13, height:46, margin:6, background:'#ffffff', lineColor:'#182420' });
+      return true;
+    }catch(e2){
+      console.error('Barcode render failed', e2);
+      return false;
+    }
+  }
 }
 
 /* ---------- EAN lookup (Open Food Facts – veřejné API bez klíče) ---------- */
@@ -3092,7 +3101,9 @@ function viewProductForm(){
       </div>
       <p id="ean-lookup-status" style="font-size:12px;color:var(--ink-soft);margin:-6px 0 14px 0;">${escapeHtml(state.eanLookupStatus||'')}</p>
       <div class="barcode-preview-box" id="ean-barcode-box" style="max-width:300px;${p.ean?'':'display:none;'}">
+        <div id="ean-barcode-label" class="num" style="font-size:14px;color:var(--ink);font-weight:600;letter-spacing:1px;margin-bottom:8px;">${escapeHtml(p.ean||'')}</div>
         <svg id="ean-barcode-svg"></svg>
+        <div id="ean-barcode-error" style="display:none;font-size:11.5px;color:var(--red);margin-top:6px;">Kód se v tomto formátu nepodařilo vykreslit jako obrázek — číslo EAN výše je ale uložené správně.</div>
       </div>
 
       <div class="section-title">Fotografie</div>
@@ -3261,11 +3272,16 @@ function setupProductForm(){
     const svg = document.getElementById('ean-barcode-svg');
     const box = document.getElementById('ean-barcode-box');
     const eanInput = document.getElementById('product-ean');
+    const label = document.getElementById('ean-barcode-label');
+    const errorEl = document.getElementById('ean-barcode-error');
     if(!svg || !box || !eanInput) return;
     const val = eanInput.value.trim();
     if(!val){ box.style.display = 'none'; return; }
     box.style.display = '';
-    renderAutoBarcodeToSvg(svg, val);
+    if(label) label.textContent = val;
+    svg.innerHTML = '';
+    const ok = renderAutoBarcodeToSvg(svg, val);
+    if(errorEl) errorEl.style.display = ok ? 'none' : '';
   }
   drawEanBarcodePreview();
   const eanInput = document.getElementById('product-ean');
