@@ -2666,15 +2666,11 @@ function makeValidEan13(digitsSource){
   return base + ean13CheckDigit(base);
 }
 function barcodeValueFor(p){
-  const rawEan = String(p.ean||'').replace(/\D/g,'');
-  if(rawEan.length===13 || rawEan.length===8) return rawEan;
-  if(rawEan.length) return makeValidEan13(rawEan);
+  // Čárový kód na štítku se VŽDY generuje z produktového čísla (auto nebo vlastního) —
+  // s EAN polem nahoře (které slouží jen k vyhledání údajů o produktu) nemá nic společného.
   return makeValidEan13(p.number || p.internalCode || p.id || '');
 }
-function previewBarcodeValue(eanRaw, numberRaw){
-  const rawEan = String(eanRaw||'').replace(/\D/g,'');
-  if(rawEan.length===13 || rawEan.length===8) return rawEan;
-  if(rawEan.length) return makeValidEan13(rawEan);
+function previewBarcodeValue(numberRaw){
   return makeValidEan13(numberRaw || peekProductNumber());
 }
 function barcodeFormatFor(value){
@@ -3066,6 +3062,9 @@ function viewProductForm(){
         <div class="field"><button type="button" class="btn secondary" id="ean-lookup-btn" style="width:100%;">🔍 Načíst údaje podle EAN</button></div>
       </div>
       <p id="ean-lookup-status" style="font-size:12px;color:var(--ink-soft);margin:-6px 0 14px 0;">${escapeHtml(state.eanLookupStatus||'')}</p>
+      <div class="barcode-preview-box" id="ean-barcode-box" style="max-width:300px;${p.ean?'':'display:none;'}">
+        <svg id="ean-barcode-svg"></svg>
+      </div>
 
       <div class="section-title">Fotografie</div>
       <div class="field-row">
@@ -3207,18 +3206,29 @@ function setupProductForm(){
   function drawBarcodePreview(){
     const svg = document.getElementById('barcode-preview-svg');
     if(!svg) return;
-    const eanVal = document.getElementById('product-ean').value.trim();
     const numberInput = form.querySelector('input[name="number"]');
-    const value = previewBarcodeValue(eanVal, numberInput && numberInput.value.trim());
+    const value = previewBarcodeValue(numberInput && numberInput.value.trim());
     renderBarcodeToSvg(svg, value);
     const label = document.getElementById('barcode-preview-label');
     if(label) label.textContent = value;
   }
   drawBarcodePreview();
-  const eanInput = document.getElementById('product-ean');
-  if(eanInput) eanInput.addEventListener('input', drawBarcodePreview);
   const numberInputEl = form.querySelector('input[name="number"]');
   if(numberInputEl) numberInputEl.addEventListener('input', drawBarcodePreview);
+
+  function drawEanBarcodePreview(){
+    const svg = document.getElementById('ean-barcode-svg');
+    const box = document.getElementById('ean-barcode-box');
+    const eanInput = document.getElementById('product-ean');
+    if(!svg || !box || !eanInput) return;
+    const val = eanInput.value.trim();
+    if(!val){ box.style.display = 'none'; return; }
+    box.style.display = '';
+    renderBarcodeToSvg(svg, val);
+  }
+  drawEanBarcodePreview();
+  const eanInput = document.getElementById('product-ean');
+  if(eanInput) eanInput.addEventListener('input', drawEanBarcodePreview);
 
   const eanBtn = document.getElementById('ean-lookup-btn');
   if(eanBtn){
@@ -3247,7 +3257,7 @@ function setupProductForm(){
         if(statusEl) statusEl.textContent = 'Vyhledávání se nepovedlo, zkus to prosím znovu.';
       } finally {
         eanBtn.disabled = false;
-        drawBarcodePreview();
+        drawEanBarcodePreview();
       }
     });
   }
@@ -4734,9 +4744,8 @@ document.addEventListener('click', async (e)=>{
     const svg = document.getElementById('barcode-preview-svg');
     const form = document.getElementById('product-form');
     if(svg && form){
-      const eanVal = document.getElementById('product-ean').value.trim();
       const numberInput = form.querySelector('input[name="number"]');
-      const value = previewBarcodeValue(eanVal, numberInput&&numberInput.value.trim());
+      const value = previewBarcodeValue(numberInput&&numberInput.value.trim());
       renderBarcodeToSvg(svg, value);
       const label = document.getElementById('barcode-preview-label');
       if(label) label.textContent = value;
