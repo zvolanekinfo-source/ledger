@@ -2686,15 +2686,23 @@ function randomDigits(len){
   for(let i=0;i<len;i++) s += Math.floor(Math.random()*10);
   return s;
 }
-function peekProductNumber(){
-  // jen orientační náhled do placeholderu — skutečné číslo se (znovu) vygeneruje při uložení
+function generateCodeForType(type){
+  const meta = barcodeTypeMeta(type);
+  if(meta.numeric){
+    const body = randomDigits(meta.digits);
+    return body + gs1CheckDigit(body);
+  }
   return randomDigits(10);
 }
-function generateUniqueProductNumber(){
+function peekProductNumber(type){
+  // jen orientační náhled do placeholderu — skutečné číslo se (znovu) vygeneruje při uložení
+  return generateCodeForType(type || 'EAN13');
+}
+function generateUniqueProductNumber(type){
   let n;
   let guard = 0;
   do{
-    n = randomDigits(10);
+    n = generateCodeForType(type || 'EAN13');
     guard++;
   } while(state.products.some(p=>p.number===n) && guard<1000);
   return n;
@@ -3180,13 +3188,22 @@ function viewProductForm(){
       <div class="field"><label>Název produktu</label><input name="name" value="${escapeAttr(p.name)}" required autofocus></div>
       <div class="field"><label>Popis</label><textarea name="description">${escapeHtml(p.description||'')}</textarea></div>
       <div class="field">
-        <label>Produktové číslo</label>
+        <label>Produktové číslo (= EAN na štítku)</label>
         <div style="display:flex;gap:8px;">
-          <input name="number" id="product-number-input" value="${escapeAttr(p.number)}" placeholder="${editing?'':escapeAttr(peekProductNumber())+' (auto)'}" style="flex:1;">
+          <input name="number" id="product-number-input" value="${escapeAttr(p.number)}" placeholder="${editing?'':escapeAttr(peekProductNumber(p.barcodeType||'EAN13'))+' (auto)'}" style="flex:1;">
           <button type="button" class="btn secondary small" id="regen-number-btn">↻ Vygenerovat</button>
         </div>
-        <p style="font-size:11px;color:var(--ink-soft);margin:4px 0 0 0;">Necháš prázdné = appka vygeneruje vlastní číslo (jen číslice). Můžeš si ale klidně napsat i vlastní.</p>
-        <div style="margin-top:10px;font-size:13px;color:var(--ink-soft);">Vygenerovaný EAN: <strong id="generated-ean-readout" class="num" style="color:var(--ink);letter-spacing:1px;">–</strong></div>
+        <p style="font-size:11px;color:var(--ink-soft);margin:4px 0 0 0;">Necháš prázdné = appka vygeneruje vlastní číslo podle zvoleného typu. Můžeš si ale klidně napsat i vlastní.</p>
+      </div>
+      <div class="field" style="max-width:360px;">
+        <label>Typ kódu</label>
+        <select name="barcodeType" id="product-barcode-type">
+          ${BARCODE_TYPES.map(t=>`<option value="${t.value}" ${(p.barcodeType||'EAN13')===t.value?'selected':''}>${escapeHtml(t.label)}</option>`).join('')}
+        </select>
+      </div>
+      <div class="barcode-preview-box" style="max-width:340px;">
+        <svg id="product-number-barcode-svg"></svg>
+        <div id="product-number-barcode-error" style="display:none;font-size:11.5px;color:var(--red);margin-top:6px;">Zadané číslo neodpovídá zvolenému typu — obrázek zobrazen jako Code 128.</div>
       </div>
       <div class="field-row">
         <div class="field"><label>Kategorie</label><input name="category" list="product-category-options" value="${escapeAttr(p.category||'')}">
@@ -3290,28 +3307,57 @@ function setupProductForm(){
   }
   if(purchaseEl){ purchaseEl.addEventListener('input', updateMargin); saleEl.addEventListener('input', updateMargin); }
 
-  function updateGeneratedEanReadout(){
-    const readout = document.getElementById('generated-ean-readout');
-    if(!readout) return;
+  function drawProductNumberBarcode(){
+    const svg = document.getElementById('product-number-barcode-svg');
+    const errorEl = document.getElementById('product-number-barcode-error');
+    if(!svg) return;
     const numberInput = form.querySelector('input[name="number"]');
-    const source = (numberInput && numberInput.value.trim()) || peekProductNumber();
-    readout.textContent = buildBarcodeForType(source, 'EAN13').value;
+    const typeSelect = document.getElementById('product-barcode-type');
+    const type = typeSelect ? typeSelect.value : 'EAN13';
+    const value = (numberInput && numberInput.value.trim()) || peekProductNumber(type);
+    if(!barcodeLibReady()) return;
+    const meta = barcodeTypeMeta(type);
+    svg.innerHTML = '';
+    let usedFallback = false;
+    let ok = false;
+    try{
+      JsBarcode(svg, value, { format: meta.jsFormat, displayValue:true, fontSize:13, height:46, margin:6, background:'#ffffff', lineColor:'#182420' });
+      ok = true;
+    }catch(e){
+      try{
+        JsBarcode(svg, value, { format:'CODE128', displayValue:true, fontSize:13, height:46, margin:6, background:'#ffffff', lineColor:'#182420' });
+        ok = true; usedFallback = (meta.jsFormat!=='CODE128');
+      }catch(e2){ console.error('Barcode render failed', e2); }
+    }
+    if(errorEl) errorEl.style.display = usedFallback ? '' : 'none';
   }
-  updateGeneratedEanReadout();
+  function filterNumberInput(){
+    const numberInput = form.querySelector('input[name="number"]');
+    const typeSelect = document.getElementById('product-barcode-type');
+    if(!numberInput) return;
+    const meta = barcodeTypeMeta(typeSelect ? typeSelect.value : 'EAN13');
+    if(meta.numeric){
+      const cleaned = numberInput.value.replace(/\D/g,'');
+      if(cleaned !== numberInput.value) numberInput.value = cleaned;
+    } else if(meta.jsFormat==='CODE39'){
+      const cleaned = numberInput.value.toUpperCase().replace(/[^0-9A-Z\-\.\$\/\+% ]/g,'');
+      if(cleaned !== numberInput.value) numberInput.value = cleaned;
+    }
+  }
+  drawProductNumberBarcode();
   const numberInputEl = form.querySelector('input[name="number"]');
   if(numberInputEl){
-    numberInputEl.addEventListener('input', ()=>{
-      const cleaned = numberInputEl.value.replace(/\D/g,'');
-      if(cleaned !== numberInputEl.value) numberInputEl.value = cleaned;
-      updateGeneratedEanReadout();
-    });
+    numberInputEl.addEventListener('input', ()=>{ filterNumberInput(); drawProductNumberBarcode(); });
   }
   const regenNumberBtn = document.getElementById('regen-number-btn');
   if(regenNumberBtn){
     regenNumberBtn.addEventListener('click', ()=>{
-      if(numberInputEl){ numberInputEl.value = generateUniqueProductNumber(); updateGeneratedEanReadout(); }
+      const typeSelect = document.getElementById('product-barcode-type');
+      if(numberInputEl){ numberInputEl.value = generateUniqueProductNumber(typeSelect?typeSelect.value:'EAN13'); drawProductNumberBarcode(); }
     });
   }
+  const productBarcodeTypeSelect = document.getElementById('product-barcode-type');
+  if(productBarcodeTypeSelect) productBarcodeTypeSelect.addEventListener('change', ()=>{ filterNumberInput(); drawProductNumberBarcode(); });
 
   function drawEanBarcodePreview(){
     const svg = document.getElementById('ean-barcode-svg');
@@ -3380,7 +3426,7 @@ async function onSubmitProduct(e){
     alert('Tento EAN už má přiřazený jiný produkt.');
     return;
   }
-  if(!number) number = existing ? existing.number : generateUniqueProductNumber();
+  if(!number) number = existing ? existing.number : generateUniqueProductNumber(fd.get('barcodeType')||'EAN13');
   const photo = existing ? (state.currentProductDraftPhoto !== undefined && state.currentProductDraftPhoto !== existing.photo && state.currentProductDraftPhoto ? state.currentProductDraftPhoto : (document.getElementById('product-photo-drop')?.querySelector('img')?.src || existing.photo))
     : (state.currentProductDraftPhoto || (document.getElementById('product-photo-drop')?.querySelector('img')?.src || ''));
 
