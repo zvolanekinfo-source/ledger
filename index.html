@@ -1248,15 +1248,20 @@ function viewInvoices(){
   const filtered = applyInvoiceFilters(state.invoices, f);
   const sortKey = state.invoiceSort || 'date-desc';
   const sorted = [...filtered].sort((a,b)=>{
-    if(sortKey==='date-desc') return (b.issueDate||'').localeCompare(a.issueDate||'');
-    if(sortKey==='date-asc') return (a.issueDate||'').localeCompare(b.issueDate||'');
-    if(sortKey==='number-desc') return (b.number||'').localeCompare(a.number||'');
-    if(sortKey==='number-asc') return (a.number||'').localeCompare(b.number||'');
-    if(sortKey==='amount-desc') return invoiceTotals(b).total - invoiceTotals(a).total;
-    if(sortKey==='amount-asc') return invoiceTotals(a).total - invoiceTotals(b).total;
-    if(sortKey==='due-asc') return (a.dueDate||'').localeCompare(b.dueDate||'');
-    if(sortKey==='due-desc') return (b.dueDate||'').localeCompare(a.dueDate||'');
-    return (b.number||'').localeCompare(a.number||'');
+    let primary = 0;
+    if(sortKey==='date-desc') primary = (b.issueDate||'').localeCompare(a.issueDate||'');
+    else if(sortKey==='date-asc') primary = (a.issueDate||'').localeCompare(b.issueDate||'');
+    else if(sortKey==='number-desc') primary = (b.number||'').localeCompare(a.number||'');
+    else if(sortKey==='number-asc') primary = (a.number||'').localeCompare(b.number||'');
+    else if(sortKey==='amount-desc') primary = invoiceTotals(b).total - invoiceTotals(a).total;
+    else if(sortKey==='amount-asc') primary = invoiceTotals(a).total - invoiceTotals(b).total;
+    else if(sortKey==='due-asc') primary = (a.dueDate||'').localeCompare(b.dueDate||'');
+    else if(sortKey==='due-desc') primary = (b.dueDate||'').localeCompare(a.dueDate||'');
+    if(primary!==0) return primary;
+    // shoda v primárním klíči (např. stejné datum) — dorovnáme podle čísla faktury ve stejném směru,
+    // ať je efekt řazení vidět vždy
+    const desc = sortKey.endsWith('-desc');
+    return desc ? (b.number||'').localeCompare(a.number||'') : (a.number||'').localeCompare(b.number||'');
   });
   const anyFilterActive = f.search || f.from || f.to || f.clientId || f.status;
   return `
