@@ -2650,7 +2650,7 @@ function locationFieldGroup(loc){
 function blankProduct(){
   return {
     id: uid(), number:'', ean:'', internalCode:'', name:'', description:'',
-    category:'', manufacturer:'', supplierId:'', unit:'ks', vatRate:21, note:'',
+    category:'', manufacturer:'', supplierId:'', unit:'ks', vatRate:21, vatRatePurchase:21, note:'',
     purchasePrice:0, salePrice:0, costs:0,
     stockCurrent:0, stockReserved:0, stockMin:0, location:blankLocation(), barcodeType:'EAN13',
     expiryDate:'', photo:'', link:'', archived:false, createdAt:new Date().toISOString(),
@@ -3225,7 +3225,32 @@ function viewProductForm(){
       <div class="mini-label" style="margin-top:18px;">Umístění a pohyby na skladě (patří k tomuto kódu)</div>
       ${locationFieldGroup(p.location)}
       ${editing ? `
-        <button type="button" class="btn secondary small" data-action="open-stock-movement" data-id="${p.id}">+ Skladový pohyb</button>
+        <button type="button" class="btn secondary small" data-action="toggle-stock-movement-panel">+ Skladový pohyb</button>
+        <div id="stock-movement-panel" class="client-detail-box" style="display:none;margin-top:10px;">
+          <div class="field-row">
+            <div class="field"><label>Typ pohybu</label><select id="sm-type">
+              <option value="příjem">Příjem</option>
+              <option value="výdej">Výdej</option>
+              <option value="prodej">Prodej</option>
+              <option value="vrácení">Vrácení</option>
+              <option value="reklamace">Reklamace</option>
+              <option value="inventura">Inventura</option>
+              <option value="ruční úprava">Ruční úprava</option>
+            </select></div>
+            <div class="field"><label>Množství (+příjem / -výdej)</label><input type="number" step="1" id="sm-qty" value="1"></div>
+          </div>
+          <div class="field"><label>Poznámka / důvod</label><input type="text" id="sm-note" placeholder="např. dodávka od dodavatele"></div>
+          <div class="mini-label" style="margin-top:14px;">Nová dávka může mít jiné údaje — nech prázdné, pokud se nemění:</div>
+          <div class="field-row">
+            <div class="field"><label>Nová trvanlivost</label><input type="date" id="sm-expiry"></div>
+            <div class="field"><label>Nová nákupní cena</label><input type="number" step="0.01" id="sm-price" placeholder="${p.purchasePrice||0}"></div>
+          </div>
+          <div class="field" style="max-width:260px;"><label>Nová sazba DPH (nákup)</label><input type="number" step="0.1" id="sm-vat" placeholder="${p.vatRatePurchase??21}"></div>
+          <div class="formfoot" style="margin-top:10px;">
+            <button type="button" class="btn small" data-action="submit-stock-movement" data-id="${p.id}">Uložit pohyb</button>
+            <button type="button" class="btn-link" data-action="toggle-stock-movement-panel">Zrušit</button>
+          </div>
+        </div>
         <div class="mini-label" style="margin-top:18px;">Historie pohybů (nesmazatelná)</div>
         ${(p.movements||[]).length ? `
           <div class="movement-row" style="font-weight:600;color:var(--ink-soft);font-size:11px;text-transform:uppercase;">
@@ -3260,11 +3285,17 @@ function viewProductForm(){
         </select></div>
       </div>
       <div class="field-row">
-        <div class="field"><label>Sazba DPH</label>
+        <div class="field"><label>Sazba DPH (nákupní)</label>
+          <input type="number" step="0.1" min="0" max="100" name="vatRatePurchase" list="product-vat-options" value="${p.vatRatePurchase??21}">
+        </div>
+        <div class="field"><label>Sazba DPH (prodejní)</label>
           <input type="number" step="0.1" min="0" max="100" name="vatRate" list="product-vat-options" value="${p.vatRate??21}">
           <datalist id="product-vat-options">${VAT_RATES.map(r=>`<option value="${r}">`).join('')}</datalist>
         </div>
+      </div>
+      <div class="field-row">
         <div class="field"><label>Datum expirace</label><input type="date" name="expiryDate" value="${p.expiryDate||''}"></div>
+        <div class="field"></div>
       </div>
       <div class="field"><label>Poznámka</label><textarea name="note">${escapeHtml(p.note||'')}</textarea></div>
 
@@ -3278,7 +3309,9 @@ function viewProductForm(){
         <div class="field"></div>
       </div>
       <div class="margin-box" id="margin-box">
-        <div class="mb-item"><div class="mb-label">Zisk / ks</div><div class="mb-value" id="mb-profit">${fmt(margin.profit)} Kč</div></div>
+        <div class="mb-item"><div class="mb-label">Nákupní cena s DPH</div><div class="mb-value" id="mb-purchase-vat" style="font-size:14px;">${fmt((p.purchasePrice||0)*(1+(p.vatRatePurchase??21)/100))} Kč</div></div>
+        <div class="mb-item"><div class="mb-label">Prodejní cena s DPH</div><div class="mb-value" id="mb-sale-vat" style="font-size:14px;">${fmt((p.salePrice||0)*(1+(p.vatRate??21)/100))} Kč</div></div>
+        <div class="mb-item"><div class="mb-label">Zisk čistý (bez DPH)</div><div class="mb-value" id="mb-profit">${fmt(margin.profit)} Kč</div></div>
         <div class="mb-item"><div class="mb-label">Marže</div><div class="mb-value" id="mb-margin">${margin.marginPct.toFixed(1)}%</div></div>
         <div class="mb-item"><div class="mb-label">Obchodní přirážka</div><div class="mb-value" id="mb-markup">${margin.markupPct.toFixed(1)}%</div></div>
       </div>
@@ -3305,6 +3338,7 @@ function viewProductForm(){
       <div class="formfoot">
         <button type="submit" class="btn">Uložit produkt</button>
         <button type="button" class="btn secondary" data-action="nav" data-view="products">Zrušit</button>
+        ${editing ? `<button type="button" class="btn secondary" data-action="toggle-archive-product" data-id="${p.id}">${p.archived?'Odebrat archivaci':'Archivovat'}</button>` : ''}
         ${editing ? `<button type="button" class="btn danger" data-action="delete-product" data-id="${p.id}">Smazat produkt</button>` : ''}
       </div>
       <input type="hidden" name="id" value="${p.id}">
@@ -3320,20 +3354,28 @@ function setupProductForm(){
   const purchaseEl = document.getElementById('pp-purchase');
   const saleEl = document.getElementById('pp-sale');
   const costsEl = document.getElementById('pp-costs');
+  const vatPurchaseEl = form.querySelector('input[name="vatRatePurchase"]');
+  const vatSaleEl = form.querySelector('input[name="vatRate"]');
   function updateMargin(){
     const purchase = parseFloat(purchaseEl.value)||0;
     const sale = parseFloat(saleEl.value)||0;
     const costs = parseFloat(costsEl && costsEl.value)||0;
+    const vatPurchase = parseFloat(vatPurchaseEl && vatPurchaseEl.value)||0;
+    const vatSale = parseFloat(vatSaleEl && vatSaleEl.value)||0;
     const totalCost = purchase + costs;
     const profit = sale - totalCost;
     const marginPct = sale>0 ? (profit/sale*100) : 0;
     const markupPct = totalCost>0 ? (profit/totalCost*100) : 0;
+    document.getElementById('mb-purchase-vat').textContent = fmt(purchase*(1+vatPurchase/100))+' Kč';
+    document.getElementById('mb-sale-vat').textContent = fmt(sale*(1+vatSale/100))+' Kč';
     document.getElementById('mb-profit').textContent = fmt(profit)+' Kč';
     document.getElementById('mb-margin').textContent = marginPct.toFixed(1)+'%';
     document.getElementById('mb-markup').textContent = markupPct.toFixed(1)+'%';
   }
   if(purchaseEl){ purchaseEl.addEventListener('input', updateMargin); saleEl.addEventListener('input', updateMargin); }
   if(costsEl) costsEl.addEventListener('input', updateMargin);
+  if(vatPurchaseEl) vatPurchaseEl.addEventListener('input', updateMargin);
+  if(vatSaleEl) vatSaleEl.addEventListener('input', updateMargin);
 
   function drawProductNumberBarcode(){
     const svg = document.getElementById('product-number-barcode-svg');
@@ -3449,7 +3491,7 @@ async function onSubmitProduct(e){
     name: fd.get('name'), description: fd.get('description')||'',
     category: fd.get('category')||'', manufacturer: fd.get('manufacturer')||'',
     supplierId: fd.get('supplierId')||'', unit: fd.get('unit')||'ks',
-    vatRate: parseFloat(fd.get('vatRate'))||0, note: fd.get('note')||'',
+    vatRate: parseFloat(fd.get('vatRate'))||0, vatRatePurchase: parseFloat(fd.get('vatRatePurchase'))||0, note: fd.get('note')||'',
     purchasePrice: parseFloat(fd.get('purchasePrice'))||0, salePrice: parseFloat(fd.get('salePrice'))||0, costs: parseFloat(fd.get('costs'))||0,
     stockCurrent: existing ? existing.stockCurrent : (parseFloat(fd.get('stockCurrent'))||0),
     stockReserved: existing ? (existing.stockReserved||0) : 0,
@@ -3677,7 +3719,9 @@ function printProductInfoSheet(productId){
       <div class="pi-row"><span>Nákupní cena</span><span>${fmt(p.purchasePrice||0)} Kč</span></div>
       <div class="pi-row"><span>Náklady</span><span>${fmt(p.costs||0)} Kč</span></div>
       <div class="pi-row"><span>Prodejní cena</span><span>${fmt(p.salePrice||0)} Kč</span></div>
-      <div class="pi-row"><span>Sazba DPH</span><span>${p.vatRate??21}%</span></div>
+      <div class="pi-row"><span>Sazba DPH (nákupní)</span><span>${p.vatRatePurchase??21}%</span></div>
+      <div class="pi-row"><span>Sazba DPH (prodejní)</span><span>${p.vatRate??21}%</span></div>
+      <div class="pi-row"><span>Zisk čistý (bez DPH)</span><span>${fmt(productMargin(p).profit)} Kč</span></div>
       <div class="pi-row"><span>Sklad</span><span>${stockAvailable(p)} ${escapeHtml(p.unit||'ks')}</span></div>
       <div class="pi-row"><span>Umístění</span><span>${loc?escapeHtml(loc):'—'}</span></div>
       ${p.expiryDate?`<div class="pi-row"><span>Expirace</span><span>${p.expiryDate}</span></div>`:''}
@@ -3920,7 +3964,7 @@ function exportProductsCsv(format){
   const rows = state.products.map(p=>({
     Název: p.name, EAN: p.ean, 'Produktové číslo': p.number,
     Kategorie: p.category, Výrobce: p.manufacturer, Dodavatel: (supplierById(p.supplierId)||{}).name||'',
-    Jednotka: p.unit, 'DPH %': p.vatRate, 'Nákupní cena': p.purchasePrice, 'Prodejní cena': p.salePrice,
+    Jednotka: p.unit, 'DPH % (nákup)': p.vatRatePurchase, 'DPH % (prodej)': p.vatRate, 'Nákupní cena': p.purchasePrice, 'Náklady': p.costs, 'Prodejní cena': p.salePrice,
     Sklad: p.stockCurrent, Minimum: p.stockMin, Umístění: formatLocation(p.location), Expirace: p.expiryDate, Poznámka: p.note
   }));
   const ws = XLSX.utils.json_to_sheet(rows);
@@ -3951,7 +3995,7 @@ function openProductContextMenu(x, y, productId){
     <div class="ctx-sep"></div>
     <div class="ctx-item" data-action="open-stock-movement" data-id="${p.id}">Skladový pohyb</div>
     <div class="ctx-sep"></div>
-    <div class="ctx-item" data-action="toggle-archive-product" data-id="${p.id}">${p.archived?'Obnovit z archivu':'Archivovat'}</div>
+    <div class="ctx-item" data-action="toggle-archive-product" data-id="${p.id}">${p.archived?'Odebrat archivaci':'Archivovat'}</div>
     <div class="ctx-item danger" data-action="delete-product" data-id="${p.id}">Smazat</div>
   `;
   document.body.appendChild(menu);
@@ -5036,6 +5080,33 @@ document.addEventListener('click', async (e)=>{
   else if(action==='remove-product-photo'){ state.currentProductDraftPhoto=''; const editing = state.editingProductId?productById(state.editingProductId):null; if(editing) editing.photo=''; render(); }
 
   else if(action==='open-stock-movement'){ await promptStockMovement(id); }
+  else if(action==='toggle-stock-movement-panel'){
+    const panel = document.getElementById('stock-movement-panel');
+    if(panel) panel.style.display = (panel.style.display==='none'||!panel.style.display) ? '' : 'none';
+  }
+  else if(action==='submit-stock-movement'){
+    const p = productById(id);
+    if(!p) return;
+    const type = document.getElementById('sm-type').value;
+    const qty = parseFloat(document.getElementById('sm-qty').value);
+    const note = document.getElementById('sm-note').value.trim();
+    const newExpiry = document.getElementById('sm-expiry').value;
+    const newPriceRaw = document.getElementById('sm-price').value;
+    const newVatRaw = document.getElementById('sm-vat').value;
+    if(isNaN(qty) || qty===0){ alert('Zadej platné nenulové množství.'); return; }
+    const resulting = (p.stockCurrent||0) + qty;
+    if(resulting < 0 && !confirm(`Sklad produktu „${p.name}“ klesne do záporných hodnot (${resulting}). Pokračovat?`)) return;
+    const changedParts = [];
+    if(newExpiry){ p.expiryDate = newExpiry; changedParts.push('trvanlivost '+newExpiry); }
+    if(newPriceRaw!==''){ p.purchasePrice = parseFloat(newPriceRaw)||0; changedParts.push('nákupní cena '+fmt(p.purchasePrice)+' Kč'); }
+    if(newVatRaw!==''){ p.vatRatePurchase = parseFloat(newVatRaw)||0; changedParts.push('DPH nákup '+p.vatRatePurchase+'%'); }
+    p.stockCurrent = resulting;
+    p.movements = p.movements || [];
+    const fullReason = [note, changedParts.length?('aktualizováno: '+changedParts.join(', ')):''].filter(Boolean).join(' — ') || type;
+    p.movements.push({ id: uid(), type, qty, reason: fullReason, note:'', date: new Date().toISOString(), user: state.currentUser, resultingStock: resulting });
+    try{ await saveProducts(); }catch(err){ alert('Uložení se nepovedlo, zkus to prosím znovu.'); return; }
+    render();
+  }
   else if(action==='print-one-barcode'){ closeProductContextMenu(); printProductBarcodes([id], 1, true); }
   else if(action==='print-product-code-only'){ printProductCodeOnly(id); }
   else if(action==='print-product-info'){ printProductInfoSheet(id); }
