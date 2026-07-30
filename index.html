@@ -408,6 +408,8 @@
 
   /* PRODUCTS TABLE */
   .prod-table-wrap{overflow-x:auto;background:var(--surface);border:1px solid var(--line);border-radius:6px;}
+  .table-scroll{overflow-x:auto;background:var(--surface);border:1px solid var(--line);border-radius:6px;}
+  .table-scroll table{border:none;border-radius:0;}
   table.prod-table{border:none;border-radius:0;table-layout:fixed;width:100%;}
   table.prod-table thead th{position:relative;white-space:nowrap;user-select:none;cursor:pointer;}
   table.prod-table thead th.sorted{color:var(--ink);}
@@ -816,6 +818,10 @@ async function loadAll(){
     DEFAULT_PRODUCT_COLUMNS.forEach(c=>{ if(!existingKeys.has(c.key)) state.productColumns.push({...c}); });
     const validKeys = new Set(DEFAULT_PRODUCT_COLUMNS.map(c=>c.key));
     state.productColumns = state.productColumns.filter(c=>validKeys.has(c.key));
+    state.productColumns.forEach(c=>{
+      if(c.key==='location' && c.width<200) c.width = 200;
+      if(c.key==='expiry' && c.width<120) c.width = 120;
+    });
   }
   state.products = state.products.map(p=>{
     const merged = { ...blankProduct(), ...p, movements: p.movements||[] };
@@ -1318,6 +1324,7 @@ function viewInvoices(){
 
 function renderInvoiceTable(list, tbodyId, selectable){
   return `
+  <div class="table-scroll">
   <table class="fixed-table">
     <thead><tr>
       ${selectable?`<th style="width:60px;"><input type="checkbox" data-action="toggle-select-all-invoices" ${list.length && list.every(i=>state.selectedInvoiceIds.has(i.id))?'checked':''}></th>`:''}
@@ -1346,7 +1353,8 @@ function renderInvoiceTable(list, tbodyId, selectable){
       }).join('')}
       ${tbodyId?`<tr id="invoices-empty-row" style="display:none;"><td colspan="9" style="text-align:center;color:var(--ink-soft);padding:24px;">Žádná faktura neodpovídá hledání.</td></tr>`:''}
     </tbody>
-  </table>`;
+  </table>
+  </div>`;
 }
 
 function renderBulkBar(count, entityLabel, actions){
@@ -2020,6 +2028,7 @@ function viewClients(){
     ${renderBulkBar(state.selectedClientIds.size, 'odběratelů', `
       <button type="button" class="btn danger small" data-action="bulk-delete-clients">Smazat vybrané</button>
     `)}
+    <div class="table-scroll">
     <table class="fixed-table">
       <thead><tr>
         <th style="width:60px;"><input type="checkbox" data-action="toggle-select-all-clients" ${state.clients.length && state.clients.every(c=>state.selectedClientIds.has(c.id))?'checked':''}></th>
@@ -2051,7 +2060,8 @@ function viewClients(){
           </tr>`;}).join('')}
         <tr id="clients-empty-row" style="display:none;"><td colspan="7" class="empty">Žádný odběratel neodpovídá hledání.</td></tr>
       </tbody>
-    </table>` : emptyState('Žádní odběratelé', 'Přidej prvního odběratele, aby ses mu mohl fakturovat.')}
+    </table>
+    </div>` : emptyState('Žádní odběratelé', 'Přidej prvního odběratele, aby ses mu mohl fakturovat.')}
   `;
 }
 
@@ -2851,8 +2861,8 @@ const DEFAULT_PRODUCT_COLUMNS = [
   {key:'salePrice', label:'Prodejní', width:80, visible:true},
   {key:'margin', label:'Marže', width:65, visible:true},
   {key:'stock', label:'Sklad', width:100, visible:true},
-  {key:'location', label:'Umístění', width:110, visible:true},
-  {key:'expiry', label:'Expirace', width:95, visible:true},
+  {key:'location', label:'Umístění', width:200, visible:true},
+  {key:'expiry', label:'Expirace', width:120, visible:true},
 ];
 const PRODUCT_UNITS = ['ks','kg','g','l','ml','m','balení','hod'];
 
@@ -3188,8 +3198,9 @@ function viewSuppliers(){
       <button class="btn" data-action="new-supplier">+ Přidat dodavatele</button>
     </div>
     ${list.length ? `
+    <div class="table-scroll">
     <table class="fixed-table">
-      <thead><tr><th>Název</th><th style="width:130px;">IČO</th><th style="width:180px;">Kontaktní osoba</th><th style="width:200px;">E-mail</th><th style="width:140px;">Telefon</th><th style="width:100px;">Produktů</th><th style="width:70px;"></th></tr></thead>
+      <thead><tr><th>Název</th><th style="width:130px;">IČO</th><th style="width:170px;">Kontaktní osoba</th><th style="width:220px;">E-mail</th><th style="width:140px;">Telefon</th><th style="width:100px;">Produktů</th><th style="width:70px;"></th></tr></thead>
       <tbody>
         ${list.map(s=>{
           const n = state.products.filter(p=>p.supplierId===s.id).length;
@@ -3207,7 +3218,8 @@ function viewSuppliers(){
           </tr>`;
         }).join('')}
       </tbody>
-    </table>` : emptyState('Žádní dodavatelé', 'Přidej prvního dodavatele, aby šlo produkty propojit s nákupem.')}
+    </table>
+    </div>` : emptyState('Žádní dodavatelé', 'Přidej prvního dodavatele, aby šlo produkty propojit s nákupem.')}
   `;
 }
 function viewSupplierDetail(){
@@ -4005,8 +4017,9 @@ function viewStock(){
 
     <div class="section-title">Blížící se expirace</div>
     ${expiring.length ? `
+    <div class="table-scroll">
     <table class="fixed-table">
-      <thead><tr><th>Produkt</th><th style="width:110px;">Expirace</th><th style="width:90px;">Zbývá dní</th><th style="width:100px;">Skladem</th><th style="width:170px;">Umístění</th><th style="width:50px;"></th></tr></thead>
+      <thead><tr><th>Produkt</th><th style="width:130px;">Expirace</th><th style="width:100px;">Zbývá dní</th><th style="width:110px;">Skladem</th><th style="width:240px;">Umístění</th><th style="width:50px;"></th></tr></thead>
       <tbody>
         ${expiring.map(p=>`
           <tr>
@@ -4020,9 +4033,11 @@ function viewStock(){
         `).join('')}
       </tbody>
     </table>
+    </div>
     ` : emptyState('Žádné blížící se expirace', `Produkty s vyplněným datem expirace do ${es.value} ${unitLabel} se zobrazí zde.`)}
 
     <div class="section-title">Historie skladových pohybů</div>
+    <div class="table-scroll">
     <table class="fixed-table">
       <thead><tr><th style="width:175px;">Datum</th><th style="width:150px;">Produkt</th><th style="width:110px;">Typ</th><th>Poznámka</th><th style="width:210px;">Kdo</th><th style="width:100px;">Množství</th><th style="width:60px;"></th></tr></thead>
       <tbody>
@@ -4042,6 +4057,7 @@ function viewStock(){
         `).join('') || `<tr><td colspan="7" style="text-align:center;color:var(--ink-soft);padding:20px;">Zatím žádné pohyby.</td></tr>`}
       </tbody>
     </table>
+    </div>
   `;
 }
 
