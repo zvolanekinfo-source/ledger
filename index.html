@@ -412,6 +412,7 @@
   table.prod-table thead th .th-resize{position:absolute;right:0;top:0;bottom:0;width:6px;cursor:col-resize;}
   table.prod-table thead th .th-resize:hover{background:var(--accent);opacity:.4;}
   table.prod-table tbody td{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  table.prod-table tbody td.actions-cell{overflow:visible;}
   table.prod-table tbody tr.selected{background:var(--accent-soft);}
   .prod-thumb{width:32px;height:32px;border-radius:5px;object-fit:cover;background:var(--paper);border:1px solid var(--line);display:block;}
   .prod-thumb-empty{width:32px;height:32px;border-radius:5px;background:var(--paper);border:1px dashed var(--line);}
@@ -2721,7 +2722,7 @@ function viewBulkImport(){
         <p style="font-size:13px;color:var(--ink-soft);">
           Soubor <strong>${escapeHtml(bi.fileName)}</strong> — ${bi.rows.length} řádků. Appka sloupce odhadla sama, zkontroluj a případně uprav.
         </p>
-        <table>
+        <table class="fixed-table">
           <thead><tr><th>Sloupec v souboru</th><th>Ukázka hodnoty</th><th>Co to je</th></tr></thead>
           <tbody>
             ${bi.headers.map(h=>`
@@ -2755,7 +2756,7 @@ function viewBulkImport(){
           <div class="card"><div class="label">Přeskočené duplicity (EAN/číslo)</div><div class="value amber">${bi.preview.dupCount}</div></div>
           <div class="card"><div class="label">Prázdné řádky</div><div class="value">${bi.preview.skipped}</div></div>
         </div>
-        <table>
+        <table class="fixed-table">
           <thead><tr><th>Název</th><th></th><th>EAN</th><th>Kategorie</th><th>Nákupní</th><th>Prodejní</th><th>Sklad</th><th>Umístění</th></tr></thead>
           <tbody>
             ${bi.preview.items.slice(0,100).map(it=>`
@@ -2779,7 +2780,7 @@ function viewBulkImport(){
           <div class="card"><div class="label">Spárováno s existujícími</div><div class="value">${bi.preview.matchedClientsCount}</div></div>
           <div class="card"><div class="label">Přeskočeno (prázdné řádky)</div><div class="value">${bi.preview.skipped}</div></div>
         </div>
-        <table>
+        <table class="fixed-table">
           <thead><tr><th>Název</th><th></th><th>IČO</th><th>E-mail</th><th>Telefon</th><th>Město</th></tr></thead>
           <tbody>
             ${bi.preview.clients.slice(0,100).map(c=>`
@@ -2802,7 +2803,7 @@ function viewBulkImport(){
           <div class="card"><div class="label">Faktur k importu</div><div class="value">${bi.preview.invoices.length}</div></div>
           <div class="card"><div class="label">Přeskočeno (prázdné řádky)</div><div class="value">${bi.preview.skipped}</div></div>
         </div>
-        <table>
+        <table class="fixed-table">
           <thead><tr><th>Odběratel</th><th></th><th>Č. faktury</th><th>Vystaveno</th><th>Celkem</th><th>Stav</th></tr></thead>
           <tbody>
             ${bi.preview.invoices.slice(0,50).map(inv=>{
@@ -4020,7 +4021,6 @@ function viewStock(){
     ` : emptyState('Žádné blížící se expirace', `Produkty s vyplněným datem expirace do ${es.value} ${unitLabel} se zobrazí zde.`)}
 
     <div class="section-title">Historie skladových pohybů</div>
-    <table>
     <table class="fixed-table">
       <thead><tr><th style="width:150px;">Datum</th><th style="width:150px;">Produkt</th><th style="width:110px;">Typ</th><th>Poznámka</th><th style="width:170px;">Kdo</th><th style="width:100px;">Množství</th><th style="width:60px;"></th></tr></thead>
       <tbody>
