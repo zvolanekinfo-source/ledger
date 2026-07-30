@@ -444,11 +444,11 @@
   .barcode-label .bl-name{font-size:11.5px;font-weight:600;margin-bottom:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
   .barcode-label .bl-num{font-size:10px;color:var(--ink-soft);margin-bottom:4px;font-family:'IBM Plex Mono',monospace;}
   .barcode-label .bl-price{font-size:13px;font-weight:700;margin-top:4px;}
-  @page{ margin:12mm; }
+  @page{ margin:0; }
   #barcode-print-sheet{display:none;}
   #product-code-print-sheet{display:none;}
   #product-info-print-sheet{display:none;}
-  .pinfo-sheet{padding:0;max-width:640px;page-break-after:always;font-size:12.5px;}
+  .pinfo-sheet{padding:15mm;max-width:640px;page-break-after:always;font-size:12.5px;}
   .pinfo-sheet:last-child{page-break-after:auto;}
   .pinfo-sheet .pi-head{display:flex;gap:16px;align-items:flex-start;margin-bottom:14px;}
   .pinfo-sheet .pi-photo{width:80px;height:80px;object-fit:cover;border-radius:8px;border:1px solid var(--line);flex-shrink:0;}
@@ -460,12 +460,15 @@
   .pinfo-sheet .pi-code-box{text-align:center;border:1px solid var(--line);border-radius:8px;padding:10px;}
   .pinfo-sheet .pi-code-box svg{max-height:60px;}
   .pinfo-sheet .pi-code-box .pi-code-label{font-size:10px;text-transform:uppercase;letter-spacing:.6px;color:var(--ink-soft);margin-bottom:6px;}
-  .code-only-block{text-align:center;padding:20mm 10mm;page-break-after:always;}
+  .code-only-block{text-align:center;padding:4mm;page-break-after:always;}
   .code-only-block:last-child{page-break-after:auto;}
-  .code-only-block svg{width:auto;height:auto;max-width:100mm;max-height:45mm;}
+  .code-only-block svg{width:auto;height:auto;max-width:90mm;max-height:35mm;}
   @media print{
     html,body{height:auto !important;min-height:0 !important;}
-    #barcode-print-sheet.printing,#product-code-print-sheet.printing,#product-info-print-sheet.printing{
+    #barcode-print-sheet.printing,#product-info-print-sheet.printing{
+      display:block !important;background:#fff;padding:8mm;margin:0;
+    }
+    #product-code-print-sheet.printing{
       display:block !important;background:#fff;padding:0;margin:0;
     }
     body.printing-barcodes{background:#fff;}
