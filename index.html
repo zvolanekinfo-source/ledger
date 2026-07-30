@@ -3313,7 +3313,9 @@ function viewProducts(){
 
     ${renderBulkBar(state.selectedProductIds.size, 'produktů', `
       <button type="button" class="btn secondary small" data-action="bulk-print-product-code">Tisk produktového kódu</button>
+      <button type="button" class="btn secondary small" data-action="bulk-save-product-code">Uložit produktový kód</button>
       <button type="button" class="btn secondary small" data-action="bulk-print-product-info">Tisk informací</button>
+      <button type="button" class="btn secondary small" data-action="bulk-save-product-info">Uložit informace</button>
       <button type="button" class="btn secondary small" data-action="bulk-edit-products-price">Změnit ceny</button>
       <button type="button" class="btn secondary small" data-action="bulk-edit-products-vat">Změnit DPH</button>
       <button type="button" class="btn secondary small" data-action="bulk-edit-products-supplier">Změnit dodavatele</button>
@@ -3441,7 +3443,9 @@ function viewProductForm(){
         ${editing ? `
         <div style="margin-top:12px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap;">
           <button type="button" class="btn secondary small" data-action="print-product-code-only" data-id="${p.id}">Tisk produktového kódu</button>
+          <button type="button" class="btn secondary small" data-action="save-product-code-only" data-id="${p.id}">Uložit produktový kód</button>
           <button type="button" class="btn secondary small" data-action="print-product-info" data-id="${p.id}">Tisk informací</button>
+          <button type="button" class="btn secondary small" data-action="save-product-info" data-id="${p.id}">Uložit informace</button>
         </div>
         <p style="font-size:11px;color:var(--ink-soft);margin:8px 0 0 0;">„Tisk produktového kódu" vytiskne jen samotný kód (přizpůsobí se velikosti štítku). „Tisk informací" vytiskne kompletní údaje o produktu s oběma kódy (interním i EAN výrobce, pokud je zadaný).</p>
         ` : `<p style="font-size:12px;color:var(--ink-soft);margin-top:10px;">Tisk kódu a informací bude dostupný po uložení produktu.</p>`}
@@ -3889,6 +3893,48 @@ function buildBarcodeLabelsHtml(products, qtyEach, showPrice){
     }
   });
   return html;
+}
+async function downloadProductCodeFiles(productIds){
+  const ids = Array.isArray(productIds) ? productIds : [productIds];
+  if(!barcodeLibReady()) return;
+  for(const id of ids){
+    const p = productById(id);
+    if(!p) continue;
+    const canvas = document.createElement('canvas');
+    const v = String(p.number || p.ean || '');
+    const format = /^\d{13}$/.test(v) ? 'EAN13' : /^\d{8}$/.test(v) ? 'EAN8' : 'CODE128';
+    try{ JsBarcode(canvas, v, { format, displayValue:false, margin:6 }); }
+    catch(e){ try{ JsBarcode(canvas, v, { format:'CODE128', displayValue:false, margin:6 }); }catch(e2){ console.error(e2); continue; } }
+    const url = canvas.toDataURL('image/png');
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `Produktovy-kod-${(v||p.id).replace(/[^\w.-]+/g,'_')}.png`;
+    document.body.appendChild(a); a.click(); a.remove();
+  }
+}
+async function downloadProductInfoFiles(productIds){
+  const ids = Array.isArray(productIds) ? productIds : [productIds];
+  if(!window.html2pdf) return;
+  for(const id of ids){
+    const p = productById(id);
+    if(!p) continue;
+    const wrap = document.createElement('div');
+    wrap.style.cssText = 'position:fixed;left:-9999px;top:0;background:#fff;padding:10px;';
+    wrap.innerHTML = productInfoSheetHtml(p).html;
+    document.body.appendChild(wrap);
+    wrap.querySelectorAll('svg.pi-code-own').forEach(svg=> renderAutoBarcodeToSvg(svg, svg.getAttribute('data-code')));
+    wrap.querySelectorAll('svg.pi-code-mfr').forEach(svg=> renderAutoBarcodeToSvg(svg, svg.getAttribute('data-code')));
+    try{
+      await html2pdf().set({
+        margin:10,
+        filename: `Informace-o-produktu-${(p.name||'produkt').replace(/[^\w.-]+/g,'_')}.pdf`,
+        image:{type:'jpeg',quality:0.98},
+        html2canvas:{scale:2, useCORS:true, backgroundColor:'#ffffff'},
+        jsPDF:{unit:'pt', format:'a4', orientation:'portrait'}
+      }).from(wrap).save();
+    }catch(err){ console.error(err); }
+    finally{ wrap.remove(); }
+  }
 }
 function printProductCodeOnly(productIds){
   const ids = Array.isArray(productIds) ? productIds : [productIds];
@@ -5344,7 +5390,9 @@ document.addEventListener('click', async (e)=>{
   }
   else if(action==='print-one-barcode'){ closeProductContextMenu(); printProductBarcodes([id], 1, true); }
   else if(action==='print-product-code-only'){ printProductCodeOnly(id); }
+  else if(action==='save-product-code-only'){ await downloadProductCodeFiles(id); }
   else if(action==='print-product-info'){ printProductInfoSheet(id); }
+  else if(action==='save-product-info'){ await downloadProductInfoFiles(id); }
   else if(action==='download-barcode-png'){ downloadBarcodePng(id); }
   else if(action==='download-barcode-pdf'){ await downloadBarcodePdf([id], 1, true); }
   else if(action==='toggle-product-select'){
@@ -5386,7 +5434,9 @@ document.addEventListener('click', async (e)=>{
   else if(action==='bulk-clear-selection'){ state.selectedInvoiceIds.clear(); state.selectedClientIds.clear(); state.selectedProductIds.clear(); render(); }
   else if(action==='bulk-print-barcodes'){ printProductBarcodes([...state.selectedProductIds], 1, true); }
   else if(action==='bulk-print-product-code'){ printProductCodeOnly([...state.selectedProductIds]); }
+  else if(action==='bulk-save-product-code'){ await downloadProductCodeFiles([...state.selectedProductIds]); }
   else if(action==='bulk-print-product-info'){ printProductInfoSheet([...state.selectedProductIds]); }
+  else if(action==='bulk-save-product-info'){ await downloadProductInfoFiles([...state.selectedProductIds]); }
   else if(action==='bulk-edit-products-price'){
     const mode = prompt('Jak upravit prodejní cenu vybraných produktů?\nNapiš buď pevnou částku (např. 199), nebo procentuální změnu s % (např. +10% nebo -5%).');
     if(mode===null) return;
