@@ -434,7 +434,7 @@
   .stock-row{display:flex;gap:18px;flex-wrap:wrap;background:var(--paper);border:1px solid var(--line);border-radius:6px;padding:14px 16px;margin-bottom:14px;}
   .stock-row .sr-item .sr-label{font-size:10.5px;text-transform:uppercase;letter-spacing:.6px;color:var(--ink-soft);}
   .stock-row .sr-item .sr-value{font-family:'IBM Plex Mono',monospace;font-weight:700;font-size:19px;}
-  .movement-row{display:grid;grid-template-columns:125px 95px minmax(0,1fr) 110px 100px;gap:10px;padding:8px 4px;border-bottom:1px solid var(--line);font-size:12.5px;align-items:center;}
+  .movement-row{display:grid;grid-template-columns:125px 95px minmax(0,1fr) 110px 100px 56px;gap:10px;padding:8px 4px;border-bottom:1px solid var(--line);font-size:12.5px;align-items:center;}
   .movement-row > div{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
   .movement-row:last-child{border-bottom:none;}
   .movement-row .mv-qty{white-space:nowrap;}
@@ -3440,15 +3440,7 @@ function viewProductForm(){
       <div class="barcode-preview-box" style="max-width:340px;">
         <svg id="product-number-barcode-svg"></svg>
         <div id="product-number-barcode-error" style="display:none;font-size:11.5px;color:var(--red);margin-top:6px;">Zadané číslo není platný EAN-13 — obrázek zobrazen jako Code 128.</div>
-        ${editing ? `
-        <div style="margin-top:12px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap;">
-          <button type="button" class="btn secondary small" data-action="print-product-code-only" data-id="${p.id}">Tisk produktového kódu</button>
-          <button type="button" class="btn secondary small" data-action="save-product-code-only" data-id="${p.id}">Uložit produktový kód</button>
-          <button type="button" class="btn secondary small" data-action="print-product-info" data-id="${p.id}">Tisk informací</button>
-          <button type="button" class="btn secondary small" data-action="save-product-info" data-id="${p.id}">Uložit informace</button>
-        </div>
-        <p style="font-size:11px;color:var(--ink-soft);margin:8px 0 0 0;">„Tisk produktového kódu" vytiskne jen samotný kód (přizpůsobí se velikosti štítku). „Tisk informací" vytiskne kompletní údaje o produktu s oběma kódy (interním i EAN výrobce, pokud je zadaný).</p>
-        ` : `<p style="font-size:12px;color:var(--ink-soft);margin-top:10px;">Tisk kódu a informací bude dostupný po uložení produktu.</p>`}
+        <p style="font-size:11px;color:var(--ink-soft);margin:8px 0 0 0;">Tisk kódu, tisk informací a jejich uložení najdeš v seznamu Produkty po označení produktu.</p>
       </div>
       <div class="mini-label" style="margin-top:18px;">Umístění a pohyby na skladě (patří k tomuto kódu)</div>
       ${locationFieldGroup(p.location)}
@@ -3479,10 +3471,10 @@ function viewProductForm(){
             <button type="button" class="btn-link" data-action="toggle-stock-movement-panel">Zrušit</button>
           </div>
         </div>
-        <div class="mini-label" style="margin-top:18px;">Historie pohybů (nesmazatelná)</div>
+        <div class="mini-label" style="margin-top:18px;">Historie pohybů</div>
         ${(p.movements||[]).length ? `
           <div class="movement-row" style="font-weight:600;color:var(--ink-soft);font-size:11px;text-transform:uppercase;">
-            <div>Datum</div><div>Typ</div><div>Poznámka</div><div>Kdo</div><div>Množství</div>
+            <div>Datum</div><div>Typ</div><div>Poznámka</div><div>Kdo</div><div>Množství</div><div></div>
           </div>
           ${[...p.movements].reverse().slice(0,50).map(m=>`
             <div class="movement-row">
@@ -3491,6 +3483,10 @@ function viewProductForm(){
               <div>${escapeHtml(m.reason||m.note||'—')}</div>
               <div>${escapeHtml(m.user||'—')}</div>
               <div class="mv-qty ${m.qty>=0?'pos':'neg'}">${m.qty>=0?'+':''}${m.qty} → ${m.resultingStock}</div>
+              <div class="actions-cell no-print">
+                <button type="button" class="iconbtn" data-action="edit-movement" data-id="${p.id}" data-mid="${m.id}" title="Upravit">✎</button>
+                <button type="button" class="iconbtn" data-action="delete-movement" data-id="${p.id}" data-mid="${m.id}" title="Smazat">✕</button>
+              </div>
             </div>
           `).join('')}
         ` : `<p style="font-size:12.5px;color:var(--ink-soft);">Zatím žádné skladové pohyby.</p>`}
@@ -3742,6 +3738,12 @@ async function onSubmitProduct(e){
 }
 
 /* ---------- SKLADOVÝ POHYB ---------- */
+function recomputeMovementsChain(p){
+  const sorted = [...(p.movements||[])].sort((a,b)=> new Date(a.date)-new Date(b.date));
+  let running = 0;
+  sorted.forEach(m=>{ running += (parseFloat(m.qty)||0); m.resultingStock = running; });
+  p.stockCurrent = running;
+}
 async function promptStockMovement(productId){
   const p = productById(productId);
   if(!p) return;
@@ -3919,7 +3921,7 @@ async function downloadProductInfoFiles(productIds){
     const p = productById(id);
     if(!p) continue;
     const wrap = document.createElement('div');
-    wrap.style.cssText = 'position:fixed;left:-9999px;top:0;background:#fff;padding:10px;';
+    wrap.style.cssText = 'background:#fff;padding:10px;width:700px;';
     wrap.innerHTML = productInfoSheetHtml(p).html;
     document.body.appendChild(wrap);
     wrap.querySelectorAll('svg.pi-code-own').forEach(svg=> renderAutoBarcodeToSvg(svg, svg.getAttribute('data-code')));
@@ -3952,8 +3954,8 @@ function printProductCodeOnly(productIds){
     if(!svg || !barcodeLibReady()) return;
     const v = String(p.number || p.ean || '');
     const format = /^\d{13}$/.test(v) ? 'EAN13' : /^\d{8}$/.test(v) ? 'EAN8' : 'CODE128';
-    try{ JsBarcode(svg, v, { format, displayValue:false, margin:4, background:'#ffffff', lineColor:'#182420' }); }
-    catch(e){ try{ JsBarcode(svg, v, { format:'CODE128', displayValue:false, margin:4, background:'#ffffff', lineColor:'#182420' }); }catch(e2){ console.error(e2); } }
+    try{ JsBarcode(svg, v, { format, displayValue:true, fontSize:14, margin:6, background:'#ffffff', lineColor:'#182420' }); }
+    catch(e){ try{ JsBarcode(svg, v, { format:'CODE128', displayValue:true, fontSize:14, margin:6, background:'#ffffff', lineColor:'#182420' }); }catch(e2){ console.error(e2); } }
   });
   sheet.classList.add('printing');
   document.body.classList.add('printing-barcodes');
@@ -4065,7 +4067,7 @@ async function downloadBarcodePdf(ids, qty, showPrice){
   const products = ids.map(id=>productById(id)).filter(Boolean);
   if(!products.length || !window.html2pdf) return;
   const wrap = document.createElement('div');
-  wrap.style.cssText = 'position:fixed;left:-9999px;top:0;background:#fff;padding:10px;';
+  wrap.style.cssText = 'background:#fff;padding:10px;width:700px;';
   wrap.innerHTML = buildBarcodeLabelsHtml(products, qty||1, showPrice!==false);
   document.body.appendChild(wrap);
   wrap.querySelectorAll('svg[data-barcode-source]').forEach(svg=>{ renderBarcodeToSvg(svg, svg.getAttribute('data-barcode-source'), svg.getAttribute('data-barcode-type')); });
@@ -5361,6 +5363,37 @@ document.addEventListener('click', async (e)=>{
   else if(action==='remove-product-photo'){ state.currentProductDraftPhoto=''; const editing = state.editingProductId?productById(state.editingProductId):null; if(editing) editing.photo=''; render(); }
 
   else if(action==='open-stock-movement'){ await promptStockMovement(id); }
+  else if(action==='edit-movement'){
+    const p = productById(id);
+    const mid = el.getAttribute('data-mid');
+    const m = p ? (p.movements||[]).find(x=>x.id===mid) : null;
+    if(!p || !m) return;
+    const newTypeRaw = prompt('Typ pohybu:', m.type);
+    if(newTypeRaw===null) return;
+    const newQtyRaw = prompt('Množství (kladné = příjem, záporné = výdej):', m.qty);
+    if(newQtyRaw===null) return;
+    const newQty = parseFloat(newQtyRaw);
+    if(isNaN(newQty) || newQty===0){ alert('Zadej platné nenulové množství.'); return; }
+    const newReason = prompt('Poznámka / důvod:', m.reason||'');
+    if(newReason===null) return;
+    m.type = newTypeRaw.trim() || m.type;
+    m.qty = newQty;
+    m.reason = newReason.trim();
+    recomputeMovementsChain(p);
+    if((p.stockCurrent||0) < 0 && !confirm(`Po úpravě klesne sklad do záporných hodnot (${p.stockCurrent}). Pokračovat a uložit?`)) return;
+    try{ await saveProducts(); }catch(err){ alert('Uložení se nepovedlo, zkus to prosím znovu.'); return; }
+    render();
+  }
+  else if(action==='delete-movement'){
+    const p = productById(id);
+    const mid = el.getAttribute('data-mid');
+    if(!p) return;
+    if(!confirm('Smazat tento skladový pohyb? Přepočítá se z toho i historie a aktuální stav skladu.')) return;
+    p.movements = (p.movements||[]).filter(m=>m.id!==mid);
+    recomputeMovementsChain(p);
+    try{ await saveProducts(); }catch(err){ alert('Smazání se nepovedlo, zkus to prosím znovu.'); return; }
+    render();
+  }
   else if(action==='toggle-stock-movement-panel'){
     const panel = document.getElementById('stock-movement-panel');
     if(panel) panel.style.display = (panel.style.display==='none') ? '' : 'none';
