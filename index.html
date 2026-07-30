@@ -2490,7 +2490,7 @@ function viewBulkImport(){
           <div class="card"><div class="label">Prázdné řádky</div><div class="value">${bi.preview.skipped}</div></div>
         </div>
         <table>
-          <thead><tr><th>Název</th><th></th><th>EAN</th><th>Kategorie</th><th>Nákupní</th><th>Prodejní</th><th>Sklad</th></tr></thead>
+          <thead><tr><th>Název</th><th></th><th>EAN</th><th>Kategorie</th><th>Nákupní</th><th>Prodejní</th><th>Sklad</th><th>Umístění</th></tr></thead>
           <tbody>
             ${bi.preview.items.slice(0,100).map(it=>`
               <tr>
@@ -2501,6 +2501,7 @@ function viewBulkImport(){
                 <td class="num">${fmt(it.purchasePrice)} Kč</td>
                 <td class="num">${fmt(it.salePrice)} Kč</td>
                 <td class="num">${it.stockCurrent}</td>
+                <td>${escapeHtml(it.location||'—')}</td>
               </tr>
             `).join('')}
           </tbody>
@@ -2582,6 +2583,7 @@ const DEFAULT_PRODUCT_COLUMNS = [
   {key:'salePrice', label:'Prodejní', width:90, visible:true},
   {key:'margin', label:'Marže', width:80, visible:true},
   {key:'stock', label:'Sklad', width:120, visible:true},
+  {key:'location', label:'Umístění', width:130, visible:true},
   {key:'expiry', label:'Expirace', width:100, visible:true},
 ];
 const PRODUCT_UNITS = ['ks','kg','g','l','ml','m','balení','hod'];
@@ -2591,7 +2593,7 @@ function blankProduct(){
     id: uid(), number:'', ean:'', internalCode:'', name:'', description:'',
     category:'', manufacturer:'', supplierId:'', unit:'ks', vatRate:21, note:'',
     purchasePrice:0, salePrice:0,
-    stockCurrent:0, stockReserved:0, stockMin:0,
+    stockCurrent:0, stockReserved:0, stockMin:0, location:'',
     expiryDate:'', photo:'', link:'', archived:false, createdAt:new Date().toISOString(),
     movements:[]
   };
@@ -2869,7 +2871,7 @@ function filteredSortedProducts(){
     if(f.archived==='' && p.archived) return false;
     if(f.archived==='archived' && !p.archived) return false;
     if(q){
-      const hay = stripDiacritics(`${p.name} ${p.ean} ${p.number} ${p.internalCode} ${p.manufacturer} ${(supplierById(p.supplierId)||{}).name||''}`).toLowerCase();
+      const hay = stripDiacritics(`${p.name} ${p.ean} ${p.number} ${p.internalCode} ${p.manufacturer} ${p.location||''} ${(supplierById(p.supplierId)||{}).name||''}`).toLowerCase();
       if(!hay.includes(q)) return false;
     }
     if(f.stock && stockStatus(p)!==f.stock) return false;
@@ -2912,6 +2914,7 @@ function productCellContent(p, key){
     case 'salePrice': return `<span class="num">${fmt(p.salePrice||0)} Kč</span>`;
     case 'margin': { const m=productMargin(p); return `<span class="num">${m.marginPct.toFixed(0)}%</span>`; }
     case 'stock': { const s=stockStatus(p); return `<span class="pill ${stockPillClass(s)}">${stockAvailable(p)} ${escapeHtml(p.unit||'ks')}</span>`; }
+    case 'location': return escapeHtml(p.location||'—');
     case 'expiry': return expiryBadge(p) || '—';
     default: return '';
   }
@@ -3135,7 +3138,7 @@ function viewProductForm(){
         </div>
         <div class="field-row">
           <div class="field"><label>Minimální stav</label><input type="number" step="1" name="stockMin" value="${p.stockMin||0}"></div>
-          <div class="field"></div>
+          <div class="field"><label>Umístění na skladě</label><input name="location" value="${escapeAttr(p.location||'')}" placeholder="např. Sklad A, Regál 3, Police B2"></div>
         </div>
         <button type="button" class="btn secondary small" data-action="open-stock-movement" data-id="${p.id}">+ Skladový pohyb</button>
         <div class="mini-label" style="margin-top:18px;">Historie pohybů (nesmazatelná)</div>
@@ -3158,6 +3161,7 @@ function viewProductForm(){
           <div class="field"><label>Počáteční stav skladu</label><input type="number" step="1" name="stockCurrent" value="${p.stockCurrent||0}"></div>
           <div class="field"><label>Minimální stav</label><input type="number" step="1" name="stockMin" value="${p.stockMin||0}"></div>
         </div>
+        <div class="field"><label>Umístění na skladě</label><input name="location" value="${escapeAttr(p.location||'')}" placeholder="např. Sklad A, Regál 3, Police B2" style="max-width:400px;"></div>
       `}
 
       <div class="section-title">Čárový kód</div>
@@ -3294,7 +3298,7 @@ async function onSubmitProduct(e){
     purchasePrice: parseFloat(fd.get('purchasePrice'))||0, salePrice: parseFloat(fd.get('salePrice'))||0,
     stockCurrent: existing ? existing.stockCurrent : (parseFloat(fd.get('stockCurrent'))||0),
     stockReserved: existing ? (existing.stockReserved||0) : 0,
-    stockMin: parseFloat(fd.get('stockMin'))||0,
+    stockMin: parseFloat(fd.get('stockMin'))||0, location: (fd.get('location')||'').trim(),
     expiryDate: fd.get('expiryDate')||'', photo, link: fd.get('link')||'',
     archived: existing ? !!existing.archived : false,
     createdAt: existing ? existing.createdAt : new Date().toISOString(),
@@ -3359,7 +3363,7 @@ function viewStock(){
     <div class="section-title">Blížící se expirace</div>
     ${expiring.length ? `
     <table>
-      <thead><tr><th>Produkt</th><th>Expirace</th><th>Zbývá dní</th><th>Skladem</th><th></th></tr></thead>
+      <thead><tr><th>Produkt</th><th>Expirace</th><th>Zbývá dní</th><th>Skladem</th><th>Umístění</th><th></th></tr></thead>
       <tbody>
         ${expiring.map(p=>`
           <tr>
@@ -3367,6 +3371,7 @@ function viewStock(){
             <td class="num">${p.expiryDate}</td>
             <td class="num">${daysUntil(p.expiryDate)}</td>
             <td class="num">${p.stockCurrent||0} ${escapeHtml(p.unit||'ks')}</td>
+            <td>${escapeHtml(p.location||'—')}</td>
             <td class="actions-cell no-print"><button class="iconbtn" data-action="open-product" data-id="${p.id}" title="Otevřít">✎</button></td>
           </tr>
         `).join('')}
@@ -3522,6 +3527,7 @@ const PRODUCT_BULK_FIELDS = [
   {key:'salePrice', label:'Produkt — prodejní cena'},
   {key:'stockCurrent', label:'Produkt — stav skladu'},
   {key:'stockMin', label:'Produkt — minimální stav'},
+  {key:'location', label:'Produkt — umístění na skladě'},
   {key:'expiryDate', label:'Produkt — datum expirace'},
   {key:'note', label:'Produkt — poznámka'},
 ];
@@ -3539,6 +3545,7 @@ function guessProductFieldForHeader(header){
     [/n[áa]kupn[íi]/, 'purchasePrice'],
     [/prodejn[íi]|sale\s*price/, 'salePrice'],
     [/minim[áa]ln[íi]/, 'stockMin'],
+    [/um[íi]st[ěe]n|regál|regal|police|pozice|location|shelf/, 'location'],
     [/sklad|stock|mnoz?stv[íi]|quantity/, 'stockCurrent'],
     [/expirac|expir|trvanliv/, 'expiryDate'],
     [/pozn[áa]mka|note/, 'note'],
@@ -3588,7 +3595,7 @@ function computeProductBulkPreview(){
       supplierName: (get(row,'supplierName')||'').toString().trim(), unit: (get(row,'unit')||'ks').toString().trim()||'ks',
       vatRate: bulkParseNumber(get(row,'vatRate'))||0, purchasePrice: bulkParseNumber(get(row,'purchasePrice'))||0,
       salePrice: bulkParseNumber(get(row,'salePrice'))||0, stockCurrent: bulkParseNumber(get(row,'stockCurrent'))||0,
-      stockMin: bulkParseNumber(get(row,'stockMin'))||0, expiryDate: bulkParseDate(get(row,'expiryDate')),
+      stockMin: bulkParseNumber(get(row,'stockMin'))||0, location: (get(row,'location')||'').toString().trim(), expiryDate: bulkParseDate(get(row,'expiryDate')),
       note: (get(row,'note')||'').toString().trim(), isDup
     });
     if(ean) seenEans.add(ean);
@@ -3612,7 +3619,7 @@ async function confirmProductBulkImport(){
       ...blankProduct(), id: uid(), number, ean: it.ean, internalCode: it.internalCode,
       name: it.name, category: it.category, manufacturer: it.manufacturer, supplierId,
       unit: it.unit, vatRate: it.vatRate, purchasePrice: it.purchasePrice, salePrice: it.salePrice,
-      stockCurrent: it.stockCurrent, stockMin: it.stockMin, expiryDate: it.expiryDate, note: it.note,
+      stockCurrent: it.stockCurrent, stockMin: it.stockMin, location: it.location, expiryDate: it.expiryDate, note: it.note,
       movements: it.stockCurrent ? [{id:uid(), type:'počáteční stav', qty:it.stockCurrent, reason:'Import', note:'', date:new Date().toISOString(), user:state.currentUser, resultingStock:it.stockCurrent}] : []
     });
   }
@@ -3628,7 +3635,7 @@ function exportProductsCsv(format){
     Název: p.name, EAN: p.ean, 'Produktové číslo': p.number, 'Interní kód': p.internalCode,
     Kategorie: p.category, Výrobce: p.manufacturer, Dodavatel: (supplierById(p.supplierId)||{}).name||'',
     Jednotka: p.unit, 'DPH %': p.vatRate, 'Nákupní cena': p.purchasePrice, 'Prodejní cena': p.salePrice,
-    Sklad: p.stockCurrent, Minimum: p.stockMin, Expirace: p.expiryDate, Poznámka: p.note
+    Sklad: p.stockCurrent, Minimum: p.stockMin, Umístění: p.location||'', Expirace: p.expiryDate, Poznámka: p.note
   }));
   const ws = XLSX.utils.json_to_sheet(rows);
   const wb = XLSX.utils.book_new();
