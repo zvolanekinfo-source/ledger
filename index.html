@@ -553,6 +553,7 @@ let state = {
   newProductDraftId: null,
   productSearch: '',
   productFilters: { stock:'', category:'', supplierId:'', manufacturer:'', expiry:'', archived:'' },
+  productStatsFilter: { preset:'month', from:'', to:'' },
   selectedProductIds: new Set(),
   productSort: { key:'name', dir:'asc' },
   productVisibleCount: 150,
@@ -2894,6 +2895,24 @@ function computeProductStockValue(p){
   }
   return productUnitCost(p) * (p.stockCurrent||0);
 }
+function productsRevenueAndProfit(range){
+  let revenue = 0, profit = 0;
+  state.invoices.forEach(inv=>{
+    if(range.from && (inv.issueDate||'') < range.from) return;
+    if(range.to && (inv.issueDate||'') > range.to) return;
+    (inv.items||[]).forEach(it=>{
+      if(!it.productId) return;
+      const p = productById(it.productId);
+      if(!p) return;
+      const qty = parseFloat(it.qty)||0;
+      const lineRevenue = qty * (it.price||0);
+      const unitCost = productUnitCost(p) + (p.costs||0);
+      revenue += lineRevenue;
+      profit += lineRevenue - qty*unitCost;
+    });
+  });
+  return { revenue, profit };
+}
 function productMargin(p){
   const purchase = productUnitCost(p), sale = p.salePrice||0, costs = p.costs||0;
   const totalCost = purchase + costs;
@@ -3298,9 +3317,10 @@ function viewProducts(){
   const categories = [...new Set(all.map(p=>p.category).filter(Boolean))].sort();
   const manufacturers = [...new Set(all.map(p=>p.manufacturer).filter(Boolean))].sort();
   const stockValue = all.reduce((s,p)=>s+computeProductStockValue(p),0);
-  const belowMin = all.filter(p=>!p.archived && stockStatus(p)==='low').length;
-  const noPhoto = all.filter(p=>!p.archived && !p.photo).length;
-  const noEan = all.filter(p=>!p.archived && !p.ean).length;
+  const sf = state.productStatsFilter;
+  const statsRange = sf.preset==='custom' ? { from: sf.from, to: sf.to } : applyDateRangeFromPreset(sf.preset);
+  const { revenue, profit } = productsRevenueAndProfit(statsRange);
+  const statsPresets = [['month','Tento měsíc'],['12m','Posledních 12 měsíců'],['all','Vše'],['custom','Vlastní']];
   return `
     <div class="pagehead">
       <div><h1>Produkty</h1><p class="desc">${list.length} z ${all.length} produktů.</p></div>
@@ -3311,11 +3331,22 @@ function viewProducts(){
       </div>
     </div>
 
+    <div class="filter-presets no-print">
+      ${statsPresets.map(([v,l])=>`<button type="button" class="chip ${sf.preset===v?'active':''}" data-action="products-stats-preset" data-preset="${v}">${l}</button>`).join('')}
+    </div>
+    ${sf.preset==='custom' ? `
+    <div class="filter-row" style="margin-bottom:14px;">
+      <div class="field"><label>Od</label><input type="date" id="pstats-from" value="${sf.from||''}"></div>
+      <div class="field"><label>Do</label><input type="date" id="pstats-to" value="${sf.to||''}"></div>
+      <div class="field"></div><div class="field"></div>
+    </div>
+    ` : ''}
+
     <div class="cards">
       <div class="card"><div class="label">Produktů celkem</div><div class="value">${all.length}</div></div>
       <div class="card"><div class="label">Hodnota skladu (nákupní)</div><div class="value accent num">${fmt(stockValue)} Kč</div></div>
-      <div class="card"><div class="label">Pod minimem / bez EAN</div><div class="value amber">${belowMin} / ${noEan}</div></div>
-      <div class="card"><div class="label">Bez fotografie</div><div class="value">${noPhoto}</div></div>
+      <div class="card"><div class="label">Obrat (${statsPresets.find(p=>p[0]===sf.preset)[1].toLowerCase()})</div><div class="value num">${fmt(revenue)} Kč</div></div>
+      <div class="card"><div class="label">Čistý zisk (${statsPresets.find(p=>p[0]===sf.preset)[1].toLowerCase()})</div><div class="value accent num">${fmt(profit)} Kč</div></div>
     </div>
 
     ${renderBulkBar(state.selectedProductIds.size, 'produktů', `
@@ -4441,6 +4472,16 @@ function afterRender(){
       render();
     });
   });
+  ['pstats-from','pstats-to'].forEach(id=>{
+    const el = document.getElementById(id);
+    if(!el) return;
+    el.addEventListener('change', ()=>{
+      const from = document.getElementById('pstats-from').value;
+      const to = document.getElementById('pstats-to').value;
+      state.productStatsFilter = { preset:'custom', from, to };
+      render();
+    });
+  });
 
   // invoice list filter controls
   ['inv-from','inv-to','inv-client','inv-status'].forEach(id=>{
@@ -5331,6 +5372,12 @@ document.addEventListener('click', async (e)=>{
     const preset = el.getAttribute('data-preset');
     const range = applyDateRangeFromPreset(preset);
     state.dashboardFilter = { ...state.dashboardFilter, preset, from: range.from, to: range.to };
+    render();
+  }
+  else if(action==='products-stats-preset'){
+    const preset = el.getAttribute('data-preset');
+    const range = applyDateRangeFromPreset(preset);
+    state.productStatsFilter = { preset, from: range.from, to: range.to };
     render();
   }
   else if(action==='inv-clear-filters'){ state.invoiceFilter = { search:'', from:'', to:'', clientId:'', status:'' }; render(); }
