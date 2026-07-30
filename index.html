@@ -303,6 +303,13 @@
   .invoice-sheet .inv-footer{margin-top:28px;padding-top:16px;border-top:1px solid var(--line);display:flex;justify-content:space-between;font-size:10.5px;color:var(--ink-soft);}
 
   .preview-side{width:220px;display:flex;flex-direction:column;gap:8px;}
+  #multi-invoice-print-sheet{display:none;}
+  .print-invoice-block{page-break-after:always;}
+  .print-invoice-block:last-child{page-break-after:auto;}
+  @media print{
+    #multi-invoice-print-sheet.printing{display:block !important;background:#fff;padding:0;margin:0;}
+    .print-invoice-block .invoice-sheet{box-shadow:none;border:none;width:auto;border-radius:0;}
+  }
 
   /* LOGIN */
   .login-wrap{min-height:100vh;display:flex;background:var(--surface);}
@@ -437,23 +444,25 @@
   .barcode-label .bl-name{font-size:11.5px;font-weight:600;margin-bottom:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
   .barcode-label .bl-num{font-size:10px;color:var(--ink-soft);margin-bottom:4px;font-family:'IBM Plex Mono',monospace;}
   .barcode-label .bl-price{font-size:13px;font-weight:700;margin-top:4px;}
+  @page{ margin:12mm; }
   #barcode-print-sheet{display:none;}
   #product-code-print-sheet{display:none;}
   #product-info-print-sheet{display:none;}
-  .pinfo-sheet{padding:24px;max-width:640px;page-break-after:always;}
+  .pinfo-sheet{padding:0;max-width:640px;page-break-after:always;font-size:12.5px;}
   .pinfo-sheet:last-child{page-break-after:auto;}
-  .pinfo-sheet .pi-head{display:flex;gap:20px;align-items:flex-start;margin-bottom:20px;}
-  .pinfo-sheet .pi-photo{width:110px;height:110px;object-fit:cover;border-radius:8px;border:1px solid var(--line);flex-shrink:0;}
-  .pinfo-sheet .pi-name{font-family:'Fraunces',serif;font-size:22px;font-weight:600;margin-bottom:6px;}
-  .pinfo-sheet .pi-row{display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--line);font-size:13.5px;}
+  .pinfo-sheet .pi-head{display:flex;gap:16px;align-items:flex-start;margin-bottom:14px;}
+  .pinfo-sheet .pi-photo{width:80px;height:80px;object-fit:cover;border-radius:8px;border:1px solid var(--line);flex-shrink:0;}
+  .pinfo-sheet .pi-name{font-family:'Fraunces',serif;font-size:19px;font-weight:600;margin-bottom:4px;}
+  .pinfo-sheet .pi-row{display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--line);font-size:12.5px;}
   .pinfo-sheet .pi-row span:first-child{color:var(--ink-soft);}
   .pinfo-sheet .pi-row span:last-child{font-weight:600;}
-  .pinfo-sheet .pi-codes{display:flex;gap:24px;margin-top:22px;flex-wrap:wrap;}
-  .pinfo-sheet .pi-code-box{text-align:center;border:1px solid var(--line);border-radius:8px;padding:14px;}
-  .pinfo-sheet .pi-code-box .pi-code-label{font-size:10.5px;text-transform:uppercase;letter-spacing:.6px;color:var(--ink-soft);margin-bottom:8px;}
-  .code-only-block{text-align:center;padding:6% 4%;page-break-after:always;}
+  .pinfo-sheet .pi-codes{display:flex;gap:16px;margin-top:14px;flex-wrap:wrap;}
+  .pinfo-sheet .pi-code-box{text-align:center;border:1px solid var(--line);border-radius:8px;padding:10px;}
+  .pinfo-sheet .pi-code-box svg{max-height:60px;}
+  .pinfo-sheet .pi-code-box .pi-code-label{font-size:10px;text-transform:uppercase;letter-spacing:.6px;color:var(--ink-soft);margin-bottom:6px;}
+  .code-only-block{text-align:center;padding:20mm 10mm;page-break-after:always;}
   .code-only-block:last-child{page-break-after:auto;}
-  .code-only-block svg{width:80%;height:auto;max-width:520px;}
+  .code-only-block svg{width:auto;height:auto;max-width:100mm;max-height:45mm;}
   @media print{
     html,body{height:auto !important;}
     #barcode-print-sheet.printing,#product-code-print-sheet.printing,#product-info-print-sheet.printing{
@@ -761,7 +770,8 @@ async function loadAll(){
     prefix:'', nextNumber:1, defaultDueDays:'', defaultNote:'',
     invoiceTerms:'',
     defaultPaymentMethod:'', invoiceAccent:'#1F5C4D',
-    logo:'', signature:'', stamp:'', showLogo:true, showStamp:true, showSignature:true, showQr:true
+    logo:'', signature:'', stamp:'', showLogo:true, showStamp:true, showSignature:true, showQr:true,
+    inventoryValuationMethod:'average'
   };
   if(!state.companies.length){
     state.companies = [{ id: uid(), ...companyDefaults }];
@@ -1241,6 +1251,7 @@ function viewInvoices(){
       ${anyFilterActive?`<button type="button" class="filter-clear" data-action="inv-clear-filters">Zrušit filtry</button>`:''}
     </div>
     ${renderBulkBar(state.selectedInvoiceIds.size, 'faktur', `
+      <button type="button" class="btn secondary small" data-action="bulk-print-invoices">Tisk vybraných</button>
       <button type="button" class="btn secondary small" data-action="bulk-mark-paid">Označit jako zaplacené</button>
       <button type="button" class="btn secondary small" data-action="bulk-mark-unpaid">Označit jako nezaplacené</button>
       <button type="button" class="btn danger small" data-action="bulk-delete-invoices">Smazat vybrané</button>
@@ -1646,6 +1657,156 @@ function viewInvoicePreview(){
   `;
 }
 
+function buildInvoiceSheetBlock(inv, idx){
+  const c = clientById(inv.clientId);
+  const co = companyById(inv.companyId) || state.companies[0];
+  const t = invoiceTotals(inv);
+  const discountAmount = inv.discountType==='percent' ? t.total*(inv.discountValue||0)/100
+    : inv.discountType==='amount' ? Math.min(inv.discountValue||0, t.total)
+    : 0;
+  const afterDiscount = t.total - discountAmount;
+  const roundedTotal = inv.rounding==='whole' ? Math.round(afterDiscount) : afterDiscount;
+  const roundingAmount = roundedTotal - afterDiscount;
+  const cur = inv.currency || 'CZK';
+  const showQr = co.showQr!==false && inv.includeQr!==false;
+  const showStamp = co.showStamp!==false && inv.includeStamp!==false && !!co.stamp;
+  const showSignature = co.showSignature!==false && inv.includeSignature!==false && !!co.signature;
+  const showLogo = co.showLogo!==false && !!co.logo;
+  const spayd = showQr ? buildSpayd(co, inv, roundedTotal) : null;
+  const accent = co.invoiceAccent || '#1F5C4D';
+  const sheetStyle = `--inv-accent:${accent};--inv-accent-soft:${hexToRgba(accent,0.12)};--inv-accent-tint:${hexToRgba(accent,0.05)};`;
+  const html = `<div class="print-invoice-block">
+      <div class="invoice-sheet ${inv.colorMode==='bw'?'bw-mode':''}" id="invoice-sheet-${idx}" style="${sheetStyle}">
+        <div class="inv-body">
+        <div class="inv-header">
+          <div class="inv-header-left">
+            ${showLogo ? `<img class="inv-logo" src="${co.logo}" alt="Logo">` : `<div class="inv-logo-placeholder">LOGO</div>`}
+            <div>
+              <div class="inv-co-name">${escapeHtml(co.name||'Vaše firma')}</div>
+              ${co.tagline?`<div class="inv-co-tagline">${escapeHtml(co.tagline)}</div>`:''}
+            </div>
+          </div>
+          <div class="inv-header-right">
+            <div class="inv-doctitle">Faktura</div>
+            <div class="inv-docnum">${escapeHtml(inv.number)}</div>
+            ${inv.paid ? `<div class="paid-badge">Zaplaceno</div>` : ''}
+          </div>
+        </div>
+
+          <div class="info-grid">
+            <div class="info-card">
+              <div class="k">Dodavatel</div>
+              <div class="nm">${escapeHtml(co.name||'—')}</div>
+              <div>${nl2br(formatAddress(co.address))}</div>
+              ${co.ico?`<div>IČO: ${escapeHtml(co.ico)}</div>`:''}
+              ${co.dic?`<div>DIČ: ${escapeHtml(co.dic)}</div>`:''}
+              ${co.email?`<div>${escapeHtml(co.email)}</div>`:''}
+              ${co.phone?`<div>${escapeHtml(co.phone)}</div>`:''}
+              ${co.website?`<div>${escapeHtml(co.website)}</div>`:''}
+              <div class="divider">
+                ${co.account?`<div class="meta-row"><span>Číslo účtu</span><span>${escapeHtml(co.account)}</span></div>`:''}
+                ${co.iban?`<div class="meta-row"><span>IBAN</span><span>${escapeHtml(co.iban)}</span></div>`:''}
+                ${co.swift?`<div class="meta-row"><span>SWIFT/BIC</span><span>${escapeHtml(co.swift)}</span></div>`:''}
+                <div class="meta-row"><span>Forma úhrady</span><span>${escapeHtml(inv.paymentMethod||'Bankovním převodem')}</span></div>
+                <div class="meta-row"><span>Datum vystavení</span><span>${inv.issueDate||''}</span></div>
+                <div class="meta-row"><span>Datum splatnosti</span><span>${inv.dueDate||''}</span></div>
+                <div class="meta-row"><span>Zd. plnění</span><span>${inv.taxDate||''}</span></div>
+                ${inv.variableSymbol?`<div class="meta-row"><span>Variabilní symbol</span><span>${escapeHtml(inv.variableSymbol)}</span></div>`:''}
+                ${inv.constantSymbol?`<div class="meta-row"><span>Konstantní symbol</span><span>${escapeHtml(inv.constantSymbol)}</span></div>`:''}
+                ${inv.orderNumber?`<div class="meta-row"><span>Číslo objednávky</span><span>${escapeHtml(inv.orderNumber)}</span></div>`:''}
+                ${!co.account && !co.iban ? `<div style="margin-top:6px;">Doplň platební údaje v nastavení.</div>` : ''}
+              </div>
+            </div>
+            <div class="info-card">
+              <div class="k">Odběratel</div>
+              <div class="nm">${c?escapeHtml(c.name):'—'}</div>
+              <div>${c?nl2br(formatAddress(c.address)):''}</div>
+              ${c&&c.ico?`<div>IČO: ${escapeHtml(c.ico)}</div>`:''}
+              ${c&&c.dic?`<div>DIČ: ${escapeHtml(c.dic)}</div>`:''}
+              ${c&&c.contactPerson?`<div>K rukám: ${escapeHtml(c.contactPerson)}</div>`:''}
+              ${c&&c.contactEmail?`<div>${escapeHtml(c.contactEmail)}</div>`:''}
+              ${c&&c.contactPhone?`<div>${escapeHtml(c.contactPhone)}</div>`:''}
+              ${c&&c.website?`<div>${escapeHtml(c.website)}</div>`:''}
+              ${c&&formatAddress(c.deliveryAddress)?`<div style="margin-top:8px;"><span style="opacity:.7;">Dodací adresa:</span><br>${nl2br(formatAddress(c.deliveryAddress))}</div>`:''}
+            </div>
+          </div>
+
+          <table class="lines">
+            <thead><tr><th>Popis</th><th class="num">Množství</th><th class="num">Cena/j</th><th class="num">DPH</th><th class="num">Celkem</th></tr></thead>
+            <tbody>
+              ${(inv.items||[]).map(it=>{
+                const lt=(it.qty||0)*(it.price||0)*(1+(it.vat||0)/100);
+                return `<tr><td>${escapeHtml(it.desc)}</td><td class="num">${it.qty} ${escapeHtml(it.unit||'')}</td><td class="num">${fmt(it.price)} ${cur}</td><td class="num">${it.vat}%</td><td class="num">${fmt(lt)} ${cur}</td></tr>`;
+              }).join('')}
+            </tbody>
+          </table>
+
+          <div class="bottom">
+            ${showQr ? `
+            <div class="qrbox">
+              <div class="qrimg" id="qr-holder-${idx}"></div>
+              <div>QR platba</div>
+            </div>` : ''}
+            <div class="totals">
+              <div class="trow"><span>Základ daně</span><span>${fmt(t.base)} ${cur}</span></div>
+              ${co.vatPayer!==false?`<div class="trow"><span>DPH</span><span>${fmt(t.vat)} ${cur}</span></div>`:''}
+              ${discountAmount!==0?`<div class="trow"><span>Sleva</span><span>-${fmt(discountAmount)} ${cur}</span></div>`:''}
+              ${roundingAmount!==0?`<div class="trow"><span>Zaokrouhlení</span><span>${roundingAmount>0?'+':''}${fmt(roundingAmount)} ${cur}</span></div>`:''}
+              <div class="trow grand"><span>K úhradě</span><span>${fmt(roundedTotal)} ${cur}</span></div>
+            </div>
+          </div>
+
+          ${inv.note?`<div class="note">${escapeHtml(inv.note)}</div>`:''}
+
+          <div class="signoff">
+            <div class="signoff-terms">${co.invoiceTerms?escapeHtml(co.invoiceTerms):''}</div>
+            <div class="signbox">
+              <div class="sig-stack">
+                ${showSignature?`<img class="sig-img" src="${co.signature}" alt="Podpis">`:''}
+                ${showStamp?`<img class="co-stamp-img" src="${co.stamp}" alt="Razítko">`:''}
+              </div>
+              <div class="sig-line">Podpis a razítko</div>
+            </div>
+          </div>
+
+          ${registrationSentence(co)?`<div class="signoff-terms" style="margin-top:6px;">${escapeHtml(registrationSentence(co))}</div>`:''}
+
+          <div class="inv-footer">
+            <span>${escapeHtml(co.name||'')}${co.ico?' · IČO '+escapeHtml(co.ico):''}</span>
+            <span>Strana 1/1</span>
+          </div>
+        </div>
+      </div>
+  </div>`;
+  return { html, spayd, idx };
+}
+function printSelectedInvoices(ids){
+  const invoices = ids.map(id=>state.invoices.find(i=>i.id===id)).filter(Boolean);
+  if(!invoices.length) return;
+  let sheet = document.getElementById('multi-invoice-print-sheet');
+  if(!sheet){
+    sheet = document.createElement('div');
+    sheet.id = 'multi-invoice-print-sheet';
+    document.body.appendChild(sheet);
+  }
+  const blocks = invoices.map((inv,idx)=> buildInvoiceSheetBlock(inv, idx));
+  sheet.innerHTML = blocks.map(b=>b.html).join('');
+  blocks.forEach(b=>{
+    if(b.spayd && window.QRCode){
+      const target = document.getElementById('qr-holder-'+b.idx);
+      if(target){ target.innerHTML=''; new QRCode(target, { text: b.spayd, width:110, height:110, correctLevel: QRCode.CorrectLevel.M }); }
+    }
+  });
+  sheet.classList.add('printing');
+  document.body.classList.add('printing-barcodes');
+  const cleanup = ()=>{
+    sheet.classList.remove('printing');
+    document.body.classList.remove('printing-barcodes');
+    window.removeEventListener('afterprint', cleanup);
+  };
+  window.addEventListener('afterprint', cleanup);
+  setTimeout(()=> window.print(), 120);
+}
 function buildSpayd(co, inv, total){
   if(!co.iban) return null;
   const acc = co.iban.replace(/\s+/g,'');
@@ -2093,23 +2254,6 @@ function viewSettings(){
       </p>
     </div>
 
-    <div class="section-title" style="margin-top:30px;">Oceňování skladu</div>
-    <div class="form-card">
-      <p style="font-size:13px;color:var(--ink-soft);margin-top:0;">
-        Jak se má počítat hodnota skladu a náklady u prodaného zboží, když se nákupní cena v čase mění (nové dávky, jiné DPH apod.).
-      </p>
-      <div class="field" style="max-width:360px;">
-        <label>Metoda oceňování</label>
-        <select id="inventory-valuation-select">
-          <option value="average" ${(state.inventorySettings.valuationMethod||'average')==='average'?'selected':''}>Průměrné náklady (vážený průměr)</option>
-          <option value="fifo" ${state.inventorySettings.valuationMethod==='fifo'?'selected':''}>FIFO (první dovnitř, první ven)</option>
-        </select>
-      </div>
-      <p style="font-size:11.5px;color:var(--ink-soft);margin:8px 0 0 0;">
-        „Průměrné náklady" počítá cenu skladem jako vážený průměr ze všech příjmů. „FIFO" předpokládá, že se nejdřív prodává nejstarší dávka, a hodnotu skladu počítá z cen dávek, které ještě reálně zbývají.
-      </p>
-    </div>
-
     <div class="section-title" style="margin-top:30px;">Zálohování dat</div>
     <div class="form-card">
       <p style="font-size:13px;color:var(--ink-soft);margin-top:0;">
@@ -2211,6 +2355,16 @@ function companyFormMarkup(co, opts){
       </div>
       <div class="field"><label>Výchozí poznámka (na fakturu)</label><input name="defaultNote" value="${escapeAttr(co.defaultNote)}"></div>
       <div class="field"><label>Platební podmínky / patička faktury</label><textarea name="invoiceTerms" style="min-height:70px;">${co.invoiceTerms||''}</textarea></div>
+
+      <div class="section-title">Oceňování skladu</div>
+      <div class="field" style="max-width:360px;">
+        <label>Metoda oceňování</label>
+        <select name="inventoryValuationMethod">
+          <option value="average" ${(co.inventoryValuationMethod||'average')==='average'?'selected':''}>Průměrné náklady (vážený průměr)</option>
+          <option value="fifo" ${co.inventoryValuationMethod==='fifo'?'selected':''}>FIFO (první dovnitř, první ven)</option>
+        </select>
+        <p style="font-size:11px;color:var(--ink-soft);margin:4px 0 0 0;">Jak počítat hodnotu skladu, když se nákupní cena v čase mění. Platí metoda hlavní firmy.</p>
+      </div>
 
       <div class="section-title">Zápis v obchodním rejstříku</div>
       <div class="toggle-row"><input type="checkbox" name="showRegistration" id="chk-showRegistration" value="1" ${co.showRegistration?'checked':''}><label for="chk-showRegistration">Zobrazovat zápis v obchodním rejstříku na faktuře</label></div>
@@ -2689,7 +2843,7 @@ function productById(id){ return state.products.find(p=>p.id===id); }
 function supplierById(id){ return state.suppliers.find(s=>s.id===id); }
 
 function computeProductStockValue(p){
-  const method = (state.inventorySettings && state.inventorySettings.valuationMethod) || 'average';
+  const method = (state.companies[0] && state.companies[0].inventoryValuationMethod) || 'average';
   const movements = (p.movements||[]).slice().sort((a,b)=> new Date(a.date)-new Date(b.date));
   if(!movements.length) return (p.purchasePrice||0) * (p.stockCurrent||0);
   if(method==='fifo'){
@@ -4219,14 +4373,6 @@ function afterRender(){
     });
     if(state.invoiceFilter.search) filterInvoiceRows(state.invoiceFilter.search);
   }
-  const inventoryValuationSelect = document.getElementById('inventory-valuation-select');
-  if(inventoryValuationSelect){
-    inventoryValuationSelect.addEventListener('change', async ()=>{
-      state.inventorySettings.valuationMethod = inventoryValuationSelect.value;
-      await saveInventorySettings();
-      render();
-    });
-  }
   const restoreFileInput = document.getElementById('restore-file-input');
   if(restoreFileInput){
     restoreFileInput.addEventListener('change', ()=>{ if(restoreFileInput.files[0]) restoreFromUploadedFile(restoreFileInput.files[0]); });
@@ -4873,7 +5019,7 @@ document.addEventListener('click', async (e)=>{
     });
     render();
   }
-  else if(action==='bulk-clear-selection'){ state.selectedInvoiceIds.clear(); state.selectedClientIds.clear(); render(); }
+  else if(action==='bulk-print-invoices'){ printSelectedInvoices([...state.selectedInvoiceIds]); }
   else if(action==='bulk-mark-paid' || action==='bulk-mark-unpaid'){
     const paid = action==='bulk-mark-paid';
     state.invoices.forEach(inv=>{
@@ -5150,7 +5296,7 @@ document.addEventListener('click', async (e)=>{
   else if(action==='open-stock-movement'){ await promptStockMovement(id); }
   else if(action==='toggle-stock-movement-panel'){
     const panel = document.getElementById('stock-movement-panel');
-    if(panel) panel.style.display = (panel.style.display==='none'||!panel.style.display) ? '' : 'none';
+    if(panel) panel.style.display = (panel.style.display==='none') ? '' : 'none';
   }
   else if(action==='submit-stock-movement'){
     const p = productById(id);
@@ -5514,6 +5660,7 @@ async function onSubmitCompany(e){
     prefix: fd.get('prefix'), nextNumber: parseInt(fd.get('nextNumber'))||1,
     defaultDueDays: parseInt(fd.get('defaultDueDays'))||14, defaultNote: fd.get('defaultNote'),
     invoiceTerms: fd.get('invoiceTerms'), defaultPaymentMethod: fd.get('defaultPaymentMethod'),
+    inventoryValuationMethod: fd.get('inventoryValuationMethod') || 'average',
     showLogo: fd.get('showLogo')==='1', showStamp: fd.get('showStamp')==='1',
     showSignature: fd.get('showSignature')==='1', showQr: fd.get('showQr')==='1',
     logo: existing ? existing.logo : (isDraft ? state.newCompanyDraft.logo : ''),
