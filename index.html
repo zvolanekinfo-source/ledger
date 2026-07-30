@@ -114,6 +114,7 @@
   }
   tbody td{padding:13px 16px;border-bottom:1px solid var(--line);font-size:14px;vertical-align:middle;}
   table td input[type="checkbox"],table th input[type="checkbox"]{width:18px;height:18px;cursor:pointer;accent-color:var(--ink);}
+  .checkbox-hit{display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;cursor:pointer;}
   tbody tr:last-child td{border-bottom:none;}
   tbody tr:hover{background:#FAFAF6;}
   .rowlink{cursor:pointer;}
@@ -1285,7 +1286,7 @@ function renderInvoiceTable(list, tbodyId, selectable){
         const s = invoiceStatus(inv);
         const searchKey = stripDiacritics(`${inv.number||''} ${c?c.name:''}`).toLowerCase();
         return `<tr class="rowlink" data-action="preview-invoice" data-id="${inv.id}" data-search="${escapeAttr(searchKey)}">
-          ${selectable?`<td class="no-print"><input type="checkbox" data-action="toggle-invoice-select" data-id="${inv.id}" ${state.selectedInvoiceIds.has(inv.id)?'checked':''}></td>`:''}
+          ${selectable?`<td class="no-print"><span class="checkbox-hit" data-action="toggle-invoice-select" data-id="${inv.id}"><input type="checkbox" data-action="toggle-invoice-select" data-id="${inv.id}" ${state.selectedInvoiceIds.has(inv.id)?'checked':''}></span></td>`:''}
           <td class="num">${inv.number}</td>
           <td>${c ? escapeHtml(c.name) : '—'}</td>
           <td class="num">${inv.issueDate||''}</td>
@@ -1985,7 +1986,7 @@ function viewClients(){
               data-contact="${escapeAttr(stripDiacritics(c.contactPerson||'').toLowerCase())}"
               data-email="${escapeAttr(stripDiacritics(c.contactEmail||'').toLowerCase())}"
               data-phone="${escapeAttr(stripDiacritics(c.contactPhone||'').toLowerCase())}">
-            <td class="no-print"><input type="checkbox" data-action="toggle-client-select" data-id="${c.id}" ${state.selectedClientIds.has(c.id)?'checked':''}></td>
+            <td class="no-print"><span class="checkbox-hit" data-action="toggle-client-select" data-id="${c.id}"><input type="checkbox" data-action="toggle-client-select" data-id="${c.id}" ${state.selectedClientIds.has(c.id)?'checked':''}></span></td>
             <td>${escapeHtml(c.name)}</td>
             <td class="num">${escapeHtml(c.ico||'—')}</td>
             <td>${escapeHtml(c.contactPerson||'—')}</td>
@@ -3278,7 +3279,7 @@ function renderProductTable(list, opts){
     <tbody id="products-tbody">
       ${shown.map(p=>`
         <tr class="rowlink ${state.selectedProductIds.has(p.id)?'selected':''}" data-action="open-product" data-id="${p.id}" data-product-row="${p.id}">
-          ${selectable?`<td class="no-print"><input type="checkbox" data-action="toggle-product-select" data-id="${p.id}" ${state.selectedProductIds.has(p.id)?'checked':''}></td>`:''}
+          ${selectable?`<td class="no-print"><span class="checkbox-hit" data-action="toggle-product-select" data-id="${p.id}"><input type="checkbox" data-action="toggle-product-select" data-id="${p.id}" ${state.selectedProductIds.has(p.id)?'checked':''}></span></td>`:''}
           ${cols.map(c=>`<td>${productCellContent(p,c.key)}</td>`).join('')}
           <td class="actions-cell no-print">
             <button class="iconbtn" data-action="delete-product" data-id="${p.id}" title="Smazat">✕</button>
