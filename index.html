@@ -4135,7 +4135,7 @@ async function applyStockForInvoiceChange(oldItems, newItems, reasonLabel){
     if(delta===0) return;
     product.stockCurrent = (product.stockCurrent||0) - delta;
     product.movements = product.movements || [];
-    product.movements.push({ id: uid(), type: delta>0?'prodej':'vrácení', qty: -delta, reason: reasonLabel, note:'', date: new Date().toISOString(), user: state.currentUser, resultingStock: product.stockCurrent });
+    product.movements.push({ id: uid(), type: delta>0?'prodej':'vrácení', qty: -delta, reason: reasonLabel, note:'', date: new Date().toISOString(), user: state.currentUser, resultingStock: product.stockCurrent, unitCost: product.purchasePrice||0, expiryAtTime: product.expiryDate||'', vatAtTime: product.vatRatePurchase??21 });
     changed = true;
   });
   if(changed) await saveProducts();
@@ -5068,7 +5068,10 @@ function setupProductPicker(){
     if(!item) return;
     const p = productById(item.getAttribute('data-id'));
     if(p){
-      state.formItems.push({ desc: p.name, qty:1, unit: p.unit||'ks', price: p.salePrice||0, vat: p.vatRate||0, productId: p.id, ean: p.ean||'', productNumber: p.number||'' });
+      const companySelect = document.getElementById('inv-company-select');
+      const activeCo = companySelect ? companyById(companySelect.value) : null;
+      const vatPayerNow = activeCo ? activeCo.vatPayer!==false : true;
+      state.formItems.push({ desc: p.name, qty:1, unit: p.unit||'ks', price: p.salePrice||0, vat: vatPayerNow ? (p.vatRate||0) : 0, productId: p.id, ean: p.ean||'', productNumber: p.number||'' });
       input.value = '';
       render();
     }
@@ -5286,7 +5289,13 @@ document.addEventListener('click', async (e)=>{
   else if(action==='view-client'){ state.view='client-detail'; state.viewingClientId=id; render(); }
   else if(action==='delete-client'){ if(confirm('Smazat tohoto odběratele?')){ state.clients = state.clients.filter(c=>c.id!==id); await saveClients(); render(); } }
   else if(action==='client-to-invoice'){ state.preselectClientId=id; state.view='invoice-form'; state.editingInvoiceId=null; state.formItems=[]; state.formCompanyId=null; render(); }
-  else if(action==='add-item'){ state.formItems.push({desc:'',qty:1,unit:'ks',price:0,vat:21}); render(); }
+  else if(action==='add-item'){
+    const companySelect = document.getElementById('inv-company-select');
+    const activeCo = companySelect ? companyById(companySelect.value) : (state.companies[0]||null);
+    const vatPayerNow = activeCo ? activeCo.vatPayer!==false : true;
+    state.formItems.push({desc:'',qty:1,unit:'ks',price:0,vat: vatPayerNow?21:0});
+    render();
+  }
   else if(action==='remove-item'){ const idx = parseInt(el.getAttribute('data-index')); state.formItems.splice(idx,1); if(!state.formItems.length) state.formItems.push({desc:'',qty:1,unit:'ks',price:0,vat:21}); render(); }
   else if(action==='goto-bulk-import'){
     state.view='bulk-import';
