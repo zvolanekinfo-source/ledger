@@ -554,6 +554,7 @@ let state = {
   productSearch: '',
   productFilters: { stock:'', category:'', supplierId:'', manufacturer:'', expiry:'', archived:'' },
   productStatsFilter: { preset:'month', from:'', to:'' },
+  pendingEditMovementId: null,
   selectedProductIds: new Set(),
   productSort: { key:'name', dir:'asc' },
   productVisibleCount: 150,
@@ -3614,6 +3615,13 @@ function setupProductForm(){
   if(!form) return;
   setupProductPhotoDropzone();
 
+  if(state.pendingEditMovementId){
+    const p = state.editingProductId ? productById(state.editingProductId) : null;
+    const m = p ? (p.movements||[]).find(x=>x.id===state.pendingEditMovementId) : null;
+    state.pendingEditMovementId = null;
+    if(m) openMovementEditPanel(m);
+  }
+
   const purchaseEl = document.getElementById('pp-purchase');
   const saleEl = document.getElementById('pp-sale');
   const costsEl = document.getElementById('pp-costs');
@@ -3778,6 +3786,21 @@ async function onSubmitProduct(e){
 }
 
 /* ---------- SKLADOVÝ POHYB ---------- */
+function openMovementEditPanel(m){
+  const panel = document.getElementById('stock-movement-panel');
+  if(!panel) return;
+  panel.style.display = '';
+  document.getElementById('sm-type').value = m.type;
+  document.getElementById('sm-qty').value = m.qty;
+  document.getElementById('sm-note').value = m.reason||m.note||'';
+  document.getElementById('sm-expiry').value = m.expiryAtTime || '';
+  document.getElementById('sm-price').value = (m.unitCost!=null ? m.unitCost : '');
+  document.getElementById('sm-vat').value = (m.vatAtTime!=null ? m.vatAtTime : '');
+  document.getElementById('sm-edit-id').value = m.id;
+  const title = document.getElementById('sm-panel-title');
+  if(title) title.textContent = 'Upravit skladový pohyb';
+  panel.scrollIntoView({behavior:'smooth', block:'center'});
+}
 function recomputeMovementsChain(p){
   const sorted = [...(p.movements||[])].sort((a,b)=> new Date(a.date)-new Date(b.date));
   let running = 0;
@@ -3862,7 +3885,7 @@ function viewStock(){
   const expiring = active.filter(p=>{ const d=daysUntil(p.expiryDate); return d!=null && d<=90; }).sort((a,b)=>daysUntil(a.expiryDate)-daysUntil(b.expiryDate));
   const stockValue = active.reduce((s,p)=>s+computeProductStockValue(p),0);
   const allMovements = [];
-  active.forEach(p=>(p.movements||[]).forEach(m=>allMovements.push({...m, productName:p.name})));
+  active.forEach(p=>(p.movements||[]).forEach(m=>allMovements.push({...m, productName:p.name, productId:p.id})));
   allMovements.sort((a,b)=> new Date(b.date)-new Date(a.date));
   return `
     <div class="pagehead"><div><h1>Sklad</h1><p class="desc">Přehled skladových zásob, nízkých stavů a expirací.</p></div></div>
@@ -3902,9 +3925,9 @@ function viewStock(){
     </table>
     ` : emptyState('Žádné blížící se expirace', 'Produkty s vyplněným datem expirace do 90 dní se zobrazí zde.')}
 
-    <div class="section-title">Historie skladových pohybů (nesmazatelná)</div>
+    <div class="section-title">Historie skladových pohybů</div>
     <table>
-      <thead><tr><th>Datum</th><th>Produkt</th><th>Typ</th><th>Poznámka</th><th>Kdo</th><th>Množství</th></tr></thead>
+      <thead><tr><th>Datum</th><th>Produkt</th><th>Typ</th><th>Poznámka</th><th>Kdo</th><th>Množství</th><th></th></tr></thead>
       <tbody>
         ${allMovements.slice(0,80).map(m=>`
           <tr>
@@ -3914,8 +3937,12 @@ function viewStock(){
             <td>${escapeHtml(m.reason||m.note||'—')}</td>
             <td>${escapeHtml(m.user||'—')}</td>
             <td class="num" style="color:${m.qty>=0?'var(--accent)':'var(--red)'};font-weight:600;">${m.qty>=0?'+':''}${m.qty}</td>
+            <td class="actions-cell no-print">
+              <button type="button" class="iconbtn" data-action="edit-movement" data-id="${m.productId}" data-mid="${m.id}" title="Upravit">✎</button>
+              <button type="button" class="iconbtn" data-action="delete-movement" data-id="${m.productId}" data-mid="${m.id}" title="Smazat">✕</button>
+            </td>
           </tr>
-        `).join('') || `<tr><td colspan="6" style="text-align:center;color:var(--ink-soft);padding:20px;">Zatím žádné pohyby.</td></tr>`}
+        `).join('') || `<tr><td colspan="7" style="text-align:center;color:var(--ink-soft);padding:20px;">Zatím žádné pohyby.</td></tr>`}
       </tbody>
     </table>
   `;
@@ -5444,19 +5471,16 @@ document.addEventListener('click', async (e)=>{
     const p = productById(id);
     const mid = el.getAttribute('data-mid');
     const m = p ? (p.movements||[]).find(x=>x.id===mid) : null;
+    if(!p || !m) return;
     const panel = document.getElementById('stock-movement-panel');
-    if(!p || !m || !panel) return;
-    panel.style.display = '';
-    document.getElementById('sm-type').value = m.type;
-    document.getElementById('sm-qty').value = m.qty;
-    document.getElementById('sm-note').value = m.reason||m.note||'';
-    document.getElementById('sm-expiry').value = m.expiryAtTime || '';
-    document.getElementById('sm-price').value = (m.unitCost!=null ? m.unitCost : '');
-    document.getElementById('sm-vat').value = (m.vatAtTime!=null ? m.vatAtTime : '');
-    document.getElementById('sm-edit-id').value = m.id;
-    const title = document.getElementById('sm-panel-title');
-    if(title) title.textContent = 'Upravit skladový pohyb';
-    panel.scrollIntoView({behavior:'smooth', block:'center'});
+    if(!panel || state.editingProductId!==p.id || state.view!=='product-form'){
+      state.view = 'product-form';
+      state.editingProductId = p.id;
+      state.pendingEditMovementId = m.id;
+      render();
+      return;
+    }
+    openMovementEditPanel(m);
   }
   else if(action==='delete-movement'){
     const p = productById(id);
