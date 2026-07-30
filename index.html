@@ -3199,6 +3199,26 @@ function viewProductForm(){
         <svg id="product-number-barcode-svg"></svg>
         <div id="product-number-barcode-error" style="display:none;font-size:11.5px;color:var(--red);margin-top:6px;">Zadané číslo není platný EAN-13 — obrázek zobrazen jako Code 128.</div>
       </div>
+      <div class="mini-label" style="margin-top:18px;">Umístění a pohyby na skladě (patří k tomuto kódu)</div>
+      ${locationFieldGroup(p.location)}
+      ${editing ? `
+        <button type="button" class="btn secondary small" data-action="open-stock-movement" data-id="${p.id}">+ Skladový pohyb</button>
+        <div class="mini-label" style="margin-top:18px;">Historie pohybů (nesmazatelná)</div>
+        ${(p.movements||[]).length ? `
+          <div class="movement-row" style="font-weight:600;color:var(--ink-soft);font-size:11px;text-transform:uppercase;">
+            <div>Datum</div><div>Typ</div><div>Poznámka</div><div>Kdo</div><div>Množství</div>
+          </div>
+          ${[...p.movements].reverse().slice(0,50).map(m=>`
+            <div class="movement-row">
+              <div>${new Date(m.date).toLocaleString('cs-CZ')}</div>
+              <div>${escapeHtml(m.type)}</div>
+              <div>${escapeHtml(m.reason||m.note||'—')}</div>
+              <div>${escapeHtml(m.user||'—')}</div>
+              <div class="mv-qty ${m.qty>=0?'pos':'neg'}">${m.qty>=0?'+':''}${m.qty} → ${m.resultingStock}</div>
+            </div>
+          `).join('')}
+        ` : `<p style="font-size:12.5px;color:var(--ink-soft);">Zatím žádné skladové pohyby.</p>`}
+      ` : ''}
       <div class="field-row">
         <div class="field"><label>Kategorie</label><input name="category" list="product-category-options" value="${escapeAttr(p.category||'')}">
           <datalist id="product-category-options">${[...new Set(state.products.map(x=>x.category).filter(Boolean))].map(c=>`<option value="${escapeAttr(c)}">`).join('')}</datalist>
@@ -3247,29 +3267,11 @@ function viewProductForm(){
           <div class="field"><label>Minimální stav</label><input type="number" step="1" name="stockMin" value="${p.stockMin||0}"></div>
           <div class="field"></div>
         </div>
-        ${locationFieldGroup(p.location)}
-        <button type="button" class="btn secondary small" data-action="open-stock-movement" data-id="${p.id}">+ Skladový pohyb</button>
-        <div class="mini-label" style="margin-top:18px;">Historie pohybů (nesmazatelná)</div>
-        ${(p.movements||[]).length ? `
-          <div class="movement-row" style="font-weight:600;color:var(--ink-soft);font-size:11px;text-transform:uppercase;">
-            <div>Datum</div><div>Typ</div><div>Poznámka</div><div>Kdo</div><div>Množství</div>
-          </div>
-          ${[...p.movements].reverse().slice(0,50).map(m=>`
-            <div class="movement-row">
-              <div>${new Date(m.date).toLocaleString('cs-CZ')}</div>
-              <div>${escapeHtml(m.type)}</div>
-              <div>${escapeHtml(m.reason||m.note||'—')}</div>
-              <div>${escapeHtml(m.user||'—')}</div>
-              <div class="mv-qty ${m.qty>=0?'pos':'neg'}">${m.qty>=0?'+':''}${m.qty} → ${m.resultingStock}</div>
-            </div>
-          `).join('')}
-        ` : `<p style="font-size:12.5px;color:var(--ink-soft);">Zatím žádné skladové pohyby.</p>`}
       ` : `
         <div class="field-row">
           <div class="field"><label>Počáteční stav skladu</label><input type="number" step="1" name="stockCurrent" value="${p.stockCurrent||0}"></div>
           <div class="field"><label>Minimální stav</label><input type="number" step="1" name="stockMin" value="${p.stockMin||0}"></div>
         </div>
-        ${locationFieldGroup(p.location)}
       `}
 
       <div class="formfoot">
