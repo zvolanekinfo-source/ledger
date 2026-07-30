@@ -126,7 +126,9 @@
 
   /* FILTER BAR */
   .filter-bar{background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:16px 18px;margin-bottom:20px;}
-  .bulk-bar{display:flex;align-items:center;justify-content:space-between;gap:14px;background:var(--accent-soft);border:1px solid var(--accent);border-radius:6px;padding:10px 16px;margin-bottom:14px;font-size:13.5px;color:var(--ink);flex-wrap:wrap;}
+  .bulk-bar{display:flex;align-items:center;justify-content:space-between;gap:14px;background:var(--paper);border:1px solid var(--line);border-radius:6px;padding:10px 16px;margin-bottom:14px;font-size:13.5px;color:var(--ink-soft);flex-wrap:wrap;transition:background .15s,border-color .15s,color .15s;}
+  .bulk-bar.active{background:var(--accent-soft);border-color:var(--accent);color:var(--ink);}
+  .bulk-actions-disabled{opacity:.4;pointer-events:none;}
   .filter-presets{display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;}
   .chip{border:1px solid var(--line);background:transparent;color:var(--ink-soft);padding:6px 14px;border-radius:20px;font-size:12.5px;font-weight:500;}
   .chip:hover{background:var(--paper);}
@@ -1303,11 +1305,11 @@ function renderInvoiceTable(list, tbodyId, selectable){
 }
 
 function renderBulkBar(count, entityLabel, actions){
-  if(!count) return '';
+  const active = count > 0;
   return `
-    <div class="bulk-bar no-print">
-      <span>${count} ${entityLabel} vybráno</span>
-      <span style="display:flex;gap:8px;flex-wrap:wrap;">
+    <div class="bulk-bar no-print ${active?'active':''}">
+      <span>${active?`${count} ${entityLabel} vybráno`:`Označ ${entityLabel} pro hromadné akce`}</span>
+      <span style="display:flex;gap:8px;flex-wrap:wrap;" class="${active?'':'bulk-actions-disabled'}">
         ${actions}
         <button type="button" class="btn-link" data-action="bulk-clear-selection">Zrušit výběr</button>
       </span>
@@ -5392,9 +5394,9 @@ document.addEventListener('click', async (e)=>{
     document.getElementById('sm-type').value = m.type;
     document.getElementById('sm-qty').value = m.qty;
     document.getElementById('sm-note').value = m.reason||m.note||'';
-    document.getElementById('sm-expiry').value = '';
-    document.getElementById('sm-price').value = '';
-    document.getElementById('sm-vat').value = '';
+    document.getElementById('sm-expiry').value = m.expiryAtTime || '';
+    document.getElementById('sm-price').value = (m.unitCost!=null ? m.unitCost : '');
+    document.getElementById('sm-vat').value = (m.vatAtTime!=null ? m.vatAtTime : '');
     document.getElementById('sm-edit-id').value = m.id;
     const title = document.getElementById('sm-panel-title');
     if(title) title.textContent = 'Upravit skladový pohyb';
@@ -5444,18 +5446,21 @@ document.addEventListener('click', async (e)=>{
     if(newPriceRaw!==''){ p.purchasePrice = parseFloat(newPriceRaw)||0; changedParts.push('nákupní cena '+fmt(p.purchasePrice)+' Kč'); }
     if(newVatRaw!==''){ p.vatRatePurchase = parseFloat(newVatRaw)||0; changedParts.push('DPH nákup '+p.vatRatePurchase+'%'); }
     const fullReason = [note, changedParts.length?('aktualizováno: '+changedParts.join(', ')):''].filter(Boolean).join(' — ') || type;
+    const movementExpiry = newExpiry || p.expiryDate || '';
+    const movementVat = newVatRaw!=='' ? (parseFloat(newVatRaw)||0) : (p.vatRatePurchase??21);
     p.movements = p.movements || [];
     if(editId){
       const m = p.movements.find(x=>x.id===editId);
       if(!m){ alert('Pohyb nebyl nalezen.'); return; }
       m.type = type; m.qty = qty; m.reason = fullReason; m.unitCost = p.purchasePrice||0;
+      m.expiryAtTime = movementExpiry; m.vatAtTime = movementVat;
       recomputeMovementsChain(p);
       if((p.stockCurrent||0) < 0 && !confirm(`Po úpravě klesne sklad do záporných hodnot (${p.stockCurrent}). Pokračovat a uložit?`)) return;
     } else {
       const resulting = (p.stockCurrent||0) + qty;
       if(resulting < 0 && !confirm(`Sklad produktu „${p.name}“ klesne do záporných hodnot (${resulting}). Pokračovat?`)) return;
       p.stockCurrent = resulting;
-      p.movements.push({ id: uid(), type, qty, reason: fullReason, note:'', date: new Date().toISOString(), user: state.currentUser, resultingStock: resulting, unitCost: p.purchasePrice||0 });
+      p.movements.push({ id: uid(), type, qty, reason: fullReason, note:'', date: new Date().toISOString(), user: state.currentUser, resultingStock: resulting, unitCost: p.purchasePrice||0, expiryAtTime: movementExpiry, vatAtTime: movementVat });
     }
     try{ await saveProducts(); }catch(err){ alert('Uložení se nepovedlo, zkus to prosím znovu.'); return; }
     render();
