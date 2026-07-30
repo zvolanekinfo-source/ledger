@@ -3608,7 +3608,14 @@ function openProductContextMenu(x, y, productId){
 function setupProductsView(){
   const searchInput = document.getElementById('product-search-input');
   if(searchInput){
-    searchInput.addEventListener('input', (e)=>{ state.productSearch = e.target.value; state.productVisibleCount = 150; render(); });
+    searchInput.addEventListener('input', (e)=>{
+      const pos = e.target.selectionStart;
+      state.productSearch = e.target.value;
+      state.productVisibleCount = 150;
+      render();
+      const refocused = document.getElementById('product-search-input');
+      if(refocused){ refocused.focus(); try{ refocused.setSelectionRange(pos, pos); }catch(err){} }
+    });
   }
   ['pf-stock','pf-category','pf-supplier','pf-manufacturer','pf-expiry','pf-archived'].forEach(id=>{
     const el = document.getElementById(id);
