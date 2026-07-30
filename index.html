@@ -503,6 +503,8 @@ let state = {
   productColumns: null,
   editingSupplierId: null,
   viewingSupplierId: null,
+  newSupplierDraftId: null,
+  newSupplierDraftAttachments: [],
   editingProductId: null,
   newProductDraftId: null,
   productSearch: '',
@@ -744,10 +746,15 @@ async function loadAll(){
     state.companies = state.companies.map(co=>({ id: co.id||uid(), ...companyDefaults, ...co }));
   }
   try{ const r = await window.storage.get('suppliers', true); state.suppliers = r ? JSON.parse(r.value) : []; }catch(e){ state.suppliers = []; }
+  state.suppliers = state.suppliers.map(s=>({ attachments:[], ...s }));
   try{ const r = await window.storage.get('products', true); state.products = r ? JSON.parse(r.value) : []; }catch(e){ state.products = []; }
   try{ const r = await window.storage.get('product-settings', true); state.productSettings = r ? JSON.parse(r.value) : { prefix:'PRD-', nextNumber:1, padding:6 }; }catch(e){ state.productSettings = { prefix:'PRD-', nextNumber:1, padding:6 }; }
   try{ const r = await window.storage.get('product-columns', true); state.productColumns = r ? JSON.parse(r.value) : null; }catch(e){ state.productColumns = null; }
   if(!state.productColumns) state.productColumns = DEFAULT_PRODUCT_COLUMNS.map(c=>({...c}));
+  else {
+    const existingKeys = new Set(state.productColumns.map(c=>c.key));
+    DEFAULT_PRODUCT_COLUMNS.forEach(c=>{ if(!existingKeys.has(c.key)) state.productColumns.push({...c}); });
+  }
   state.products = state.products.map(p=>({ ...blankProduct(), ...p, movements: p.movements||[] }));
   state.backupDates = await loadBackupIndex();
   state.loaded = true;
@@ -1888,10 +1895,11 @@ function viewClientForm(){
   `;
 }
 
-function renderAttachmentsBox(c){
-  const files = c.attachments || [];
+function renderAttachmentsBox(entity, entityType){
+  entityType = entityType || 'client';
+  const files = entity.attachments || [];
   return `
-    <div id="attachments-box" data-client-id="${c.id}">
+    <div id="attachments-box" data-entity-type="${entityType}" data-entity-id="${entity.id}">
       <div id="attachments-list">
         ${files.length ? files.map(f=>`
           <div class="attachment-row" data-path="${escapeAttr(f.path)}">
@@ -2565,6 +2573,7 @@ const DEFAULT_PRODUCT_COLUMNS = [
   {key:'photo', label:'', width:46, visible:true},
   {key:'name', label:'Název', width:230, visible:true},
   {key:'number', label:'Č. produktu', width:110, visible:true},
+  {key:'internalCode', label:'Interní kód', width:110, visible:true},
   {key:'ean', label:'EAN', width:110, visible:true},
   {key:'category', label:'Kategorie', width:120, visible:true},
   {key:'manufacturer', label:'Výrobce', width:120, visible:true},
@@ -2588,7 +2597,7 @@ function blankProduct(){
   };
 }
 function blankSupplier(){
-  return { id: uid(), name:'', ico:'', dic:'', address:blankAddr(), contactPerson:'', contactPhone:'', contactEmail:'', website:'', note:'', createdAt:new Date().toISOString() };
+  return { id: uid(), name:'', ico:'', dic:'', address:blankAddr(), contactPerson:'', contactPhone:'', contactEmail:'', website:'', note:'', createdAt:new Date().toISOString(), attachments:[] };
 }
 function productById(id){ return state.products.find(p=>p.id===id); }
 function supplierById(id){ return state.suppliers.find(s=>s.id===id); }
@@ -2641,12 +2650,34 @@ function generateUniqueProductNumber(){
   } while(state.products.some(p=>p.number===n) && guard<100000);
   return n;
 }
+function ean13CheckDigit(str12){
+  let sum = 0;
+  for(let i=0;i<12;i++){
+    const d = parseInt(str12[i],10)||0;
+    sum += (i%2===0) ? d : d*3;
+  }
+  const mod = sum % 10;
+  return mod===0 ? '0' : String(10-mod);
+}
+function makeValidEan13(digitsSource){
+  const digits = String(digitsSource||'').replace(/\D/g,'');
+  // prefix 20–29 je v EAN-13 vyhrazený pro interní/vnitropodnikové použití
+  const base = ('20' + digits.padStart(10,'0')).slice(0,12);
+  return base + ean13CheckDigit(base);
+}
 function barcodeValueFor(p){
-  if(p.ean) return p.ean;
-  return p.number || p.internalCode || p.id;
+  const rawEan = String(p.ean||'').replace(/\D/g,'');
+  if(rawEan.length===13 || rawEan.length===8) return rawEan;
+  if(rawEan.length) return makeValidEan13(rawEan);
+  return makeValidEan13(p.number || p.internalCode || p.id || '');
+}
+function previewBarcodeValue(eanRaw, numberRaw){
+  const rawEan = String(eanRaw||'').replace(/\D/g,'');
+  if(rawEan.length===13 || rawEan.length===8) return rawEan;
+  if(rawEan.length) return makeValidEan13(rawEan);
+  return makeValidEan13(numberRaw || peekProductNumber());
 }
 function barcodeFormatFor(value){
-  const digits = String(value||'').replace(/\D/g,'');
   if(/^\d{13}$/.test(value)) return 'EAN13';
   if(/^\d{8}$/.test(value)) return 'EAN8';
   return 'CODE128';
@@ -2767,6 +2798,8 @@ function viewSupplierDetail(){
         ${detailRow('Adresa', formatAddress(s.address), true)}
         ${detailRow('Poznámka', s.note, true)}
       </div>
+      <div class="section-title">Přiložené soubory 📎</div>
+      ${renderAttachmentsBox(s, 'supplier')}
     </div>
     <div class="section-title">Produkty tohoto dodavatele (${products.length})</div>
     ${products.length ? renderProductTable(products) : emptyState('Zatím žádné produkty', 'Přidej produkt a přiřaď mu tohoto dodavatele.')}
@@ -2774,7 +2807,12 @@ function viewSupplierDetail(){
 }
 function viewSupplierForm(){
   const editing = state.editingSupplierId ? supplierById(state.editingSupplierId) : null;
-  const s = editing || blankSupplier();
+  let s;
+  if(editing){ s = editing; }
+  else {
+    if(!state.newSupplierDraftId){ state.newSupplierDraftId = uid(); state.newSupplierDraftAttachments = []; }
+    s = { ...blankSupplier(), id: state.newSupplierDraftId, attachments: state.newSupplierDraftAttachments };
+  }
   return `
     <div class="pagehead"><div><h1>${editing?'Upravit dodavatele':'Nový dodavatel'}</h1></div></div>
     <form id="supplier-form" class="form-card">
@@ -2793,6 +2831,8 @@ function viewSupplierForm(){
       </div>
       <div class="field"><label>E-mail</label><input type="email" name="contactEmail" value="${escapeAttr(s.contactEmail||'')}" style="max-width:320px;"></div>
       <div class="field"><label>Poznámka</label><textarea name="note">${escapeHtml(s.note||'')}</textarea></div>
+      <div class="section-title">Přiložené soubory 📎</div>
+      ${renderAttachmentsBox(s, 'supplier')}
       <div class="formfoot">
         <button type="submit" class="btn">Uložit dodavatele</button>
         <button type="button" class="btn secondary" data-action="nav" data-view="suppliers">Zrušit</button>
@@ -2812,10 +2852,13 @@ async function onSubmitSupplier(e){
     address: gatherAddrField(fd,'supplier-address'),
     contactPerson: fd.get('contactPerson'), contactPhone: fd.get('contactPhone'), contactEmail: fd.get('contactEmail'),
     website: fd.get('website'), note: fd.get('note'),
-    createdAt: existing ? existing.createdAt : new Date().toISOString()
+    createdAt: existing ? existing.createdAt : new Date().toISOString(),
+    attachments: existing ? (existing.attachments||[]) : (state.newSupplierDraftAttachments||[])
   };
   if(existing){ const idx = state.suppliers.findIndex(x=>x.id===id); state.suppliers[idx]=s; }
   else{ state.suppliers.push(s); }
+  state.newSupplierDraftId = null;
+  state.newSupplierDraftAttachments = [];
   await saveSuppliers();
   state.view='supplier-detail'; state.viewingSupplierId=s.id;
   render();
@@ -2864,6 +2907,7 @@ function productCellContent(p, key){
     case 'photo': return p.photo ? `<img class="prod-thumb" src="${p.photo}" alt="">` : `<div class="prod-thumb-empty"></div>`;
     case 'name': return `<div style="font-weight:500;">${escapeHtml(p.name||'(bez názvu)')}</div>`;
     case 'number': return `<span class="num">${escapeHtml(p.number||'—')}</span>`;
+    case 'internalCode': return `<span class="num">${escapeHtml(p.internalCode||'—')}</span>`;
     case 'ean': return `<span class="num">${escapeHtml(p.ean||'—')}</span>`;
     case 'category': return escapeHtml(p.category||'—');
     case 'manufacturer': return escapeHtml(p.manufacturer||'—');
@@ -2871,7 +2915,7 @@ function productCellContent(p, key){
     case 'purchasePrice': return `<span class="num">${fmt(p.purchasePrice||0)} Kč</span>`;
     case 'salePrice': return `<span class="num">${fmt(p.salePrice||0)} Kč</span>`;
     case 'margin': { const m=productMargin(p); return `<span class="num">${m.marginPct.toFixed(0)}%</span>`; }
-    case 'stock': { const s=stockStatus(p); return `<span class="pill ${stockPillClass(s)}">${stockIcon(s)} ${stockAvailable(p)} ${escapeHtml(p.unit||'ks')}</span>`; }
+    case 'stock': { const s=stockStatus(p); return `<span class="pill ${stockPillClass(s)}">${stockAvailable(p)} ${escapeHtml(p.unit||'ks')}</span>`; }
     case 'expiry': return expiryBadge(p) || '—';
     default: return '';
   }
@@ -2961,9 +3005,9 @@ function viewProducts(){
       <div class="filter-row">
         <div class="field"><label>Skladem</label><select id="pf-stock">
           <option value="">Vše</option>
-          <option value="ok" ${state.productFilters.stock==='ok'?'selected':''}>🟢 Skladem</option>
-          <option value="low" ${state.productFilters.stock==='low'?'selected':''}>🟠 Nízký stav</option>
-          <option value="out" ${state.productFilters.stock==='out'?'selected':''}>🔴 Není skladem</option>
+          <option value="ok" ${state.productFilters.stock==='ok'?'selected':''}>Skladem</option>
+          <option value="low" ${state.productFilters.stock==='low'?'selected':''}>Nízký stav</option>
+          <option value="out" ${state.productFilters.stock==='out'?'selected':''}>Není skladem</option>
         </select></div>
         <div class="field"><label>Kategorie</label><select id="pf-category">
           <option value="">Všechny</option>
@@ -3088,7 +3132,7 @@ function viewProductForm(){
           <div class="sr-item"><div class="sr-label">Aktuální stav</div><div class="sr-value">${p.stockCurrent||0} ${escapeHtml(p.unit||'ks')}</div></div>
           <div class="sr-item"><div class="sr-label">Rezervováno</div><div class="sr-value">${p.stockReserved||0}</div></div>
           <div class="sr-item"><div class="sr-label">Dostupné</div><div class="sr-value">${stockAvailable(p)}</div></div>
-          <div class="sr-item"><div class="sr-label">Stav</div><div class="sr-value"><span class="pill ${stockPillClass(status)}">${stockIcon(status)} ${stockLabel(status)}</span></div></div>
+          <div class="sr-item"><div class="sr-label">Stav</div><div class="sr-value"><span class="pill ${stockPillClass(status)}">${stockLabel(status)}</span></div></div>
         </div>
         <div class="field-row">
           <div class="field"><label>Minimální stav</label><input type="number" step="1" name="stockMin" value="${p.stockMin||0}"></div>
@@ -3119,6 +3163,7 @@ function viewProductForm(){
 
       <div class="section-title">Čárový kód</div>
       <div class="barcode-preview-box">
+        <div id="barcode-preview-label" class="num" style="font-size:15px;color:var(--ink);font-weight:600;letter-spacing:1px;margin-bottom:10px;">–</div>
         <svg id="barcode-preview-svg"></svg>
         <div style="margin-top:10px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap;">
           <button type="button" class="btn secondary small" data-action="regen-barcode-preview">↻ Překreslit</button>
@@ -3164,8 +3209,10 @@ function setupProductForm(){
     if(!svg) return;
     const eanVal = document.getElementById('product-ean').value.trim();
     const numberInput = form.querySelector('input[name="number"]');
-    const value = eanVal || (numberInput && numberInput.value.trim()) || peekProductNumber();
+    const value = previewBarcodeValue(eanVal, numberInput && numberInput.value.trim());
     renderBarcodeToSvg(svg, value);
+    const label = document.getElementById('barcode-preview-label');
+    if(label) label.textContent = value;
   }
   drawBarcodePreview();
   const eanInput = document.getElementById('product-ean');
@@ -4189,25 +4236,35 @@ async function signAttachmentUrl(path){
   return SUPABASE_URL + '/storage/v1' + data.signedURL;
 }
 
+function attachmentEntityContext(){
+  const box = document.getElementById('attachments-box');
+  const type = box ? (box.getAttribute('data-entity-type')||'client') : 'client';
+  const entityId = box ? box.getAttribute('data-entity-id') : null;
+  const entity = type==='supplier' ? supplierById(entityId) : clientById(entityId);
+  return { type, entityId, entity };
+}
+
 function setupAttachmentUpload(){
   const input = document.getElementById('attachment-file-input');
   const box = document.getElementById('attachments-box');
   const status = document.getElementById('attachment-status');
   if(!input || !box) return;
-  const clientId = box.getAttribute('data-client-id');
+  const { type, entityId } = attachmentEntityContext();
   input.addEventListener('change', async ()=>{
     const file = input.files[0];
     if(!file) return;
     if(status) status.textContent = 'Nahrávám…';
     try{
-      const meta = await uploadClientFile(clientId, file);
-      const c = clientById(clientId);
-      if(c){
-        c.attachments = c.attachments || [];
-        c.attachments.push(meta);
-        await saveClients();
-      } else if(clientId === state.newClientDraftId){
+      const meta = await uploadClientFile(entityId, file);
+      const entity = type==='supplier' ? supplierById(entityId) : clientById(entityId);
+      if(entity){
+        entity.attachments = entity.attachments || [];
+        entity.attachments.push(meta);
+        if(type==='supplier') await saveSuppliers(); else await saveClients();
+      } else if(type==='client' && entityId === state.newClientDraftId){
         state.newClientDraftAttachments.push(meta);
+      } else if(type==='supplier' && entityId === state.newSupplierDraftId){
+        state.newSupplierDraftAttachments.push(meta);
       }
       if(status) status.textContent = '';
       render();
@@ -4385,7 +4442,7 @@ document.addEventListener('click', async (e)=>{
     state.authView='login'; state.view='dashboard';
     render();
   }
-  else if(action==='nav'){ state.view = el.getAttribute('data-view'); state.editingInvoiceId=null; state.editingClientId=null; state.viewingClientId=null; state.newClientDraftId=null; state.newClientDraftAttachments=[]; state.editingCompanyId=null; state.newCompanyDraftId=null; state.newCompanyDraft={logo:'',signature:'',stamp:''}; state.companyNotice=''; state.formItems=[]; state.formCompanyId=null; state.selectedInvoiceIds.clear(); state.selectedClientIds.clear(); state.editingSupplierId=null; state.viewingSupplierId=null; state.editingProductId=null; state.newProductDraftId=null; state.currentProductDraftPhoto=''; state.eanLookupStatus=''; state.selectedProductIds.clear(); closeProductContextMenu(); state.productColsPanelOpen=false; render(); }
+  else if(action==='nav'){ state.view = el.getAttribute('data-view'); state.editingInvoiceId=null; state.editingClientId=null; state.viewingClientId=null; state.newClientDraftId=null; state.newClientDraftAttachments=[]; state.editingCompanyId=null; state.newCompanyDraftId=null; state.newCompanyDraft={logo:'',signature:'',stamp:''}; state.companyNotice=''; state.formItems=[]; state.formCompanyId=null; state.selectedInvoiceIds.clear(); state.selectedClientIds.clear(); state.editingSupplierId=null; state.viewingSupplierId=null; state.newSupplierDraftId=null; state.newSupplierDraftAttachments=[]; state.editingProductId=null; state.newProductDraftId=null; state.currentProductDraftPhoto=''; state.eanLookupStatus=''; state.selectedProductIds.clear(); closeProductContextMenu(); state.productColsPanelOpen=false; render(); }
   else if(action==='new-invoice'){ state.view='invoice-form'; state.editingInvoiceId=null; state.formItems=[]; state.formCompanyId=null; render(); }
   else if(action==='toggle-invoice-select'){
     const cid = el.getAttribute('data-id');
@@ -4452,13 +4509,15 @@ document.addEventListener('click', async (e)=>{
     const current = el.getAttribute('data-note') || '';
     const newNote = prompt('Poznámka k souboru:', current);
     if(newNote===null) return;
-    const cid = document.getElementById('attachments-box')?.getAttribute('data-client-id');
-    const c = clientById(cid);
-    if(c){
-      const f = (c.attachments||[]).find(x=>x.path===path);
-      if(f){ f.note = newNote.trim(); await saveClients(); }
-    } else if(cid === state.newClientDraftId){
+    const { type, entityId, entity } = attachmentEntityContext();
+    if(entity){
+      const f = (entity.attachments||[]).find(x=>x.path===path);
+      if(f){ f.note = newNote.trim(); if(type==='supplier') await saveSuppliers(); else await saveClients(); }
+    } else if(type==='client' && entityId === state.newClientDraftId){
       const f = state.newClientDraftAttachments.find(x=>x.path===path);
+      if(f) f.note = newNote.trim();
+    } else if(type==='supplier' && entityId === state.newSupplierDraftId){
+      const f = state.newSupplierDraftAttachments.find(x=>x.path===path);
       if(f) f.note = newNote.trim();
     }
     render();
@@ -4469,10 +4528,10 @@ document.addEventListener('click', async (e)=>{
     if(!confirm(`Smazat soubor „${name}“?`)) return;
     try{
       await deleteClientFile(path);
-      const cid = document.getElementById('attachments-box')?.getAttribute('data-client-id');
-      const c = clientById(cid);
-      if(c){ c.attachments = (c.attachments||[]).filter(f=>f.path!==path); await saveClients(); }
-      else if(cid === state.newClientDraftId){ state.newClientDraftAttachments = state.newClientDraftAttachments.filter(f=>f.path!==path); }
+      const { type, entityId, entity } = attachmentEntityContext();
+      if(entity){ entity.attachments = (entity.attachments||[]).filter(f=>f.path!==path); if(type==='supplier') await saveSuppliers(); else await saveClients(); }
+      else if(type==='client' && entityId === state.newClientDraftId){ state.newClientDraftAttachments = state.newClientDraftAttachments.filter(f=>f.path!==path); }
+      else if(type==='supplier' && entityId === state.newSupplierDraftId){ state.newSupplierDraftAttachments = state.newSupplierDraftAttachments.filter(f=>f.path!==path); }
       render();
     }catch(err){ alert('Smazání se nepovedlo, zkus to prosím znovu.'); }
   }
@@ -4629,7 +4688,7 @@ document.addEventListener('click', async (e)=>{
     if(confirm('Odebrat tento obrázek?')) await removeBrandingImage(field, companyId);
   }
   /* --- Dodavatelé --- */
-  else if(action==='new-supplier'){ state.view='supplier-form'; state.editingSupplierId=null; render(); }
+  else if(action==='new-supplier'){ state.view='supplier-form'; state.editingSupplierId=null; state.newSupplierDraftId=null; state.newSupplierDraftAttachments=[]; render(); }
   else if(action==='edit-supplier'){ state.view='supplier-form'; state.editingSupplierId=id; render(); }
   else if(action==='view-supplier'){ state.view='supplier-detail'; state.viewingSupplierId=id; render(); }
   else if(action==='delete-supplier'){
@@ -4677,7 +4736,10 @@ document.addEventListener('click', async (e)=>{
     if(svg && form){
       const eanVal = document.getElementById('product-ean').value.trim();
       const numberInput = form.querySelector('input[name="number"]');
-      renderBarcodeToSvg(svg, eanVal || (numberInput&&numberInput.value.trim()) || peekProductNumber());
+      const value = previewBarcodeValue(eanVal, numberInput&&numberInput.value.trim());
+      renderBarcodeToSvg(svg, value);
+      const label = document.getElementById('barcode-preview-label');
+      if(label) label.textContent = value;
     }
   }
   else if(action==='open-stock-movement'){ await promptStockMovement(id); }
