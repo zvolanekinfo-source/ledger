@@ -427,8 +427,10 @@
   .stock-row{display:flex;gap:18px;flex-wrap:wrap;background:var(--paper);border:1px solid var(--line);border-radius:6px;padding:14px 16px;margin-bottom:14px;}
   .stock-row .sr-item .sr-label{font-size:10.5px;text-transform:uppercase;letter-spacing:.6px;color:var(--ink-soft);}
   .stock-row .sr-item .sr-value{font-family:'IBM Plex Mono',monospace;font-weight:700;font-size:19px;}
-  .movement-row{display:grid;grid-template-columns:110px 90px 1fr 130px 90px;gap:10px;padding:8px 4px;border-bottom:1px solid var(--line);font-size:12.5px;align-items:center;}
+  .movement-row{display:grid;grid-template-columns:125px 95px minmax(0,1fr) 110px 100px;gap:10px;padding:8px 4px;border-bottom:1px solid var(--line);font-size:12.5px;align-items:center;}
+  .movement-row > div{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
   .movement-row:last-child{border-bottom:none;}
+  .movement-row .mv-qty{white-space:nowrap;}
   .movement-row .mv-qty.pos{color:var(--accent);font-weight:600;}
   .movement-row .mv-qty.neg{color:var(--red);font-weight:600;}
   .barcode-label{width:210px;padding:12px;border:1px dashed var(--line);text-align:center;display:inline-block;margin:5px;vertical-align:top;background:#fff;}
@@ -754,8 +756,18 @@ async function loadAll(){
   else {
     const existingKeys = new Set(state.productColumns.map(c=>c.key));
     DEFAULT_PRODUCT_COLUMNS.forEach(c=>{ if(!existingKeys.has(c.key)) state.productColumns.push({...c}); });
+    const validKeys = new Set(DEFAULT_PRODUCT_COLUMNS.map(c=>c.key));
+    state.productColumns = state.productColumns.filter(c=>validKeys.has(c.key));
   }
-  state.products = state.products.map(p=>({ ...blankProduct(), ...p, movements: p.movements||[] }));
+  state.products = state.products.map(p=>{
+    const merged = { ...blankProduct(), ...p, movements: p.movements||[] };
+    if(typeof merged.location === 'string'){
+      merged.location = merged.location ? { warehouse: merged.location, rack:'', shelf:'', spot:'' } : blankLocation();
+    } else if(!merged.location || typeof merged.location !== 'object'){
+      merged.location = blankLocation();
+    }
+    return merged;
+  });
   state.backupDates = await loadBackupIndex();
   state.loaded = true;
 }
@@ -2574,7 +2586,6 @@ const DEFAULT_PRODUCT_COLUMNS = [
   {key:'photo', label:'', width:46, visible:true},
   {key:'name', label:'Název', width:230, visible:true},
   {key:'number', label:'Č. produktu', width:110, visible:true},
-  {key:'internalCode', label:'Interní kód', width:110, visible:true},
   {key:'ean', label:'EAN', width:110, visible:true},
   {key:'category', label:'Kategorie', width:120, visible:true},
   {key:'manufacturer', label:'Výrobce', width:120, visible:true},
@@ -2588,12 +2599,45 @@ const DEFAULT_PRODUCT_COLUMNS = [
 ];
 const PRODUCT_UNITS = ['ks','kg','g','l','ml','m','balení','hod'];
 
+function blankLocation(){ return { warehouse:'', rack:'', shelf:'', spot:'' }; }
+function formatLocation(loc){
+  if(!loc) return '';
+  if(typeof loc === 'string') return loc;
+  const parts = [];
+  if(loc.warehouse) parts.push('Sklad '+loc.warehouse);
+  if(loc.rack) parts.push('Regál '+loc.rack);
+  if(loc.shelf) parts.push('Police '+loc.shelf);
+  if(loc.spot) parts.push('Místo '+loc.spot);
+  return parts.join(' · ');
+}
+function gatherLocationField(fd){
+  return {
+    warehouse: (fd.get('loc-warehouse')||'').trim(),
+    rack: (fd.get('loc-rack')||'').trim(),
+    shelf: (fd.get('loc-shelf')||'').trim(),
+    spot: (fd.get('loc-spot')||'').trim()
+  };
+}
+function locationFieldGroup(loc){
+  loc = loc || blankLocation();
+  return `
+    <div class="field">
+      <label>Umístění na skladě</label>
+      <div class="field-row" style="grid-template-columns:repeat(4,1fr);margin-bottom:0;">
+        <div class="field"><input name="loc-warehouse" placeholder="Sklad" value="${escapeAttr(loc.warehouse||'')}"></div>
+        <div class="field"><input name="loc-rack" placeholder="Regál" value="${escapeAttr(loc.rack||'')}"></div>
+        <div class="field"><input name="loc-shelf" placeholder="Police" value="${escapeAttr(loc.shelf||'')}"></div>
+        <div class="field"><input name="loc-spot" placeholder="Místo" value="${escapeAttr(loc.spot||'')}"></div>
+      </div>
+    </div>
+  `;
+}
 function blankProduct(){
   return {
     id: uid(), number:'', ean:'', internalCode:'', name:'', description:'',
     category:'', manufacturer:'', supplierId:'', unit:'ks', vatRate:21, note:'',
     purchasePrice:0, salePrice:0,
-    stockCurrent:0, stockReserved:0, stockMin:0, location:'', barcodeType:'EAN13',
+    stockCurrent:0, stockReserved:0, stockMin:0, location:blankLocation(), barcodeType:'EAN13',
     expiryDate:'', photo:'', link:'', archived:false, createdAt:new Date().toISOString(),
     movements:[]
   };
@@ -2637,19 +2681,22 @@ function expiryBadge(p){
   return `<span style="color:var(--ink-soft);font-size:12.5px;">${p.expiryDate}</span>`;
 }
 
+function randomDigits(len){
+  let s = '';
+  for(let i=0;i<len;i++) s += Math.floor(Math.random()*10);
+  return s;
+}
 function peekProductNumber(){
-  const ps = state.productSettings;
-  return `${ps.prefix}${String(ps.nextNumber).padStart(ps.padding,'0')}`;
+  // jen orientační náhled do placeholderu — skutečné číslo se (znovu) vygeneruje při uložení
+  return randomDigits(10);
 }
 function generateUniqueProductNumber(){
-  const ps = state.productSettings;
   let n;
   let guard = 0;
   do{
-    n = `${ps.prefix}${String(ps.nextNumber).padStart(ps.padding,'0')}`;
-    ps.nextNumber++;
+    n = randomDigits(10);
     guard++;
-  } while(state.products.some(p=>p.number===n) && guard<100000);
+  } while(state.products.some(p=>p.number===n) && guard<1000);
   return n;
 }
 const BARCODE_TYPES = [
@@ -2914,7 +2961,7 @@ function filteredSortedProducts(){
     if(f.archived==='' && p.archived) return false;
     if(f.archived==='archived' && !p.archived) return false;
     if(q){
-      const hay = stripDiacritics(`${p.name} ${p.ean} ${p.number} ${p.internalCode} ${p.manufacturer} ${p.location||''} ${(supplierById(p.supplierId)||{}).name||''}`).toLowerCase();
+      const hay = stripDiacritics(`${p.name} ${p.ean} ${p.number} ${p.manufacturer} ${formatLocation(p.location)} ${(supplierById(p.supplierId)||{}).name||''}`).toLowerCase();
       if(!hay.includes(q)) return false;
     }
     if(f.stock && stockStatus(p)!==f.stock) return false;
@@ -2948,7 +2995,6 @@ function productCellContent(p, key){
     case 'photo': return p.photo ? `<img class="prod-thumb" src="${p.photo}" alt="">` : `<div class="prod-thumb-empty"></div>`;
     case 'name': return `<div style="font-weight:500;">${escapeHtml(p.name||'(bez názvu)')}</div>`;
     case 'number': return `<span class="num">${escapeHtml(p.number||'—')}</span>`;
-    case 'internalCode': return `<span class="num">${escapeHtml(p.internalCode||'—')}</span>`;
     case 'ean': return `<span class="num">${escapeHtml(p.ean||'—')}</span>`;
     case 'category': return escapeHtml(p.category||'—');
     case 'manufacturer': return escapeHtml(p.manufacturer||'—');
@@ -2957,7 +3003,7 @@ function productCellContent(p, key){
     case 'salePrice': return `<span class="num">${fmt(p.salePrice||0)} Kč</span>`;
     case 'margin': { const m=productMargin(p); return `<span class="num">${m.marginPct.toFixed(0)}%</span>`; }
     case 'stock': { const s=stockStatus(p); return `<span class="pill ${stockPillClass(s)}">${stockAvailable(p)} ${escapeHtml(p.unit||'ks')}</span>`; }
-    case 'location': return escapeHtml(p.location||'—');
+    case 'location': return escapeHtml(formatLocation(p.location)) || '—';
     case 'expiry': return expiryBadge(p) || '—';
     default: return '';
   }
@@ -3106,7 +3152,7 @@ function viewProductForm(){
       <div class="section-title" style="margin-top:0;padding-top:0;border-top:none;">Rychlé přidání podle EAN</div>
       <div class="field-row" style="align-items:flex-end;">
         <div class="field"><label>EAN</label><input name="ean" id="product-ean" value="${escapeAttr(p.ean)}" placeholder="Načti čtečkou nebo napiš ručně"></div>
-        <div class="field"><button type="button" class="btn secondary" id="ean-lookup-btn" style="width:100%;">🔍 Načíst údaje podle EAN</button></div>
+        <div class="field"><label>&nbsp;</label><button type="button" class="btn secondary" id="ean-lookup-btn" style="width:100%;">Načíst údaje podle EAN</button></div>
       </div>
       <p id="ean-lookup-status" style="font-size:12px;color:var(--ink-soft);margin:-6px 0 14px 0;">${escapeHtml(state.eanLookupStatus||'')}</p>
       <div class="barcode-preview-box" id="ean-barcode-box" style="max-width:300px;${p.ean?'':'display:none;'}">
@@ -3133,9 +3179,13 @@ function viewProductForm(){
       <div class="section-title">Základní údaje</div>
       <div class="field"><label>Název produktu</label><input name="name" value="${escapeAttr(p.name)}" required autofocus></div>
       <div class="field"><label>Popis</label><textarea name="description">${escapeHtml(p.description||'')}</textarea></div>
-      <div class="field-row">
-        <div class="field"><label>Produktové číslo</label><input name="number" value="${escapeAttr(p.number)}" placeholder="${editing?'':escapeAttr(peekProductNumber())+' (auto)'}"></div>
-        <div class="field"><label>Interní kód</label><input name="internalCode" value="${escapeAttr(p.internalCode||'')}"></div>
+      <div class="field">
+        <label>Produktové číslo</label>
+        <div style="display:flex;gap:8px;">
+          <input name="number" id="product-number-input" value="${escapeAttr(p.number)}" placeholder="${editing?'':escapeAttr(peekProductNumber())+' (auto)'}" style="flex:1;">
+          <button type="button" class="btn secondary small" id="regen-number-btn">↻ Vygenerovat</button>
+        </div>
+        <p style="font-size:11px;color:var(--ink-soft);margin:4px 0 0 0;">Necháš prázdné = appka vygeneruje vlastní číslo (jen číslice). Můžeš si ale klidně napsat i vlastní.</p>
       </div>
       <div class="field-row">
         <div class="field"><label>Kategorie</label><input name="category" list="product-category-options" value="${escapeAttr(p.category||'')}">
@@ -3183,8 +3233,9 @@ function viewProductForm(){
         </div>
         <div class="field-row">
           <div class="field"><label>Minimální stav</label><input type="number" step="1" name="stockMin" value="${p.stockMin||0}"></div>
-          <div class="field"><label>Umístění na skladě</label><input name="location" value="${escapeAttr(p.location||'')}" placeholder="např. Sklad A, Regál 3, Police B2"></div>
+          <div class="field"></div>
         </div>
+        ${locationFieldGroup(p.location)}
         <button type="button" class="btn secondary small" data-action="open-stock-movement" data-id="${p.id}">+ Skladový pohyb</button>
         <div class="mini-label" style="margin-top:18px;">Historie pohybů (nesmazatelná)</div>
         ${(p.movements||[]).length ? `
@@ -3206,7 +3257,7 @@ function viewProductForm(){
           <div class="field"><label>Počáteční stav skladu</label><input type="number" step="1" name="stockCurrent" value="${p.stockCurrent||0}"></div>
           <div class="field"><label>Minimální stav</label><input type="number" step="1" name="stockMin" value="${p.stockMin||0}"></div>
         </div>
-        <div class="field"><label>Umístění na skladě</label><input name="location" value="${escapeAttr(p.location||'')}" placeholder="např. Sklad A, Regál 3, Police B2" style="max-width:400px;"></div>
+        ${locationFieldGroup(p.location)}
       `}
 
       <div class="section-title">Čárový kód</div>
@@ -3218,7 +3269,6 @@ function viewProductForm(){
         <p style="font-size:11px;color:var(--ink-soft);margin:4px 0 0 0;">Generuje se vždy z produktového čísla — zvol jen jaký typ kódu má appka vytvořit.</p>
       </div>
       <div class="barcode-preview-box">
-        <div id="barcode-preview-label" class="num" style="font-size:15px;color:var(--ink);font-weight:600;letter-spacing:1px;margin-bottom:10px;">–</div>
         <svg id="barcode-preview-svg"></svg>
         <div style="margin-top:10px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap;">
           <button type="button" class="btn secondary small" data-action="regen-barcode-preview">↻ Překreslit</button>
@@ -3266,13 +3316,23 @@ function setupProductForm(){
     const typeSelect = document.getElementById('product-barcode-type');
     const source = (numberInput && numberInput.value.trim()) || peekProductNumber();
     const type = typeSelect ? typeSelect.value : 'EAN13';
-    const value = renderBarcodeToSvg(svg, source, type);
-    const label = document.getElementById('barcode-preview-label');
-    if(label) label.textContent = value || '';
+    renderBarcodeToSvg(svg, source, type);
   }
   drawBarcodePreview();
   const numberInputEl = form.querySelector('input[name="number"]');
-  if(numberInputEl) numberInputEl.addEventListener('input', drawBarcodePreview);
+  if(numberInputEl){
+    numberInputEl.addEventListener('input', ()=>{
+      const cleaned = numberInputEl.value.replace(/\D/g,'');
+      if(cleaned !== numberInputEl.value) numberInputEl.value = cleaned;
+      drawBarcodePreview();
+    });
+  }
+  const regenNumberBtn = document.getElementById('regen-number-btn');
+  if(regenNumberBtn){
+    regenNumberBtn.addEventListener('click', ()=>{
+      if(numberInputEl){ numberInputEl.value = generateUniqueProductNumber(); drawBarcodePreview(); }
+    });
+  }
   const barcodeTypeSelect = document.getElementById('product-barcode-type');
   if(barcodeTypeSelect) barcodeTypeSelect.addEventListener('change', drawBarcodePreview);
 
@@ -3349,7 +3409,7 @@ async function onSubmitProduct(e){
 
   const p = {
     id: id || uid(),
-    number, ean, internalCode: fd.get('internalCode')||'',
+    number, ean, internalCode: existing ? (existing.internalCode||'') : '',
     name: fd.get('name'), description: fd.get('description')||'',
     category: fd.get('category')||'', manufacturer: fd.get('manufacturer')||'',
     supplierId: fd.get('supplierId')||'', unit: fd.get('unit')||'ks',
@@ -3357,7 +3417,7 @@ async function onSubmitProduct(e){
     purchasePrice: parseFloat(fd.get('purchasePrice'))||0, salePrice: parseFloat(fd.get('salePrice'))||0,
     stockCurrent: existing ? existing.stockCurrent : (parseFloat(fd.get('stockCurrent'))||0),
     stockReserved: existing ? (existing.stockReserved||0) : 0,
-    stockMin: parseFloat(fd.get('stockMin'))||0, location: (fd.get('location')||'').trim(),
+    stockMin: parseFloat(fd.get('stockMin'))||0, location: gatherLocationField(fd),
     expiryDate: fd.get('expiryDate')||'', photo, link: fd.get('link')||'',
     barcodeType: fd.get('barcodeType') || 'EAN13',
     archived: existing ? !!existing.archived : false,
@@ -3431,7 +3491,7 @@ function viewStock(){
             <td class="num">${p.expiryDate}</td>
             <td class="num">${daysUntil(p.expiryDate)}</td>
             <td class="num">${p.stockCurrent||0} ${escapeHtml(p.unit||'ks')}</td>
-            <td>${escapeHtml(p.location||'—')}</td>
+            <td>${escapeHtml(formatLocation(p.location)) || '—'}</td>
             <td class="actions-cell no-print"><button class="iconbtn" data-action="open-product" data-id="${p.id}" title="Otevřít">✎</button></td>
           </tr>
         `).join('')}
@@ -3578,7 +3638,6 @@ const PRODUCT_BULK_FIELDS = [
   {key:'name', label:'Produkt — název'},
   {key:'ean', label:'Produkt — EAN'},
   {key:'number', label:'Produkt — produktové číslo'},
-  {key:'internalCode', label:'Produkt — interní kód'},
   {key:'category', label:'Produkt — kategorie'},
   {key:'manufacturer', label:'Produkt — výrobce'},
   {key:'supplierName', label:'Produkt — dodavatel (název)'},
@@ -3597,7 +3656,6 @@ function guessProductFieldForHeader(header){
   const rules = [
     [/ean|čárov|carov|barcode/, 'ean'],
     [/produktov.{0,3}č[íi]slo|product\s*number|sku/, 'number'],
-    [/intern[íi]\s*k[oó]d|internal\s*code/, 'internalCode'],
     [/kategori/, 'category'],
     [/v[ýy]robce|manufacturer|brand/, 'manufacturer'],
     [/dodavatel|supplier/, 'supplierName'],
@@ -3651,7 +3709,7 @@ function computeProductBulkPreview(){
     if(number && seenNumbers.has(number)) isDup = true;
     if(isDup) dupCount++;
     items.push({
-      name: name || '(bez názvu)', ean, number, internalCode: (get(row,'internalCode')||'').toString().trim(),
+      name: name || '(bez názvu)', ean, number,
       category: (get(row,'category')||'').toString().trim(), manufacturer: (get(row,'manufacturer')||'').toString().trim(),
       supplierName: (get(row,'supplierName')||'').toString().trim(), unit: (get(row,'unit')||'ks').toString().trim()||'ks',
       vatRate: bulkParseNumber(get(row,'vatRate'))||0, purchasePrice: bulkParseNumber(get(row,'purchasePrice'))||0,
@@ -3677,10 +3735,10 @@ async function confirmProductBulkImport(){
     }
     const number = it.number || generateUniqueProductNumber();
     state.products.push({
-      ...blankProduct(), id: uid(), number, ean: it.ean, internalCode: it.internalCode,
+      ...blankProduct(), id: uid(), number, ean: it.ean,
       name: it.name, category: it.category, manufacturer: it.manufacturer, supplierId,
       unit: it.unit, vatRate: it.vatRate, purchasePrice: it.purchasePrice, salePrice: it.salePrice,
-      stockCurrent: it.stockCurrent, stockMin: it.stockMin, location: it.location, expiryDate: it.expiryDate, note: it.note,
+      stockCurrent: it.stockCurrent, stockMin: it.stockMin, location: it.location ? { warehouse: it.location, rack:'', shelf:'', spot:'' } : blankLocation(), expiryDate: it.expiryDate, note: it.note,
       movements: it.stockCurrent ? [{id:uid(), type:'počáteční stav', qty:it.stockCurrent, reason:'Import', note:'', date:new Date().toISOString(), user:state.currentUser, resultingStock:it.stockCurrent}] : []
     });
   }
@@ -3693,10 +3751,10 @@ async function confirmProductBulkImport(){
 }
 function exportProductsCsv(format){
   const rows = state.products.map(p=>({
-    Název: p.name, EAN: p.ean, 'Produktové číslo': p.number, 'Interní kód': p.internalCode,
+    Název: p.name, EAN: p.ean, 'Produktové číslo': p.number,
     Kategorie: p.category, Výrobce: p.manufacturer, Dodavatel: (supplierById(p.supplierId)||{}).name||'',
     Jednotka: p.unit, 'DPH %': p.vatRate, 'Nákupní cena': p.purchasePrice, 'Prodejní cena': p.salePrice,
-    Sklad: p.stockCurrent, Minimum: p.stockMin, Umístění: p.location||'', Expirace: p.expiryDate, Poznámka: p.note
+    Sklad: p.stockCurrent, Minimum: p.stockMin, Umístění: formatLocation(p.location), Expirace: p.expiryDate, Poznámka: p.note
   }));
   const ws = XLSX.utils.json_to_sheet(rows);
   const wb = XLSX.utils.book_new();
@@ -4473,7 +4531,7 @@ function setupProductPicker(){
     const matches = state.products.filter(p=>{
       if(p.archived) return false;
       if(!q) return true;
-      return stripDiacritics(`${p.name} ${p.ean||''} ${p.number||''} ${p.internalCode||''}`).toLowerCase().includes(q);
+      return stripDiacritics(`${p.name} ${p.ean||''} ${p.number||''}`).toLowerCase().includes(q);
     }).slice(0,30);
     if(!matches.length){
       list.innerHTML = `<div class="combo-empty">Žádný produkt neodpovídá.</div>`;
@@ -4815,9 +4873,7 @@ document.addEventListener('click', async (e)=>{
       const numberInput = form.querySelector('input[name="number"]');
       const typeSelect = document.getElementById('product-barcode-type');
       const source = (numberInput && numberInput.value.trim()) || peekProductNumber();
-      const value = renderBarcodeToSvg(svg, source, typeSelect ? typeSelect.value : 'EAN13');
-      const label = document.getElementById('barcode-preview-label');
-      if(label) label.textContent = value || '';
+      renderBarcodeToSvg(svg, source, typeSelect ? typeSelect.value : 'EAN13');
     }
   }
   else if(action==='open-stock-movement'){ await promptStockMovement(id); }
