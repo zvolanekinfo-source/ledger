@@ -3903,8 +3903,8 @@ async function downloadProductCodeFiles(productIds){
     const canvas = document.createElement('canvas');
     const v = String(p.number || p.ean || '');
     const format = /^\d{13}$/.test(v) ? 'EAN13' : /^\d{8}$/.test(v) ? 'EAN8' : 'CODE128';
-    try{ JsBarcode(canvas, v, { format, displayValue:false, margin:6 }); }
-    catch(e){ try{ JsBarcode(canvas, v, { format:'CODE128', displayValue:false, margin:6 }); }catch(e2){ console.error(e2); continue; } }
+    try{ JsBarcode(canvas, v, { format, displayValue:true, fontSize:16, margin:10 }); }
+    catch(e){ try{ JsBarcode(canvas, v, { format:'CODE128', displayValue:true, fontSize:16, margin:10 }); }catch(e2){ console.error(e2); continue; } }
     const url = canvas.toDataURL('image/png');
     const a = document.createElement('a');
     a.href = url;
