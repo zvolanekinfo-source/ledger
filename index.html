@@ -9,7 +9,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/JsBarcode/3.11.5/JsBarcode.all.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jsbarcode/3.11.5/JsBarcode.all.min.js"></script>
 <style>
   :root{
     --ink:#182420;
@@ -2694,7 +2694,15 @@ function barcodeValueFor(p){
   // vyhledání údajů o produktu) nemá nic společného.
   return buildBarcodeForType(p.number || p.internalCode || p.id || '', p.barcodeType || 'EAN13').value;
 }
+function barcodeLibReady(){
+  if(typeof JsBarcode === 'undefined'){
+    console.error('Knihovna JsBarcode se nenačetla (zkontroluj připojení k internetu nebo blokování skriptů).');
+    return false;
+  }
+  return true;
+}
 function renderBarcodeToSvg(svgEl, source, type){
+  if(!barcodeLibReady()) return null;
   try{
     const { value, format } = buildBarcodeForType(source, type || 'EAN13');
     JsBarcode(svgEl, value, { format, displayValue:true, fontSize:13, height:46, margin:6, background:'#ffffff', lineColor:'#182420' });
@@ -2705,6 +2713,7 @@ function renderAutoBarcodeToSvg(svgEl, rawValue){
   // Pro náhled zadaného/naskenovaného EAN nahoře — zobrazí přesně to, co bylo zadáno,
   // formát (EAN-13/EAN-8/Code128) se pozná podle délky. Pokud selže kontrolní součet
   // (např. při rozepsaném čísle), spadne to na Code128, ať se obrázek zobrazí vždy.
+  if(!barcodeLibReady()) return false;
   const v = String(rawValue||'');
   const format = /^\d{13}$/.test(v) ? 'EAN13' : /^\d{8}$/.test(v) ? 'EAN8' : 'CODE128';
   try{
