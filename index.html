@@ -3270,6 +3270,7 @@ function viewProductForm(){
       </div>
       <div class="barcode-preview-box">
         <svg id="barcode-preview-svg"></svg>
+        ${formatLocation(p.location) ? `<div style="margin-top:10px;font-size:13px;color:var(--ink-soft);">Umístění: <strong style="color:var(--ink);">${escapeHtml(formatLocation(p.location))}</strong></div>` : ''}
         <div style="margin-top:10px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap;">
           <button type="button" class="btn secondary small" data-action="regen-barcode-preview">↻ Překreslit</button>
           ${editing ? `
@@ -3459,6 +3460,55 @@ async function promptStockMovement(productId){
 }
 
 /* ---------- SKLAD (přehled) ---------- */
+function findProductByScanCode(code){
+  const raw = String(code||'').trim();
+  if(!raw) return null;
+  const digits = raw.replace(/\D/g,'');
+  return state.products.find(p=>{
+    if(p.ean && (p.ean===raw || (digits && p.ean===digits))) return true;
+    if(p.number && (p.number===raw || (digits && p.number===digits))) return true;
+    if(p.number){
+      const generated = buildBarcodeForType(p.number, p.barcodeType||'EAN13').value;
+      if(generated===raw || (digits && generated===digits)) return true;
+    }
+    return false;
+  }) || null;
+}
+function renderStockScanResult(p){
+  if(!p){
+    return `<div class="empty" style="padding:26px 20px;"><div class="display" style="font-size:15px;">Nic nenalezeno</div><div>Zkontroluj kód, nebo produkt založ v sekci Produkty.</div></div>`;
+  }
+  const s = stockStatus(p);
+  const loc = formatLocation(p.location);
+  return `
+    <div class="form-card" style="margin:0;padding:20px 22px;">
+      <div style="display:flex;gap:18px;align-items:flex-start;flex-wrap:wrap;">
+        ${p.photo ? `<img src="${p.photo}" style="width:90px;height:90px;object-fit:cover;border-radius:8px;border:1px solid var(--line);flex-shrink:0;">` : `<div class="prod-thumb-empty" style="width:90px;height:90px;border-radius:8px;flex-shrink:0;"></div>`}
+        <div style="flex:1;min-width:220px;">
+          <div class="display" style="font-size:19px;margin-bottom:4px;">${escapeHtml(p.name||'(bez názvu)')}</div>
+          <div style="font-size:12.5px;color:var(--ink-soft);margin-bottom:14px;">${escapeHtml(p.number||'')}${p.ean?' · EAN '+escapeHtml(p.ean):''}</div>
+          <div class="stock-row" style="margin-bottom:14px;">
+            <div class="sr-item"><div class="sr-label">Skladem</div><div class="sr-value"><span class="pill ${stockPillClass(s)}">${stockAvailable(p)} ${escapeHtml(p.unit||'ks')}</span></div></div>
+            <div class="sr-item"><div class="sr-label">Umístění</div><div class="sr-value" style="font-size:17px;">${loc?escapeHtml(loc):'— nezadáno —'}</div></div>
+          </div>
+          <button type="button" class="btn secondary small" data-action="open-product" data-id="${p.id}">Otevřít produkt</button>
+        </div>
+      </div>
+    </div>
+  `;
+}
+function setupStockScan(){
+  const input = document.getElementById('stock-scan-input');
+  const resultBox = document.getElementById('stock-scan-result');
+  if(!input || !resultBox) return;
+  function run(){
+    const val = input.value.trim();
+    resultBox.innerHTML = val ? renderStockScanResult(findProductByScanCode(val)) : '';
+  }
+  input.addEventListener('input', run);
+  input.addEventListener('keydown', (e)=>{ if(e.key==='Enter') e.preventDefault(); });
+  input.focus();
+}
 function viewStock(){
   const active = state.products.filter(p=>!p.archived);
   const low = active.filter(p=>stockStatus(p)==='low');
@@ -3470,6 +3520,13 @@ function viewStock(){
   allMovements.sort((a,b)=> new Date(b.date)-new Date(a.date));
   return `
     <div class="pagehead"><div><h1>Sklad</h1><p class="desc">Přehled skladových zásob, nízkých stavů a expirací.</p></div></div>
+
+    <div class="form-card" style="margin-bottom:24px;">
+      <div class="section-title" style="margin-top:0;padding-top:0;border-top:none;">Najít produkt podle kódu</div>
+      <input type="text" id="stock-scan-input" class="search-input" placeholder="Naskenuj čtečkou nebo napiš EAN / produktový kód…" autocomplete="off" style="max-width:none;width:100%;">
+      <div id="stock-scan-result" style="margin-top:14px;"></div>
+    </div>
+
     <div class="cards">
       <div class="card"><div class="label">Hodnota skladu</div><div class="value accent num">${fmt(stockValue)} Kč</div></div>
       <div class="card"><div class="label">Pod minimem</div><div class="value amber">${low.length}</div></div>
@@ -3893,6 +3950,7 @@ function afterRender(){
   if(supplierForm){ supplierForm.addEventListener('submit', onSubmitSupplier); }
   setupProductForm();
   if(state.view==='products') setupProductsView();
+  if(state.view==='stock') setupStockScan();
   setupProductPicker();
   setupAresCombo();
   ['client-address','client-delivery-address'].forEach(setupAddressGroupAutocomplete);
