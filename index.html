@@ -3074,7 +3074,6 @@ function viewProducts(){
 
     ${renderBulkBar(state.selectedProductIds.size, 'produktů', `
       <button type="button" class="btn secondary small" data-action="bulk-print-barcodes">Tisk čárových kódů</button>
-      <button type="button" class="btn secondary small" data-action="bulk-set-barcode-type">Typ čárového kódu</button>
       <button type="button" class="btn secondary small" data-action="bulk-edit-products-price">Změnit ceny</button>
       <button type="button" class="btn secondary small" data-action="bulk-edit-products-vat">Změnit DPH</button>
       <button type="button" class="btn secondary small" data-action="bulk-edit-products-supplier">Změnit dodavatele</button>
@@ -3188,22 +3187,17 @@ function viewProductForm(){
       <div class="field"><label>Název produktu</label><input name="name" value="${escapeAttr(p.name)}" required autofocus></div>
       <div class="field"><label>Popis</label><textarea name="description">${escapeHtml(p.description||'')}</textarea></div>
       <div class="field">
-        <label>Produktové číslo (= EAN na štítku)</label>
+        <label>Produktové číslo (= EAN-13 na štítku)</label>
         <div style="display:flex;gap:8px;">
-          <input name="number" id="product-number-input" value="${escapeAttr(p.number)}" placeholder="${editing?'':escapeAttr(peekProductNumber(p.barcodeType||'EAN13'))+' (auto)'}" style="flex:1;">
+          <input name="number" id="product-number-input" value="${escapeAttr(p.number)}" placeholder="${editing?'':escapeAttr(peekProductNumber('EAN13'))+' (auto)'}" style="flex:1;">
           <button type="button" class="btn secondary small" id="regen-number-btn">↻ Vygenerovat</button>
         </div>
-        <p style="font-size:11px;color:var(--ink-soft);margin:4px 0 0 0;">Necháš prázdné = appka vygeneruje vlastní číslo podle zvoleného typu. Můžeš si ale klidně napsat i vlastní.</p>
+        <p style="font-size:11px;color:var(--ink-soft);margin:4px 0 0 0;">Necháš prázdné = appka vygeneruje platný EAN-13 (nejběžnější typ, funguje skoro na vše). Můžeš si ale klidně napsat i vlastní 13místné číslo.</p>
       </div>
-      <div class="field" style="max-width:360px;">
-        <label>Typ kódu</label>
-        <select name="barcodeType" id="product-barcode-type">
-          ${BARCODE_TYPES.map(t=>`<option value="${t.value}" ${(p.barcodeType||'EAN13')===t.value?'selected':''}>${escapeHtml(t.label)}</option>`).join('')}
-        </select>
-      </div>
+      <input type="hidden" name="barcodeType" value="EAN13">
       <div class="barcode-preview-box" style="max-width:340px;">
         <svg id="product-number-barcode-svg"></svg>
-        <div id="product-number-barcode-error" style="display:none;font-size:11.5px;color:var(--red);margin-top:6px;">Zadané číslo neodpovídá zvolenému typu — obrázek zobrazen jako Code 128.</div>
+        <div id="product-number-barcode-error" style="display:none;font-size:11.5px;color:var(--red);margin-top:6px;">Zadané číslo není platný EAN-13 — obrázek zobrazen jako Code 128.</div>
       </div>
       <div class="field-row">
         <div class="field"><label>Kategorie</label><input name="category" list="product-category-options" value="${escapeAttr(p.category||'')}">
@@ -3312,37 +3306,25 @@ function setupProductForm(){
     const errorEl = document.getElementById('product-number-barcode-error');
     if(!svg) return;
     const numberInput = form.querySelector('input[name="number"]');
-    const typeSelect = document.getElementById('product-barcode-type');
-    const type = typeSelect ? typeSelect.value : 'EAN13';
-    const value = (numberInput && numberInput.value.trim()) || peekProductNumber(type);
+    const value = (numberInput && numberInput.value.trim()) || peekProductNumber('EAN13');
     if(!barcodeLibReady()) return;
-    const meta = barcodeTypeMeta(type);
     svg.innerHTML = '';
     let usedFallback = false;
-    let ok = false;
     try{
-      JsBarcode(svg, value, { format: meta.jsFormat, displayValue:true, fontSize:13, height:46, margin:6, background:'#ffffff', lineColor:'#182420' });
-      ok = true;
+      JsBarcode(svg, value, { format:'EAN13', displayValue:true, fontSize:13, height:46, margin:6, background:'#ffffff', lineColor:'#182420' });
     }catch(e){
       try{
         JsBarcode(svg, value, { format:'CODE128', displayValue:true, fontSize:13, height:46, margin:6, background:'#ffffff', lineColor:'#182420' });
-        ok = true; usedFallback = (meta.jsFormat!=='CODE128');
+        usedFallback = true;
       }catch(e2){ console.error('Barcode render failed', e2); }
     }
     if(errorEl) errorEl.style.display = usedFallback ? '' : 'none';
   }
   function filterNumberInput(){
     const numberInput = form.querySelector('input[name="number"]');
-    const typeSelect = document.getElementById('product-barcode-type');
     if(!numberInput) return;
-    const meta = barcodeTypeMeta(typeSelect ? typeSelect.value : 'EAN13');
-    if(meta.numeric){
-      const cleaned = numberInput.value.replace(/\D/g,'');
-      if(cleaned !== numberInput.value) numberInput.value = cleaned;
-    } else if(meta.jsFormat==='CODE39'){
-      const cleaned = numberInput.value.toUpperCase().replace(/[^0-9A-Z\-\.\$\/\+% ]/g,'');
-      if(cleaned !== numberInput.value) numberInput.value = cleaned;
-    }
+    const cleaned = numberInput.value.replace(/\D/g,'');
+    if(cleaned !== numberInput.value) numberInput.value = cleaned;
   }
   drawProductNumberBarcode();
   const numberInputEl = form.querySelector('input[name="number"]');
@@ -3352,12 +3334,9 @@ function setupProductForm(){
   const regenNumberBtn = document.getElementById('regen-number-btn');
   if(regenNumberBtn){
     regenNumberBtn.addEventListener('click', ()=>{
-      const typeSelect = document.getElementById('product-barcode-type');
-      if(numberInputEl){ numberInputEl.value = generateUniqueProductNumber(typeSelect?typeSelect.value:'EAN13'); drawProductNumberBarcode(); }
+      if(numberInputEl){ numberInputEl.value = generateUniqueProductNumber('EAN13'); drawProductNumberBarcode(); }
     });
   }
-  const productBarcodeTypeSelect = document.getElementById('product-barcode-type');
-  if(productBarcodeTypeSelect) productBarcodeTypeSelect.addEventListener('change', ()=>{ filterNumberInput(); drawProductNumberBarcode(); });
 
   function drawEanBarcodePreview(){
     const svg = document.getElementById('ean-barcode-svg');
@@ -4989,14 +4968,6 @@ document.addEventListener('click', async (e)=>{
   }
   else if(action==='bulk-clear-selection'){ state.selectedInvoiceIds.clear(); state.selectedClientIds.clear(); state.selectedProductIds.clear(); render(); }
   else if(action==='bulk-print-barcodes'){ printProductBarcodes([...state.selectedProductIds], 1, true); }
-  else if(action==='bulk-set-barcode-type'){
-    const names = BARCODE_TYPES.map((t,i)=>`${i+1}. ${t.label}`).join('\n');
-    const val = prompt(`Zadej číslo typu čárového kódu pro vybrané produkty:\n${names}`);
-    if(val===null) return;
-    const idx = parseInt(val,10)-1;
-    if(BARCODE_TYPES[idx]) await bulkUpdateProducts([...state.selectedProductIds], { barcodeType: BARCODE_TYPES[idx].value });
-    render();
-  }
   else if(action==='bulk-edit-products-price'){
     const mode = prompt('Jak upravit prodejní cenu vybraných produktů?\nNapiš buď pevnou částku (např. 199), nebo procentuální změnu s % (např. +10% nebo -5%).');
     if(mode===null) return;
