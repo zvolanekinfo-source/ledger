@@ -2593,7 +2593,7 @@ function blankProduct(){
     id: uid(), number:'', ean:'', internalCode:'', name:'', description:'',
     category:'', manufacturer:'', supplierId:'', unit:'ks', vatRate:21, note:'',
     purchasePrice:0, salePrice:0,
-    stockCurrent:0, stockReserved:0, stockMin:0, location:'',
+    stockCurrent:0, stockReserved:0, stockMin:0, location:'', barcodeType:'EAN13',
     expiryDate:'', photo:'', link:'', archived:false, createdAt:new Date().toISOString(),
     movements:[]
   };
@@ -2652,37 +2652,62 @@ function generateUniqueProductNumber(){
   } while(state.products.some(p=>p.number===n) && guard<100000);
   return n;
 }
-function ean13CheckDigit(str12){
+const BARCODE_TYPES = [
+  {value:'EAN13', label:'EAN-13 (13 číslic) — běžné maloobchodní zboží', jsFormat:'EAN13', digits:12, numeric:true},
+  {value:'EAN8', label:'EAN-8 (8 číslic) — malé obaly', jsFormat:'EAN8', digits:7, numeric:true},
+  {value:'UPC', label:'UPC-A (12 číslic) — severoamerický trh', jsFormat:'UPC', digits:11, numeric:true},
+  {value:'ITF14', label:'ITF-14 (14 číslic) — kartony, logistika', jsFormat:'ITF14', digits:13, numeric:true},
+  {value:'CODE128', label:'Code 128 — čísla i písmena', jsFormat:'CODE128', digits:null, numeric:false},
+  {value:'CODE39', label:'Code 39 — čísla i písmena (starší čtečky)', jsFormat:'CODE39', digits:null, numeric:false},
+];
+function barcodeTypeMeta(type){ return BARCODE_TYPES.find(t=>t.value===type) || BARCODE_TYPES[0]; }
+function gs1CheckDigit(bodyDigits){
+  // Standardní GS1 kontrolní číslice (stejný výpočet pro EAN-8/13, UPC-A i ITF-14):
+  // počítáno zprava, váhy střídavě 3 a 1.
   let sum = 0;
-  for(let i=0;i<12;i++){
-    const d = parseInt(str12[i],10)||0;
-    sum += (i%2===0) ? d : d*3;
+  for(let i=0;i<bodyDigits.length;i++){
+    const d = parseInt(bodyDigits[bodyDigits.length-1-i],10)||0;
+    sum += (i%2===0) ? d*3 : d;
   }
   const mod = sum % 10;
   return mod===0 ? '0' : String(10-mod);
 }
-function makeValidEan13(digitsSource){
-  const digits = String(digitsSource||'').replace(/\D/g,'');
-  // prefix 20–29 je v EAN-13 vyhrazený pro interní/vnitropodnikové použití
-  const base = ('20' + digits.padStart(10,'0')).slice(0,12);
-  return base + ean13CheckDigit(base);
+function buildBarcodeForType(source, type){
+  const meta = barcodeTypeMeta(type);
+  const digitsOnly = String(source||'').replace(/\D/g,'');
+  if(meta.jsFormat==='CODE128'){
+    const raw = String(source||'').trim();
+    return { value: raw || digitsOnly || '0', format:'CODE128' };
+  }
+  if(meta.jsFormat==='CODE39'){
+    let raw = String(source||'').toUpperCase().replace(/[^0-9A-Z\-\.\$\/\+% ]/g,'');
+    if(!raw) raw = digitsOnly || '0';
+    return { value: raw, format:'CODE39' };
+  }
+  // číselné GS1 typy (EAN-13/8, UPC-A, ITF-14)
+  const body = digitsOnly.padStart(meta.digits,'0').slice(-meta.digits);
+  return { value: body + gs1CheckDigit(body), format: meta.jsFormat };
 }
 function barcodeValueFor(p){
-  // Čárový kód na štítku se VŽDY generuje z produktového čísla (auto nebo vlastního) —
-  // s EAN polem nahoře (které slouží jen k vyhledání údajů o produktu) nemá nic společného.
-  return makeValidEan13(p.number || p.internalCode || p.id || '');
+  // Čárový kód na štítku se VŽDY generuje z produktového čísla (auto nebo vlastního) a
+  // podle zvoleného typu (p.barcodeType) — s EAN polem nahoře (to slouží jen k
+  // vyhledání údajů o produktu) nemá nic společného.
+  return buildBarcodeForType(p.number || p.internalCode || p.id || '', p.barcodeType || 'EAN13').value;
 }
-function previewBarcodeValue(numberRaw){
-  return makeValidEan13(numberRaw || peekProductNumber());
-}
-function barcodeFormatFor(value){
-  if(/^\d{13}$/.test(value)) return 'EAN13';
-  if(/^\d{8}$/.test(value)) return 'EAN8';
-  return 'CODE128';
-}
-function renderBarcodeToSvg(svgEl, value){
+function renderBarcodeToSvg(svgEl, source, type){
   try{
-    JsBarcode(svgEl, String(value||''), { format: barcodeFormatFor(value), displayValue:true, fontSize:13, height:46, margin:6, background:'#ffffff', lineColor:'#182420' });
+    const { value, format } = buildBarcodeForType(source, type || 'EAN13');
+    JsBarcode(svgEl, value, { format, displayValue:true, fontSize:13, height:46, margin:6, background:'#ffffff', lineColor:'#182420' });
+    return value;
+  }catch(e){ console.error('Barcode render failed', e); return null; }
+}
+function renderAutoBarcodeToSvg(svgEl, rawValue){
+  // Pro náhled zadaného/naskenovaného EAN nahoře — zobrazí přesně to, co bylo zadáno,
+  // formát (EAN-13/EAN-8/Code128) se pozná podle délky.
+  try{
+    const v = String(rawValue||'');
+    const format = /^\d{13}$/.test(v) ? 'EAN13' : /^\d{8}$/.test(v) ? 'EAN8' : 'CODE128';
+    JsBarcode(svgEl, v, { format, displayValue:true, fontSize:13, height:46, margin:6, background:'#ffffff', lineColor:'#182420' });
     return true;
   }catch(e){ console.error('Barcode render failed', e); return false; }
 }
@@ -2977,6 +3002,7 @@ function viewProducts(){
 
     ${renderBulkBar(state.selectedProductIds.size, 'produktů', `
       <button type="button" class="btn secondary small" data-action="bulk-print-barcodes">Tisk čárových kódů</button>
+      <button type="button" class="btn secondary small" data-action="bulk-set-barcode-type">Typ čárového kódu</button>
       <button type="button" class="btn secondary small" data-action="bulk-edit-products-price">Změnit ceny</button>
       <button type="button" class="btn secondary small" data-action="bulk-edit-products-vat">Změnit DPH</button>
       <button type="button" class="btn secondary small" data-action="bulk-edit-products-supplier">Změnit dodavatele</button>
@@ -3165,6 +3191,13 @@ function viewProductForm(){
       `}
 
       <div class="section-title">Čárový kód</div>
+      <div class="field" style="max-width:360px;">
+        <label>Typ čárového kódu</label>
+        <select name="barcodeType" id="product-barcode-type">
+          ${BARCODE_TYPES.map(t=>`<option value="${t.value}" ${(p.barcodeType||'EAN13')===t.value?'selected':''}>${escapeHtml(t.label)}</option>`).join('')}
+        </select>
+        <p style="font-size:11px;color:var(--ink-soft);margin:4px 0 0 0;">Generuje se vždy z produktového čísla — zvol jen jaký typ kódu má appka vytvořit.</p>
+      </div>
       <div class="barcode-preview-box">
         <div id="barcode-preview-label" class="num" style="font-size:15px;color:var(--ink);font-weight:600;letter-spacing:1px;margin-bottom:10px;">–</div>
         <svg id="barcode-preview-svg"></svg>
@@ -3211,14 +3244,18 @@ function setupProductForm(){
     const svg = document.getElementById('barcode-preview-svg');
     if(!svg) return;
     const numberInput = form.querySelector('input[name="number"]');
-    const value = previewBarcodeValue(numberInput && numberInput.value.trim());
-    renderBarcodeToSvg(svg, value);
+    const typeSelect = document.getElementById('product-barcode-type');
+    const source = (numberInput && numberInput.value.trim()) || peekProductNumber();
+    const type = typeSelect ? typeSelect.value : 'EAN13';
+    const value = renderBarcodeToSvg(svg, source, type);
     const label = document.getElementById('barcode-preview-label');
-    if(label) label.textContent = value;
+    if(label) label.textContent = value || '';
   }
   drawBarcodePreview();
   const numberInputEl = form.querySelector('input[name="number"]');
   if(numberInputEl) numberInputEl.addEventListener('input', drawBarcodePreview);
+  const barcodeTypeSelect = document.getElementById('product-barcode-type');
+  if(barcodeTypeSelect) barcodeTypeSelect.addEventListener('change', drawBarcodePreview);
 
   function drawEanBarcodePreview(){
     const svg = document.getElementById('ean-barcode-svg');
@@ -3228,7 +3265,7 @@ function setupProductForm(){
     const val = eanInput.value.trim();
     if(!val){ box.style.display = 'none'; return; }
     box.style.display = '';
-    renderBarcodeToSvg(svg, val);
+    renderAutoBarcodeToSvg(svg, val);
   }
   drawEanBarcodePreview();
   const eanInput = document.getElementById('product-ean');
@@ -3300,6 +3337,7 @@ async function onSubmitProduct(e){
     stockReserved: existing ? (existing.stockReserved||0) : 0,
     stockMin: parseFloat(fd.get('stockMin'))||0, location: (fd.get('location')||'').trim(),
     expiryDate: fd.get('expiryDate')||'', photo, link: fd.get('link')||'',
+    barcodeType: fd.get('barcodeType') || 'EAN13',
     archived: existing ? !!existing.archived : false,
     createdAt: existing ? existing.createdAt : new Date().toISOString(),
     movements: existing ? (existing.movements||[]) : (parseFloat(fd.get('stockCurrent'))||0)!==0 ? [{id:uid(), type:'počáteční stav', qty:(parseFloat(fd.get('stockCurrent'))||0), reason:'Založení produktu', note:'', date:new Date().toISOString(), user:state.currentUser, resultingStock:(parseFloat(fd.get('stockCurrent'))||0)}] : []
@@ -3406,7 +3444,7 @@ function buildBarcodeLabelsHtml(products, qtyEach, showPrice){
       html += `<div class="barcode-label">
         <div class="bl-name">${escapeHtml(p.name||'')}</div>
         <div class="bl-num">${escapeHtml(p.number||'')}</div>
-        <svg class="bl-svg" data-barcode-value="${escapeAttr(barcodeValueFor(p))}"></svg>
+        <svg class="bl-svg" data-barcode-source="${escapeAttr(p.number || p.internalCode || p.id || '')}" data-barcode-type="${escapeAttr(p.barcodeType||'EAN13')}"></svg>
         ${showPrice?`<div class="bl-price">${fmt(p.salePrice||0)} Kč</div>`:''}
       </div>`;
     }
@@ -3423,8 +3461,8 @@ function printProductBarcodes(ids, qty, showPrice){
     document.body.appendChild(sheet);
   }
   sheet.innerHTML = buildBarcodeLabelsHtml(products, qty||1, showPrice!==false);
-  sheet.querySelectorAll('svg[data-barcode-value]').forEach(svg=>{
-    renderBarcodeToSvg(svg, svg.getAttribute('data-barcode-value'));
+  sheet.querySelectorAll('svg[data-barcode-source]').forEach(svg=>{
+    renderBarcodeToSvg(svg, svg.getAttribute('data-barcode-source'), svg.getAttribute('data-barcode-type'));
   });
   sheet.classList.add('printing');
   document.body.classList.add('printing-barcodes');
@@ -3441,7 +3479,8 @@ function downloadBarcodePng(productId){
   if(!p) return;
   const canvas = document.createElement('canvas');
   try{
-    JsBarcode(canvas, barcodeValueFor(p), { format: barcodeFormatFor(barcodeValueFor(p)), displayValue:true, fontSize:16, height:70, margin:10 });
+    const { value, format } = buildBarcodeForType(p.number || p.internalCode || p.id || '', p.barcodeType || 'EAN13');
+    JsBarcode(canvas, value, { format, displayValue:true, fontSize:16, height:70, margin:10 });
     const url = canvas.toDataURL('image/png');
     const a = document.createElement('a');
     a.href = url; a.download = `carovy-kod-${(p.number||p.id).replace(/[^\w.-]+/g,'_')}.png`;
@@ -3455,7 +3494,7 @@ async function downloadBarcodePdf(ids, qty, showPrice){
   wrap.style.cssText = 'position:fixed;left:-9999px;top:0;background:#fff;padding:10px;';
   wrap.innerHTML = buildBarcodeLabelsHtml(products, qty||1, showPrice!==false);
   document.body.appendChild(wrap);
-  wrap.querySelectorAll('svg[data-barcode-value]').forEach(svg=>{ renderBarcodeToSvg(svg, svg.getAttribute('data-barcode-value')); });
+  wrap.querySelectorAll('svg[data-barcode-source]').forEach(svg=>{ renderBarcodeToSvg(svg, svg.getAttribute('data-barcode-source'), svg.getAttribute('data-barcode-type')); });
   try{
     await html2pdf().set({
       margin:10, filename:'carove-kody.pdf', image:{type:'jpeg',quality:0.98},
@@ -4752,10 +4791,11 @@ document.addEventListener('click', async (e)=>{
     const form = document.getElementById('product-form');
     if(svg && form){
       const numberInput = form.querySelector('input[name="number"]');
-      const value = previewBarcodeValue(numberInput&&numberInput.value.trim());
-      renderBarcodeToSvg(svg, value);
+      const typeSelect = document.getElementById('product-barcode-type');
+      const source = (numberInput && numberInput.value.trim()) || peekProductNumber();
+      const value = renderBarcodeToSvg(svg, source, typeSelect ? typeSelect.value : 'EAN13');
       const label = document.getElementById('barcode-preview-label');
-      if(label) label.textContent = value;
+      if(label) label.textContent = value || '';
     }
   }
   else if(action==='open-stock-movement'){ await promptStockMovement(id); }
@@ -4800,6 +4840,14 @@ document.addEventListener('click', async (e)=>{
   }
   else if(action==='bulk-clear-selection'){ state.selectedInvoiceIds.clear(); state.selectedClientIds.clear(); state.selectedProductIds.clear(); render(); }
   else if(action==='bulk-print-barcodes'){ printProductBarcodes([...state.selectedProductIds], 1, true); }
+  else if(action==='bulk-set-barcode-type'){
+    const names = BARCODE_TYPES.map((t,i)=>`${i+1}. ${t.label}`).join('\n');
+    const val = prompt(`Zadej číslo typu čárového kódu pro vybrané produkty:\n${names}`);
+    if(val===null) return;
+    const idx = parseInt(val,10)-1;
+    if(BARCODE_TYPES[idx]) await bulkUpdateProducts([...state.selectedProductIds], { barcodeType: BARCODE_TYPES[idx].value });
+    render();
+  }
   else if(action==='bulk-edit-products-price'){
     const mode = prompt('Jak upravit prodejní cenu vybraných produktů?\nNapiš buď pevnou částku (např. 199), nebo procentuální změnu s % (např. +10% nebo -5%).');
     if(mode===null) return;
