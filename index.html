@@ -554,6 +554,7 @@ let state = {
   productSearch: '',
   productFilters: { stock:'', category:'', supplierId:'', manufacturer:'', expiry:'', archived:'' },
   productStatsFilter: { preset:'month', from:'', to:'' },
+  expirySettings: { value:90, unit:'days' },
   pendingEditMovementId: null,
   selectedProductIds: new Set(),
   productSort: { key:'name', dir:'asc' },
@@ -798,6 +799,7 @@ async function loadAll(){
   try{ const r = await window.storage.get('product-settings', true); state.productSettings = r ? JSON.parse(r.value) : { prefix:'PRD-', nextNumber:1, padding:6 }; }catch(e){ state.productSettings = { prefix:'PRD-', nextNumber:1, padding:6 }; }
   try{ const r = await window.storage.get('inventory-settings', true); state.inventorySettings = r ? JSON.parse(r.value) : { valuationMethod:'average' }; }catch(e){ state.inventorySettings = { valuationMethod:'average' }; }
   try{ const r = await window.storage.get('product-columns', true); state.productColumns = r ? JSON.parse(r.value) : null; }catch(e){ state.productColumns = null; }
+  try{ const r = await window.storage.get('expiry-settings', true); state.expirySettings = r ? JSON.parse(r.value) : { value:90, unit:'days' }; }catch(e){ state.expirySettings = { value:90, unit:'days' }; }
   if(!state.productColumns) state.productColumns = DEFAULT_PRODUCT_COLUMNS.map(c=>({...c}));
   else {
     const existingKeys = new Set(state.productColumns.map(c=>c.key));
@@ -826,6 +828,7 @@ async function saveProducts(){ await window.storage.set('products', JSON.stringi
 async function saveProductSettings(){ await window.storage.set('product-settings', JSON.stringify(state.productSettings), true); }
 async function saveInventorySettings(){ await window.storage.set('inventory-settings', JSON.stringify(state.inventorySettings), true); }
 async function saveProductColumns(){ await window.storage.set('product-columns', JSON.stringify(state.productColumns), true); }
+async function saveExpirySettings(){ await window.storage.set('expiry-settings', JSON.stringify(state.expirySettings), true); }
 
 /* ---------- BACKUP / SNAPSHOTS ---------- */
 async function loadBackupIndex(){
@@ -3882,7 +3885,9 @@ function viewStock(){
   const active = state.products.filter(p=>!p.archived);
   const low = active.filter(p=>stockStatus(p)==='low');
   const out = active.filter(p=>stockStatus(p)==='out');
-  const expiring = active.filter(p=>{ const d=daysUntil(p.expiryDate); return d!=null && d<=90; }).sort((a,b)=>daysUntil(a.expiryDate)-daysUntil(b.expiryDate));
+  const es = state.expirySettings || { value:90, unit:'days' };
+  const expiryThresholdDays = es.unit==='months' ? (es.value||0)*30 : (es.value||0);
+  const expiring = active.filter(p=>{ const d=daysUntil(p.expiryDate); return d!=null && d<=expiryThresholdDays; }).sort((a,b)=>daysUntil(a.expiryDate)-daysUntil(b.expiryDate));
   const stockValue = active.reduce((s,p)=>s+computeProductStockValue(p),0);
   const allMovements = [];
   active.forEach(p=>(p.movements||[]).forEach(m=>allMovements.push({...m, productName:p.name, productId:p.id})));
@@ -3900,7 +3905,17 @@ function viewStock(){
       <div class="card"><div class="label">Hodnota skladu</div><div class="value accent num">${fmt(stockValue)} Kč</div></div>
       <div class="card"><div class="label">Pod minimem</div><div class="value amber">${low.length}</div></div>
       <div class="card"><div class="label">Není skladem</div><div class="value red">${out.length}</div></div>
-      <div class="card"><div class="label">Blíží se expirace (90 dní)</div><div class="value amber">${expiring.length}</div></div>
+      <div class="card">
+        <div class="label">Blíží se expirace</div>
+        <div class="value amber">${expiring.length}</div>
+        <div class="no-print" style="display:flex;gap:6px;align-items:center;margin-top:8px;">
+          <input type="number" min="1" id="expiry-threshold-value" value="${es.value}" style="width:64px;padding:5px 7px;border:1px solid var(--line);border-radius:4px;font-size:12.5px;">
+          <select id="expiry-threshold-unit" style="padding:5px 7px;border:1px solid var(--line);border-radius:4px;font-size:12.5px;">
+            <option value="days" ${es.unit==='days'?'selected':''}>dní</option>
+            <option value="months" ${es.unit==='months'?'selected':''}>měsíců</option>
+          </select>
+        </div>
+      </div>
     </div>
 
     <div class="section-title" style="margin-top:0;">Nízký stav / vyprodáno</div>
@@ -3923,7 +3938,7 @@ function viewStock(){
         `).join('')}
       </tbody>
     </table>
-    ` : emptyState('Žádné blížící se expirace', 'Produkty s vyplněným datem expirace do 90 dní se zobrazí zde.')}
+    ` : emptyState('Žádné blížící se expirace', `Produkty s vyplněným datem expirace do ${es.value} ${es.unit==='months'?'měsíců':'dní'} se zobrazí zde.`)}
 
     <div class="section-title">Historie skladových pohybů</div>
     <table>
@@ -4467,6 +4482,19 @@ function afterRender(){
   setupProductForm();
   if(state.view==='products') setupProductsView();
   if(state.view==='stock') setupStockScan();
+  if(state.view==='stock'){
+    const valEl = document.getElementById('expiry-threshold-value');
+    const unitEl = document.getElementById('expiry-threshold-unit');
+    const applyThreshold = async ()=>{
+      const value = parseInt(valEl.value,10);
+      if(isNaN(value) || value<1) return;
+      state.expirySettings = { value, unit: unitEl.value };
+      await saveExpirySettings();
+      render();
+    };
+    if(valEl) valEl.addEventListener('change', applyThreshold);
+    if(unitEl) unitEl.addEventListener('change', applyThreshold);
+  }
   setupProductPicker();
   setupAresCombo();
   ['client-address','client-delivery-address'].forEach(setupAddressGroupAutocomplete);
