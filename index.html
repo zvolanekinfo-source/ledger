@@ -2660,16 +2660,19 @@ function renderBarcodeToSvg(svgEl, value){
 
 /* ---------- EAN lookup (Open Food Facts – veřejné API bez klíče) ---------- */
 async function eanLookup(ean){
-  const res = await fetch(`https://world.openfoodfacts.org/api/v2/product/${encodeURIComponent(ean)}.json`);
+  // Univerzální endpoint prohledá zároveň Open Food Facts, Open Beauty Facts,
+  // Open Pet Food Facts i Open Products Facts (obecné/nepotravinové zboží) —
+  // takže nejde jen o potraviny jako u klasických "kalorických tabulek".
+  const res = await fetch(`https://world.openfoodfacts.org/api/v2/product/${encodeURIComponent(ean)}.json?product_type=all`);
   if(!res.ok) throw new Error('Vyhledávání se nepovedlo.');
   const data = await res.json();
-  if(data.status !== 1 || !data.product) return null;
+  if((data.status !== 1 && data.status !== 'success') || !data.product) return null;
   const p = data.product;
   return {
-    name: p.product_name || p.product_name_cs || p.generic_name || '',
+    name: p.product_name || p.product_name_cs || p.generic_name || p.product_name_en || '',
     manufacturer: (p.brands||'').split(',')[0]?.trim() || '',
     category: (p.categories||'').split(',')[0]?.trim() || '',
-    image: p.image_front_url || p.image_url || ''
+    image: p.image_front_url || p.image_url || p.image_front_small_url || ''
   };
 }
 
