@@ -9,6 +9,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/JsBarcode/3.11.5/JsBarcode.all.min.js"></script>
 <style>
   :root{
     --ink:#182420;
@@ -387,6 +388,59 @@
     .login-form-side{padding:32px 28px 48px 28px;}
   }
 
+  /* PRODUCTS TABLE */
+  .prod-table-wrap{overflow-x:auto;background:var(--surface);border:1px solid var(--line);border-radius:6px;}
+  table.prod-table{border:none;border-radius:0;}
+  table.prod-table thead th{position:relative;white-space:nowrap;user-select:none;cursor:pointer;}
+  table.prod-table thead th.sorted{color:var(--ink);}
+  table.prod-table thead th .th-resize{position:absolute;right:0;top:0;bottom:0;width:6px;cursor:col-resize;}
+  table.prod-table thead th .th-resize:hover{background:var(--accent);opacity:.4;}
+  table.prod-table tbody td{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  table.prod-table tbody tr.selected{background:var(--accent-soft);}
+  .prod-thumb{width:32px;height:32px;border-radius:5px;object-fit:cover;background:var(--paper);border:1px solid var(--line);display:block;}
+  .prod-thumb-empty{width:32px;height:32px;border-radius:5px;background:var(--paper);border:1px dashed var(--line);}
+  .cols-panel{position:absolute;top:100%;right:0;background:#fff;border:1px solid var(--line);border-radius:6px;box-shadow:0 6px 18px rgba(24,36,32,0.12);z-index:30;padding:10px;min-width:220px;display:none;}
+  .cols-panel.open{display:block;}
+  .cols-panel .cp-row{display:flex;align-items:center;gap:8px;padding:5px 4px;font-size:13px;}
+  .cols-panel .cp-row label{flex:1;margin:0;}
+  .cols-panel .cp-move{border:none;background:none;color:var(--ink-soft);cursor:pointer;font-size:12px;padding:2px 4px;}
+  .cols-panel .cp-move:hover{color:var(--ink);}
+  .ctx-menu{position:fixed;background:#fff;border:1px solid var(--line);border-radius:6px;box-shadow:0 8px 24px rgba(24,36,32,0.16);z-index:100;min-width:190px;padding:6px;}
+  .ctx-menu .ctx-item{padding:8px 12px;font-size:13.5px;border-radius:4px;cursor:pointer;color:var(--ink);}
+  .ctx-menu .ctx-item:hover{background:var(--paper);}
+  .ctx-menu .ctx-item.danger{color:var(--red);}
+  .ctx-menu .ctx-sep{border-top:1px solid var(--line);margin:5px 2px;}
+
+  /* PRODUCT FORM */
+  .photo-drop{
+    border:2px dashed var(--line);border-radius:8px;height:150px;display:flex;align-items:center;justify-content:center;
+    position:relative;overflow:hidden;background:var(--paper);cursor:pointer;transition:border-color .15s,background .15s;
+  }
+  .photo-drop:hover,.photo-drop.drag{border-color:var(--accent);background:var(--accent-soft);}
+  .photo-drop img{max-width:100%;max-height:100%;object-fit:contain;}
+  .photo-drop .pd-empty{font-size:12.5px;color:var(--ink-soft);text-align:center;padding:0 16px;}
+  .margin-box{display:flex;gap:14px;flex-wrap:wrap;background:var(--paper);border:1px solid var(--line);border-radius:6px;padding:12px 16px;font-size:13px;margin-top:-4px;margin-bottom:14px;}
+  .margin-box .mb-item .mb-label{font-size:10.5px;text-transform:uppercase;letter-spacing:.6px;color:var(--ink-soft);}
+  .margin-box .mb-item .mb-value{font-family:'IBM Plex Mono',monospace;font-weight:600;font-size:15px;}
+  .barcode-preview-box{background:#fff;border:1px solid var(--line);border-radius:6px;padding:16px;text-align:center;}
+  .barcode-preview-box svg{max-width:100%;}
+  .stock-row{display:flex;gap:18px;flex-wrap:wrap;background:var(--paper);border:1px solid var(--line);border-radius:6px;padding:14px 16px;margin-bottom:14px;}
+  .stock-row .sr-item .sr-label{font-size:10.5px;text-transform:uppercase;letter-spacing:.6px;color:var(--ink-soft);}
+  .stock-row .sr-item .sr-value{font-family:'IBM Plex Mono',monospace;font-weight:700;font-size:19px;}
+  .movement-row{display:grid;grid-template-columns:110px 90px 1fr 130px 90px;gap:10px;padding:8px 4px;border-bottom:1px solid var(--line);font-size:12.5px;align-items:center;}
+  .movement-row:last-child{border-bottom:none;}
+  .movement-row .mv-qty.pos{color:var(--accent);font-weight:600;}
+  .movement-row .mv-qty.neg{color:var(--red);font-weight:600;}
+  .barcode-label{width:210px;padding:12px;border:1px dashed var(--line);text-align:center;display:inline-block;margin:5px;vertical-align:top;background:#fff;}
+  .barcode-label .bl-name{font-size:11.5px;font-weight:600;margin-bottom:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .barcode-label .bl-num{font-size:10px;color:var(--ink-soft);margin-bottom:4px;font-family:'IBM Plex Mono',monospace;}
+  .barcode-label .bl-price{font-size:13px;font-weight:700;margin-top:4px;}
+  #barcode-print-sheet{display:none;}
+  @media print{
+    #barcode-print-sheet.printing{display:block !important;position:fixed;inset:0;background:#fff;z-index:9999;padding:16px;}
+    body.printing-barcodes > #app{display:none !important;}
+  }
+
   @media print{
     .sidebar,.pagehead,.preview-side,.no-print{display:none !important;}
     body,.main{background:#fff;padding:0;margin:0;}
@@ -440,7 +494,29 @@ let state = {
   backupDates: [],
   dashboardFilter: { preset:'all', from:'', to:'', clientId:'', status:'' },
   invoiceFilter: { search:'', from:'', to:'', clientId:'', status:'' },
-  lastLoginEmail: ''
+  lastLoginEmail: '',
+
+  /* --- Produkty / Dodavatelé / Sklad --- */
+  suppliers: [],
+  products: [],
+  productSettings: { prefix:'PRD-', nextNumber:1, padding:6 },
+  productColumns: null,
+  editingSupplierId: null,
+  viewingSupplierId: null,
+  editingProductId: null,
+  newProductDraftId: null,
+  productSearch: '',
+  productFilters: { stock:'', category:'', supplierId:'', manufacturer:'', expiry:'', archived:'' },
+  selectedProductIds: new Set(),
+  productSort: { key:'name', dir:'asc' },
+  productVisibleCount: 150,
+  productContextMenu: null,
+  productColsPanelOpen: false,
+  eanLookupStatus: '',
+  eanLookupFound: null,
+  productPhotoDragOver: false,
+  barcodePrintQty: 1,
+  barcodePrintShowPrice: true
 };
 
 const VAT_RATES = [21, 12, 0];
@@ -667,6 +743,12 @@ async function loadAll(){
   } else {
     state.companies = state.companies.map(co=>({ id: co.id||uid(), ...companyDefaults, ...co }));
   }
+  try{ const r = await window.storage.get('suppliers', true); state.suppliers = r ? JSON.parse(r.value) : []; }catch(e){ state.suppliers = []; }
+  try{ const r = await window.storage.get('products', true); state.products = r ? JSON.parse(r.value) : []; }catch(e){ state.products = []; }
+  try{ const r = await window.storage.get('product-settings', true); state.productSettings = r ? JSON.parse(r.value) : { prefix:'PRD-', nextNumber:1, padding:6 }; }catch(e){ state.productSettings = { prefix:'PRD-', nextNumber:1, padding:6 }; }
+  try{ const r = await window.storage.get('product-columns', true); state.productColumns = r ? JSON.parse(r.value) : null; }catch(e){ state.productColumns = null; }
+  if(!state.productColumns) state.productColumns = DEFAULT_PRODUCT_COLUMNS.map(c=>({...c}));
+  state.products = state.products.map(p=>({ ...blankProduct(), ...p, movements: p.movements||[] }));
   state.backupDates = await loadBackupIndex();
   state.loaded = true;
 }
@@ -674,6 +756,10 @@ function companyById(id){ return state.companies.find(co=>co.id===id); }
 async function saveCompanies(){ await window.storage.set('companies', JSON.stringify(state.companies), true); saveSnapshotBackup(); }
 async function saveClients(){ await window.storage.set('clients', JSON.stringify(state.clients), true); saveSnapshotBackup(); }
 async function saveInvoices(){ await window.storage.set('invoices', JSON.stringify(state.invoices), true); saveSnapshotBackup(); }
+async function saveSuppliers(){ await window.storage.set('suppliers', JSON.stringify(state.suppliers), true); saveSnapshotBackup(); }
+async function saveProducts(){ await window.storage.set('products', JSON.stringify(state.products), true); saveSnapshotBackup(); }
+async function saveProductSettings(){ await window.storage.set('product-settings', JSON.stringify(state.productSettings), true); }
+async function saveProductColumns(){ await window.storage.set('product-columns', JSON.stringify(state.productColumns), true); }
 
 /* ---------- BACKUP / SNAPSHOTS ---------- */
 async function loadBackupIndex(){
@@ -682,7 +768,7 @@ async function loadBackupIndex(){
 async function saveSnapshotBackup(){
   try{
     const date = todayISO();
-    const payload = JSON.stringify({ savedAt: new Date().toISOString(), companies: state.companies, clients: state.clients, invoices: state.invoices });
+    const payload = JSON.stringify({ savedAt: new Date().toISOString(), companies: state.companies, clients: state.clients, invoices: state.invoices, suppliers: state.suppliers, products: state.products });
     await window.storage.set('backup:'+date, payload, true);
     let dates = await loadBackupIndex();
     if(!dates.includes(date)) dates.push(date);
@@ -697,7 +783,7 @@ async function saveSnapshotBackup(){
 }
 
 function exportBackupFile(){
-  const payload = { exportedAt: new Date().toISOString(), companies: state.companies, clients: state.clients, invoices: state.invoices };
+  const payload = { exportedAt: new Date().toISOString(), companies: state.companies, clients: state.clients, invoices: state.invoices, suppliers: state.suppliers, products: state.products };
   const blob = new Blob([JSON.stringify(payload, null, 2)], { type:'application/json' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -716,6 +802,8 @@ async function restoreFromBackupObject(data, label){
     else if(data.company){ state.companies = [data.company]; await saveCompanies(); }
     if(Array.isArray(data.clients)){ state.clients = data.clients; await saveClients(); }
     if(Array.isArray(data.invoices)){ state.invoices = data.invoices; await saveInvoices(); }
+    if(Array.isArray(data.suppliers)){ state.suppliers = data.suppliers; await saveSuppliers(); }
+    if(Array.isArray(data.products)){ state.products = data.products; await saveProducts(); }
     alert('Data byla obnovena ze zálohy.');
     render();
   }catch(e){
@@ -853,6 +941,9 @@ function render(){
       <div class="navitem ${state.view==='dashboard'?'active':''}" data-action="nav" data-view="dashboard">Přehled</div>
       <div class="navitem ${state.view==='invoices'||state.view==='invoice-form'||state.view==='invoice-preview'?'active':''}" data-action="nav" data-view="invoices">Faktury</div>
       <div class="navitem ${state.view==='clients'||state.view==='client-form'||state.view==='client-detail'?'active':''}" data-action="nav" data-view="clients">Odběratelé</div>
+      <div class="navitem ${state.view==='suppliers'||state.view==='supplier-form'||state.view==='supplier-detail'?'active':''}" data-action="nav" data-view="suppliers">Dodavatelé</div>
+      <div class="navitem ${state.view==='products'||state.view==='product-form'?'active':''}" data-action="nav" data-view="products">Produkty</div>
+      <div class="navitem ${state.view==='stock'?'active':''}" data-action="nav" data-view="stock">Sklad</div>
       <div class="navitem ${['settings','company-form','account-form','colleague-form','user-creds-form'].includes(state.view)?'active':''}" data-action="nav" data-view="settings">Nastavení</div>
       <div class="sidebar-foot">
         <div class="whoami">
@@ -1017,6 +1108,12 @@ function renderView(){
     case 'account-form': return viewAccountForm();
     case 'colleague-form': return viewColleagueForm();
     case 'user-creds-form': return viewUserCredsForm();
+    case 'suppliers': return viewSuppliers();
+    case 'supplier-form': return viewSupplierForm();
+    case 'supplier-detail': return viewSupplierDetail();
+    case 'products': return viewProducts();
+    case 'product-form': return viewProductForm();
+    case 'stock': return viewStock();
     default: return '';
   }
 }
@@ -1303,6 +1400,11 @@ function viewInvoiceForm(){
       <div class="toggle-row"><input type="checkbox" name="includeQr" id="chk-inc-qr" value="1" ${inv.includeQr!==false?'checked':''}><label for="chk-inc-qr">Zobrazit QR platbu (vyžaduje IBAN)</label></div>
 
       <div class="section-title">Položky</div>
+      <div class="field combo-field" style="max-width:460px;">
+        <label>Přidat položku z produktů</label>
+        <input type="text" id="product-picker-input" placeholder="Hledej podle názvu, EAN nebo kódu…" autocomplete="off">
+        <div class="combo-list" id="product-picker-list"></div>
+      </div>
       <p id="vat-off-note" style="font-size:12px;color:var(--ink-soft);margin-top:-4px;${vatPayerNow?'display:none;':''}">Vybraná firma není plátce DPH — faktura se vystaví bez DPH.</p>
       <div class="items-table-wrap">
       <datalist id="vat-rate-options">${VAT_RATES.map(r=>`<option value="${r}">`).join('')}</datalist>
@@ -2317,17 +2419,21 @@ function viewBulkImport(){
   const bi = state.bulkImport;
   const step = bi.step;
   const isContacts = bi.mode==='contacts';
-  const cancelView = isContacts ? 'clients' : 'invoices';
-  const fieldOptions = isContacts
-    ? BULK_FIELDS.filter(f=>!f.key || f.key.startsWith('client'))
+  const isProducts = bi.mode==='products';
+  const cancelView = isContacts ? 'clients' : (isProducts ? 'products' : 'invoices');
+  const fieldOptions = isProducts ? PRODUCT_BULK_FIELDS
+    : isContacts ? BULK_FIELDS.filter(f=>!f.key || f.key.startsWith('client'))
     : BULK_FIELDS;
+  const title = isProducts ? 'Hromadný import produktů' : (isContacts ? 'Hromadný import kontaktů' : 'Hromadný import faktur');
   return `
-    <div class="pagehead"><div><h1>${isContacts?'Hromadný import kontaktů':'Hromadný import faktur'}</h1><p class="desc">Nahraj export z libovolného účetního systému (CSV nebo Excel) — sloupce si spolu doladíme.</p></div></div>
+    <div class="pagehead"><div><h1>${title}</h1><p class="desc">Nahraj export z libovolného systému (CSV nebo Excel) — sloupce si spolu doladíme.</p></div></div>
     <div class="form-card">
       ${bi.error?`<div class="login-error">${escapeHtml(bi.error)}</div>`:''}
       ${step==='upload' ? `
         <p style="font-size:13px;color:var(--ink-soft);">
-          Podporované formáty: .xlsx, .xls, .csv. ${isContacts
+          Podporované formáty: .xlsx, .xls, .csv. ${isProducts
+            ? 'Nahraj export produktů — appka podle EAN a produktového čísla sama pozná duplicity a přeskočí je.'
+            : isContacts
             ? 'Nahraj export kontaktů/odběratelů — appka je buď spáruje s existujícími (podle IČO nebo jména), nebo založí nové.'
             : 'Nahraj export faktur (ideálně s údaji o odběrateli u každého řádku — appka odběratele buď spáruje s existujícím, nebo založí nového).'}
         </p>
@@ -2357,7 +2463,7 @@ function viewBulkImport(){
             `).join('')}
           </tbody>
         </table>
-        ${!isContacts ? `
+        ${(!isContacts && !isProducts) ? `
         <div class="field" style="max-width:320px;margin-top:14px;">
           <label>Dodavatel na importovaných fakturách</label>
           <select id="bulk-company-select">
@@ -2369,7 +2475,30 @@ function viewBulkImport(){
           <button type="button" class="btn secondary" data-action="nav" data-view="${cancelView}">Zrušit</button>
         </div>
       ` : ''}
-      ${step==='preview' && bi.preview ? (isContacts ? `
+      ${step==='preview' && bi.preview ? (isProducts ? `
+        <div class="cards" style="margin-bottom:16px;">
+          <div class="card"><div class="label">K importu</div><div class="value">${bi.preview.items.filter(i=>!i.isDup).length}</div></div>
+          <div class="card"><div class="label">Přeskočené duplicity (EAN/číslo)</div><div class="value amber">${bi.preview.dupCount}</div></div>
+          <div class="card"><div class="label">Prázdné řádky</div><div class="value">${bi.preview.skipped}</div></div>
+        </div>
+        <table>
+          <thead><tr><th>Název</th><th></th><th>EAN</th><th>Kategorie</th><th>Nákupní</th><th>Prodejní</th><th>Sklad</th></tr></thead>
+          <tbody>
+            ${bi.preview.items.slice(0,100).map(it=>`
+              <tr>
+                <td>${escapeHtml(it.name)}</td>
+                <td>${it.isDup?'<span class="badge" style="background:var(--red-soft);color:var(--red);">duplicita</span>':'<span class="badge">nový</span>'}</td>
+                <td class="num">${escapeHtml(it.ean||'—')}</td>
+                <td>${escapeHtml(it.category||'—')}</td>
+                <td class="num">${fmt(it.purchasePrice)} Kč</td>
+                <td class="num">${fmt(it.salePrice)} Kč</td>
+                <td class="num">${it.stockCurrent}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+        ${bi.preview.items.length>100?`<p style="font-size:12px;color:var(--ink-soft);">…a dalších ${bi.preview.items.length-100} produktů.</p>`:''}
+      ` : isContacts ? `
         <div class="cards" style="margin-bottom:16px;">
           <div class="card"><div class="label">Nových odběratelů</div><div class="value">${bi.preview.newClientsCount}</div></div>
           <div class="card"><div class="label">Spárováno s existujícími</div><div class="value">${bi.preview.matchedClientsCount}</div></div>
@@ -2429,6 +2558,1110 @@ function viewBulkImport(){
 
 
 
+/* =====================================================================
+   PRODUKTY / DODAVATELÉ / SKLAD
+   ===================================================================== */
+const DEFAULT_PRODUCT_COLUMNS = [
+  {key:'photo', label:'', width:46, visible:true},
+  {key:'name', label:'Název', width:230, visible:true},
+  {key:'number', label:'Č. produktu', width:110, visible:true},
+  {key:'ean', label:'EAN', width:110, visible:true},
+  {key:'category', label:'Kategorie', width:120, visible:true},
+  {key:'manufacturer', label:'Výrobce', width:120, visible:true},
+  {key:'supplier', label:'Dodavatel', width:140, visible:true},
+  {key:'purchasePrice', label:'Nákupní', width:90, visible:true},
+  {key:'salePrice', label:'Prodejní', width:90, visible:true},
+  {key:'margin', label:'Marže', width:80, visible:true},
+  {key:'stock', label:'Sklad', width:120, visible:true},
+  {key:'expiry', label:'Expirace', width:100, visible:true},
+];
+const PRODUCT_UNITS = ['ks','kg','g','l','ml','m','balení','hod'];
+
+function blankProduct(){
+  return {
+    id: uid(), number:'', ean:'', internalCode:'', name:'', description:'',
+    category:'', manufacturer:'', supplierId:'', unit:'ks', vatRate:21, note:'',
+    purchasePrice:0, salePrice:0,
+    stockCurrent:0, stockReserved:0, stockMin:0,
+    expiryDate:'', photo:'', link:'', archived:false, createdAt:new Date().toISOString(),
+    movements:[]
+  };
+}
+function blankSupplier(){
+  return { id: uid(), name:'', ico:'', dic:'', address:blankAddr(), contactPerson:'', contactPhone:'', contactEmail:'', website:'', note:'', createdAt:new Date().toISOString() };
+}
+function productById(id){ return state.products.find(p=>p.id===id); }
+function supplierById(id){ return state.suppliers.find(s=>s.id===id); }
+
+function productMargin(p){
+  const purchase = p.purchasePrice||0, sale = p.salePrice||0;
+  const profit = sale-purchase;
+  const marginPct = sale>0 ? (profit/sale*100) : 0;
+  const markupPct = purchase>0 ? (profit/purchase*100) : 0;
+  return { profit, marginPct, markupPct };
+}
+function stockAvailable(p){ return (p.stockCurrent||0) - (p.stockReserved||0); }
+function stockStatus(p){
+  const avail = stockAvailable(p);
+  if(avail<=0) return 'out';
+  if(p.stockMin && avail<=p.stockMin) return 'low';
+  return 'ok';
+}
+function stockPillClass(s){ return s==='out'?'overdue':(s==='low'?'pending':'paid'); }
+function stockLabel(s){ return s==='out'?'Není skladem':(s==='low'?'Nízký stav':'Skladem'); }
+function stockIcon(s){ return s==='out'?'🔴':(s==='low'?'🟠':'🟢'); }
+function daysUntil(dateStr){
+  if(!dateStr) return null;
+  const d = new Date(dateStr+'T00:00:00');
+  if(isNaN(d)) return null;
+  return Math.round((d - new Date(todayISO()+'T00:00:00'))/86400000);
+}
+function expiryBadge(p){
+  const days = daysUntil(p.expiryDate);
+  if(days==null) return '';
+  if(days<0) return `<span class="pill overdue">Prošlo (${Math.abs(days)} dní)</span>`;
+  if(days<=7) return `<span class="pill overdue">Expiruje za ${days} dní</span>`;
+  if(days<=30) return `<span class="pill pending">Expiruje za ${days} dní</span>`;
+  if(days<=90) return `<span class="pill pending">Expiruje ${p.expiryDate}</span>`;
+  return `<span style="color:var(--ink-soft);font-size:12.5px;">${p.expiryDate}</span>`;
+}
+
+function peekProductNumber(){
+  const ps = state.productSettings;
+  return `${ps.prefix}${String(ps.nextNumber).padStart(ps.padding,'0')}`;
+}
+function generateUniqueProductNumber(){
+  const ps = state.productSettings;
+  let n;
+  let guard = 0;
+  do{
+    n = `${ps.prefix}${String(ps.nextNumber).padStart(ps.padding,'0')}`;
+    ps.nextNumber++;
+    guard++;
+  } while(state.products.some(p=>p.number===n) && guard<100000);
+  return n;
+}
+function barcodeValueFor(p){
+  if(p.ean) return p.ean;
+  return p.number || p.internalCode || p.id;
+}
+function barcodeFormatFor(value){
+  const digits = String(value||'').replace(/\D/g,'');
+  if(/^\d{13}$/.test(value)) return 'EAN13';
+  if(/^\d{8}$/.test(value)) return 'EAN8';
+  return 'CODE128';
+}
+function renderBarcodeToSvg(svgEl, value){
+  try{
+    JsBarcode(svgEl, String(value||''), { format: barcodeFormatFor(value), displayValue:true, fontSize:13, height:46, margin:6, background:'#ffffff', lineColor:'#182420' });
+    return true;
+  }catch(e){ console.error('Barcode render failed', e); return false; }
+}
+
+/* ---------- EAN lookup (Open Food Facts – veřejné API bez klíče) ---------- */
+async function eanLookup(ean){
+  const res = await fetch(`https://world.openfoodfacts.org/api/v2/product/${encodeURIComponent(ean)}.json`);
+  if(!res.ok) throw new Error('Vyhledávání se nepovedlo.');
+  const data = await res.json();
+  if(data.status !== 1 || !data.product) return null;
+  const p = data.product;
+  return {
+    name: p.product_name || p.product_name_cs || p.generic_name || '',
+    manufacturer: (p.brands||'').split(',')[0]?.trim() || '',
+    category: (p.categories||'').split(',')[0]?.trim() || '',
+    image: p.image_front_url || p.image_url || ''
+  };
+}
+
+/* ---------- FOTOGRAFIE PRODUKTU (drag&drop / vložení / soubor) ---------- */
+function setupProductPhotoDropzone(){
+  const drop = document.getElementById('product-photo-drop');
+  const input = document.getElementById('product-photo-input');
+  if(!drop) return;
+  drop.addEventListener('click', ()=>{ if(input) input.click(); });
+  drop.addEventListener('dragover', (e)=>{ e.preventDefault(); drop.classList.add('drag'); });
+  drop.addEventListener('dragleave', ()=> drop.classList.remove('drag'));
+  drop.addEventListener('drop', async (e)=>{
+    e.preventDefault(); drop.classList.remove('drag');
+    const file = e.dataTransfer.files && e.dataTransfer.files[0];
+    if(file) await applyProductPhotoFile(file);
+  });
+  if(input){
+    input.addEventListener('change', async ()=>{ if(input.files[0]) await applyProductPhotoFile(input.files[0]); });
+  }
+  document.addEventListener('paste', productPastePhotoHandler);
+}
+async function productPastePhotoHandler(e){
+  if(!document.getElementById('product-photo-drop')) return;
+  const items = e.clipboardData && e.clipboardData.items;
+  if(!items) return;
+  for(const item of items){
+    if(item.type && item.type.startsWith('image/')){
+      const file = item.getAsFile();
+      if(file){ await applyProductPhotoFile(file); break; }
+    }
+  }
+}
+async function applyProductPhotoFile(file){
+  if(!file.type || !file.type.startsWith('image/')){ alert('Vyber prosím obrázek.'); return; }
+  try{
+    const dataUrl = await resizeImageFile(file, 480, 0.85);
+    state.currentProductDraftPhoto = dataUrl;
+    const drop = document.getElementById('product-photo-drop');
+    if(drop) drop.innerHTML = `<img src="${dataUrl}" alt="Fotografie produktu">`;
+  }catch(err){ alert('Fotografii se nepodařilo zpracovat, zkus to prosím znovu.'); }
+}
+
+/* ---------- DODAVATELÉ ---------- */
+function viewSuppliers(){
+  const list = [...state.suppliers].sort((a,b)=>(a.name||'').localeCompare(b.name||'','cs'));
+  return `
+    <div class="pagehead">
+      <div><h1>Dodavatelé</h1><p class="desc">${state.suppliers.length} dodavatelů v evidenci.</p></div>
+      <button class="btn" data-action="new-supplier">+ Přidat dodavatele</button>
+    </div>
+    ${list.length ? `
+    <table>
+      <thead><tr><th>Název</th><th>IČO</th><th>Kontaktní osoba</th><th>E-mail</th><th>Telefon</th><th>Produktů</th><th></th></tr></thead>
+      <tbody>
+        ${list.map(s=>{
+          const n = state.products.filter(p=>p.supplierId===s.id).length;
+          return `<tr class="rowlink" data-action="view-supplier" data-id="${s.id}">
+            <td>${escapeHtml(s.name)}</td>
+            <td class="num">${escapeHtml(s.ico||'—')}</td>
+            <td>${escapeHtml(s.contactPerson||'—')}</td>
+            <td>${escapeHtml(s.contactEmail||'—')}</td>
+            <td>${escapeHtml(s.contactPhone||'—')}</td>
+            <td class="num">${n}</td>
+            <td class="actions-cell no-print">
+              <button class="iconbtn" data-action="edit-supplier" data-id="${s.id}" title="Upravit">✎</button>
+              <button class="iconbtn" data-action="delete-supplier" data-id="${s.id}" title="Smazat">✕</button>
+            </td>
+          </tr>`;
+        }).join('')}
+      </tbody>
+    </table>` : emptyState('Žádní dodavatelé', 'Přidej prvního dodavatele, aby šlo produkty propojit s nákupem.')}
+  `;
+}
+function viewSupplierDetail(){
+  const s = supplierById(state.viewingSupplierId);
+  if(!s) return emptyState('Dodavatel nenalezen','') + `<div class="formfoot"><button class="btn secondary" data-action="nav" data-view="suppliers">Zpět</button></div>`;
+  const products = state.products.filter(p=>p.supplierId===s.id);
+  return `
+    <div class="pagehead">
+      <div><h1>${escapeHtml(s.name)}</h1><p class="desc">Detail dodavatele a jeho produkty.</p></div>
+      <div style="display:flex;gap:10px;">
+        <button class="btn secondary" data-action="edit-supplier" data-id="${s.id}">✎ Upravit</button>
+        <button class="btn" data-action="new-product-for-supplier" data-id="${s.id}">+ Nový produkt</button>
+      </div>
+    </div>
+    <div class="form-card">
+      <div class="section-title" style="margin-top:0;padding-top:0;border-top:none;">Kontaktní a fakturační údaje</div>
+      <div class="detail-grid">
+        ${detailRow('IČO / DIČ', [s.ico, s.dic].filter(Boolean).join(' / '))}
+        ${detailRow('Kontakt', [s.contactPerson, s.contactPhone, s.contactEmail].filter(Boolean).join(' · '))}
+        ${detailRow('Web', s.website)}
+        ${detailRow('Adresa', formatAddress(s.address), true)}
+        ${detailRow('Poznámka', s.note, true)}
+      </div>
+    </div>
+    <div class="section-title">Produkty tohoto dodavatele (${products.length})</div>
+    ${products.length ? renderProductTable(products) : emptyState('Zatím žádné produkty', 'Přidej produkt a přiřaď mu tohoto dodavatele.')}
+  `;
+}
+function viewSupplierForm(){
+  const editing = state.editingSupplierId ? supplierById(state.editingSupplierId) : null;
+  const s = editing || blankSupplier();
+  return `
+    <div class="pagehead"><div><h1>${editing?'Upravit dodavatele':'Nový dodavatel'}</h1></div></div>
+    <form id="supplier-form" class="form-card">
+      <div class="field-row">
+        <div class="field"><label>Název firmy</label><input name="name" value="${escapeAttr(s.name)}" required autofocus></div>
+        <div class="field"><label>Web</label><input name="website" value="${escapeAttr(s.website||'')}"></div>
+      </div>
+      <div class="field-row">
+        <div class="field"><label>IČO</label><input name="ico" value="${escapeAttr(s.ico)}"></div>
+        <div class="field"><label>DIČ</label><input name="dic" value="${escapeAttr(s.dic)}"></div>
+      </div>
+      ${addressFieldGroup('supplier-address','Adresa', s.address)}
+      <div class="field-row">
+        <div class="field"><label>Kontaktní osoba</label><input name="contactPerson" value="${escapeAttr(s.contactPerson||'')}"></div>
+        <div class="field"><label>Telefon</label><input name="contactPhone" value="${escapeAttr(s.contactPhone||'')}"></div>
+      </div>
+      <div class="field"><label>E-mail</label><input type="email" name="contactEmail" value="${escapeAttr(s.contactEmail||'')}" style="max-width:320px;"></div>
+      <div class="field"><label>Poznámka</label><textarea name="note">${escapeHtml(s.note||'')}</textarea></div>
+      <div class="formfoot">
+        <button type="submit" class="btn">Uložit dodavatele</button>
+        <button type="button" class="btn secondary" data-action="nav" data-view="suppliers">Zrušit</button>
+      </div>
+      <input type="hidden" name="id" value="${s.id}">
+    </form>
+  `;
+}
+async function onSubmitSupplier(e){
+  e.preventDefault();
+  const fd = new FormData(e.target);
+  const id = fd.get('id');
+  const existing = supplierById(id);
+  const s = {
+    id: id || uid(),
+    name: fd.get('name'), ico: fd.get('ico'), dic: fd.get('dic'),
+    address: gatherAddrField(fd,'supplier-address'),
+    contactPerson: fd.get('contactPerson'), contactPhone: fd.get('contactPhone'), contactEmail: fd.get('contactEmail'),
+    website: fd.get('website'), note: fd.get('note'),
+    createdAt: existing ? existing.createdAt : new Date().toISOString()
+  };
+  if(existing){ const idx = state.suppliers.findIndex(x=>x.id===id); state.suppliers[idx]=s; }
+  else{ state.suppliers.push(s); }
+  await saveSuppliers();
+  state.view='supplier-detail'; state.viewingSupplierId=s.id;
+  render();
+}
+
+/* ---------- PRODUKTY: TABULKA ---------- */
+function visibleProductColumns(){ return state.productColumns.filter(c=>c.visible); }
+function filteredSortedProducts(){
+  const q = stripDiacritics(state.productSearch||'').toLowerCase().trim();
+  const f = state.productFilters;
+  let list = state.products.filter(p=>{
+    if(f.archived==='' && p.archived) return false;
+    if(f.archived==='archived' && !p.archived) return false;
+    if(q){
+      const hay = stripDiacritics(`${p.name} ${p.ean} ${p.number} ${p.internalCode} ${p.manufacturer} ${(supplierById(p.supplierId)||{}).name||''}`).toLowerCase();
+      if(!hay.includes(q)) return false;
+    }
+    if(f.stock && stockStatus(p)!==f.stock) return false;
+    if(f.category && p.category!==f.category) return false;
+    if(f.supplierId && p.supplierId!==f.supplierId) return false;
+    if(f.manufacturer && p.manufacturer!==f.manufacturer) return false;
+    if(f.expiry){
+      const days = daysUntil(p.expiryDate);
+      if(days==null) return false;
+      const limit = parseInt(f.expiry,10);
+      if(days>limit) return false;
+    }
+    return true;
+  });
+  const {key,dir} = state.productSort;
+  const mul = dir==='asc'?1:-1;
+  list.sort((a,b)=>{
+    let av, bv;
+    if(key==='supplier'){ av=(supplierById(a.supplierId)||{}).name||''; bv=(supplierById(b.supplierId)||{}).name||''; }
+    else if(key==='margin'){ av=productMargin(a).marginPct; bv=productMargin(b).marginPct; }
+    else if(key==='stock'){ av=stockAvailable(a); bv=stockAvailable(b); }
+    else if(key==='expiry'){ av=a.expiryDate||'9999'; bv=b.expiryDate||'9999'; }
+    else { av=a[key]; bv=b[key]; }
+    if(typeof av==='number' && typeof bv==='number') return (av-bv)*mul;
+    return String(av||'').localeCompare(String(bv||''),'cs')*mul;
+  });
+  return list;
+}
+function productCellContent(p, key){
+  switch(key){
+    case 'photo': return p.photo ? `<img class="prod-thumb" src="${p.photo}" alt="">` : `<div class="prod-thumb-empty"></div>`;
+    case 'name': return `<div style="font-weight:500;">${escapeHtml(p.name||'(bez názvu)')}</div>`;
+    case 'number': return `<span class="num">${escapeHtml(p.number||'—')}</span>`;
+    case 'ean': return `<span class="num">${escapeHtml(p.ean||'—')}</span>`;
+    case 'category': return escapeHtml(p.category||'—');
+    case 'manufacturer': return escapeHtml(p.manufacturer||'—');
+    case 'supplier': return escapeHtml((supplierById(p.supplierId)||{}).name||'—');
+    case 'purchasePrice': return `<span class="num">${fmt(p.purchasePrice||0)} Kč</span>`;
+    case 'salePrice': return `<span class="num">${fmt(p.salePrice||0)} Kč</span>`;
+    case 'margin': { const m=productMargin(p); return `<span class="num">${m.marginPct.toFixed(0)}%</span>`; }
+    case 'stock': { const s=stockStatus(p); return `<span class="pill ${stockPillClass(s)}">${stockIcon(s)} ${stockAvailable(p)} ${escapeHtml(p.unit||'ks')}</span>`; }
+    case 'expiry': return expiryBadge(p) || '—';
+    default: return '';
+  }
+}
+function renderProductTable(list, opts){
+  opts = opts || {};
+  const cols = visibleProductColumns();
+  const selectable = opts.selectable!==false;
+  const shown = list.slice(0, state.productVisibleCount);
+  return `
+  <div class="prod-table-wrap">
+  <table class="prod-table">
+    <thead><tr>
+      ${selectable?`<th style="width:28px;"><input type="checkbox" data-action="toggle-select-all-products" ${shown.length && shown.every(p=>state.selectedProductIds.has(p.id))?'checked':''}></th>`:''}
+      ${cols.map(c=>`<th data-action="sort-products" data-key="${c.key}" class="${state.productSort.key===c.key?'sorted':''}" style="width:${c.width}px;">${escapeHtml(c.label)}${state.productSort.key===c.key?(state.productSort.dir==='asc'?' ▲':' ▼'):''}<span class="th-resize" data-col-resize="${c.key}"></span></th>`).join('')}
+      <th style="width:70px;"></th>
+    </tr></thead>
+    <tbody id="products-tbody">
+      ${shown.map(p=>`
+        <tr class="rowlink ${state.selectedProductIds.has(p.id)?'selected':''}" data-action="open-product" data-id="${p.id}" data-product-row="${p.id}">
+          ${selectable?`<td class="no-print"><input type="checkbox" data-action="toggle-product-select" data-id="${p.id}" ${state.selectedProductIds.has(p.id)?'checked':''}></td>`:''}
+          ${cols.map(c=>`<td>${productCellContent(p,c.key)}</td>`).join('')}
+          <td class="actions-cell no-print">
+            <button class="iconbtn" data-action="print-one-barcode" data-id="${p.id}" title="Čárový kód">▥</button>
+            <button class="iconbtn" data-action="delete-product" data-id="${p.id}" title="Smazat">✕</button>
+          </td>
+        </tr>`).join('')}
+    </tbody>
+  </table>
+  </div>
+  ${list.length>shown.length ? `<div style="text-align:center;margin-top:12px;"><button type="button" class="btn secondary small" data-action="products-show-more">Zobrazit dalších ${Math.min(150,list.length-shown.length)} (z ${list.length})</button></div>` : ''}
+  `;
+}
+
+function viewProducts(){
+  const all = state.products;
+  const list = filteredSortedProducts();
+  const categories = [...new Set(all.map(p=>p.category).filter(Boolean))].sort();
+  const manufacturers = [...new Set(all.map(p=>p.manufacturer).filter(Boolean))].sort();
+  const stockValue = all.reduce((s,p)=>s+(p.purchasePrice||0)*(p.stockCurrent||0),0);
+  const belowMin = all.filter(p=>!p.archived && stockStatus(p)==='low').length;
+  const noPhoto = all.filter(p=>!p.archived && !p.photo).length;
+  const noEan = all.filter(p=>!p.archived && !p.ean).length;
+  return `
+    <div class="pagehead">
+      <div><h1>Produkty</h1><p class="desc">${list.length} z ${all.length} produktů.</p></div>
+      <div style="display:flex;gap:10px;">
+        <button class="btn secondary" data-action="goto-bulk-import-products">⇧ Import (CSV/Excel)</button>
+        <button class="btn secondary" data-action="export-products">⬇ Export</button>
+        <button class="btn" data-action="new-product">+ Přidat produkt</button>
+      </div>
+    </div>
+
+    <div class="cards">
+      <div class="card"><div class="label">Produktů celkem</div><div class="value">${all.length}</div></div>
+      <div class="card"><div class="label">Hodnota skladu (nákupní)</div><div class="value accent num">${fmt(stockValue)} Kč</div></div>
+      <div class="card"><div class="label">Pod minimem / bez EAN</div><div class="value amber">${belowMin} / ${noEan}</div></div>
+      <div class="card"><div class="label">Bez fotografie</div><div class="value">${noPhoto}</div></div>
+    </div>
+
+    ${renderBulkBar(state.selectedProductIds.size, 'produktů', `
+      <button type="button" class="btn secondary small" data-action="bulk-print-barcodes">Tisk čárových kódů</button>
+      <button type="button" class="btn secondary small" data-action="bulk-edit-products-price">Změnit ceny</button>
+      <button type="button" class="btn secondary small" data-action="bulk-edit-products-vat">Změnit DPH</button>
+      <button type="button" class="btn secondary small" data-action="bulk-edit-products-supplier">Změnit dodavatele</button>
+      <button type="button" class="btn secondary small" data-action="bulk-edit-products-category">Změnit kategorii</button>
+      <button type="button" class="btn secondary small" data-action="bulk-archive-products">Archivovat</button>
+      <button type="button" class="btn danger small" data-action="bulk-delete-products">Smazat vybrané</button>
+    `)}
+
+    <div class="filter-bar no-print">
+      <div class="search-row" style="margin-bottom:14px;display:flex;gap:10px;align-items:center;">
+        <input type="text" id="product-search-input" class="search-input" placeholder="Hledat podle názvu, EAN, kódu, výrobce, dodavatele…" value="${escapeAttr(state.productSearch)}" style="flex:1;max-width:none;">
+        <div style="position:relative;">
+          <button type="button" class="btn secondary small" data-action="toggle-cols-panel">⚙ Sloupce</button>
+          <div class="cols-panel ${state.productColsPanelOpen?'open':''}" id="cols-panel">
+            ${state.productColumns.map((c,i)=>`
+              <div class="cp-row">
+                <input type="checkbox" data-action="toggle-col-visible" data-key="${c.key}" ${c.visible?'checked':''}>
+                <label>${escapeHtml(c.label||'(foto)')}</label>
+                <button type="button" class="cp-move" data-action="move-col" data-key="${c.key}" data-dir="-1" ${i===0?'disabled':''}>▲</button>
+                <button type="button" class="cp-move" data-action="move-col" data-key="${c.key}" data-dir="1" ${i===state.productColumns.length-1?'disabled':''}>▼</button>
+              </div>`).join('')}
+          </div>
+        </div>
+      </div>
+      <div class="filter-row">
+        <div class="field"><label>Skladem</label><select id="pf-stock">
+          <option value="">Vše</option>
+          <option value="ok" ${state.productFilters.stock==='ok'?'selected':''}>🟢 Skladem</option>
+          <option value="low" ${state.productFilters.stock==='low'?'selected':''}>🟠 Nízký stav</option>
+          <option value="out" ${state.productFilters.stock==='out'?'selected':''}>🔴 Není skladem</option>
+        </select></div>
+        <div class="field"><label>Kategorie</label><select id="pf-category">
+          <option value="">Všechny</option>
+          ${categories.map(c=>`<option value="${escapeAttr(c)}" ${state.productFilters.category===c?'selected':''}>${escapeHtml(c)}</option>`).join('')}
+        </select></div>
+        <div class="field"><label>Dodavatel</label><select id="pf-supplier">
+          <option value="">Všichni</option>
+          ${state.suppliers.map(s=>`<option value="${s.id}" ${state.productFilters.supplierId===s.id?'selected':''}>${escapeHtml(s.name)}</option>`).join('')}
+        </select></div>
+        <div class="field"><label>Výrobce</label><select id="pf-manufacturer">
+          <option value="">Všichni</option>
+          ${manufacturers.map(m=>`<option value="${escapeAttr(m)}" ${state.productFilters.manufacturer===m?'selected':''}>${escapeHtml(m)}</option>`).join('')}
+        </select></div>
+      </div>
+      <div class="filter-row" style="margin-top:14px;">
+        <div class="field"><label>Expirace do</label><select id="pf-expiry">
+          <option value="">Nefiltrovat</option>
+          <option value="7" ${state.productFilters.expiry==='7'?'selected':''}>7 dní</option>
+          <option value="30" ${state.productFilters.expiry==='30'?'selected':''}>30 dní</option>
+          <option value="60" ${state.productFilters.expiry==='60'?'selected':''}>60 dní</option>
+          <option value="90" ${state.productFilters.expiry==='90'?'selected':''}>90 dní</option>
+        </select></div>
+        <div class="field"><label>Zobrazit</label><select id="pf-archived">
+          <option value="" ${state.productFilters.archived===''?'selected':''}>Aktivní</option>
+          <option value="archived" ${state.productFilters.archived==='archived'?'selected':''}>Archivované</option>
+        </select></div>
+        <div class="field"></div><div class="field"></div>
+      </div>
+    </div>
+
+    ${list.length ? renderProductTable(list) : emptyState(all.length?'Žádný produkt neodpovídá filtru':'Žádné produkty', all.length?'Zkus upravit filtry.':'Přidej první produkt tlačítkem „+ Přidat produkt“.')}
+    <p style="font-size:11.5px;color:var(--ink-soft);margin-top:14px;">Klávesové zkratky: <b>N</b> nový produkt · <b>Delete</b> smazat vybrané · <b>Esc</b> zrušit výběr · pravé tlačítko myši = kontextové menu · dvojklik = otevřít.</p>
+  `;
+}
+
+/* ---------- FORMULÁŘ PRODUKTU ---------- */
+function viewProductForm(){
+  const editing = state.editingProductId ? productById(state.editingProductId) : null;
+  let p;
+  if(editing){ p = editing; }
+  else {
+    if(!state.newProductDraftId){ state.newProductDraftId = uid(); state.currentProductDraftPhoto = ''; }
+    p = { ...blankProduct(), id: state.newProductDraftId };
+    if(state.newProductForSupplierId){ p.supplierId = state.newProductForSupplierId; state.newProductForSupplierId = null; }
+  }
+  const photo = editing ? p.photo : (state.currentProductDraftPhoto || p.photo);
+  const margin = productMargin(p);
+  const status = stockStatus(p);
+  return `
+    <div class="pagehead"><div><h1>${editing?'Upravit produkt':'Nový produkt'}</h1></div></div>
+    <form id="product-form" class="form-card">
+
+      <div class="section-title" style="margin-top:0;padding-top:0;border-top:none;">Rychlé přidání podle EAN</div>
+      <div class="field-row" style="align-items:flex-end;">
+        <div class="field"><label>EAN</label><input name="ean" id="product-ean" value="${escapeAttr(p.ean)}" placeholder="Načti čtečkou nebo napiš ručně"></div>
+        <div class="field"><button type="button" class="btn secondary" id="ean-lookup-btn" style="width:100%;">🔍 Načíst údaje podle EAN</button></div>
+      </div>
+      <p id="ean-lookup-status" style="font-size:12px;color:var(--ink-soft);margin:-6px 0 14px 0;">${escapeHtml(state.eanLookupStatus||'')}</p>
+
+      <div class="section-title">Fotografie</div>
+      <div class="field-row">
+        <div class="field">
+          <div class="photo-drop" id="product-photo-drop">
+            ${photo ? `<img src="${photo}" alt="Fotografie produktu">` : `<div class="pd-empty">Přetáhni fotku sem, vlož ze schránky (Ctrl+V) nebo klikni pro výběr souboru</div>`}
+          </div>
+          <input type="file" id="product-photo-input" accept="image/*" style="display:none;">
+          ${photo?`<button type="button" class="btn-link" data-action="remove-product-photo">Odebrat fotografii</button>`:''}
+        </div>
+        <div class="field">
+          <label>Odkaz na produkt</label>
+          <input name="link" value="${escapeAttr(p.link||'')}" placeholder="https://…">
+          <p style="font-size:11px;color:var(--ink-soft);margin:4px 0 0 0;">Např. na e-shop dodavatele — otevře se v novém okně.</p>
+        </div>
+      </div>
+
+      <div class="section-title">Základní údaje</div>
+      <div class="field"><label>Název produktu</label><input name="name" value="${escapeAttr(p.name)}" required autofocus></div>
+      <div class="field"><label>Popis</label><textarea name="description">${escapeHtml(p.description||'')}</textarea></div>
+      <div class="field-row">
+        <div class="field"><label>Produktové číslo</label><input name="number" value="${escapeAttr(p.number)}" placeholder="${editing?'':escapeAttr(peekProductNumber())+' (auto)'}"></div>
+        <div class="field"><label>Interní kód</label><input name="internalCode" value="${escapeAttr(p.internalCode||'')}"></div>
+      </div>
+      <div class="field-row">
+        <div class="field"><label>Kategorie</label><input name="category" list="product-category-options" value="${escapeAttr(p.category||'')}">
+          <datalist id="product-category-options">${[...new Set(state.products.map(x=>x.category).filter(Boolean))].map(c=>`<option value="${escapeAttr(c)}">`).join('')}</datalist>
+        </div>
+        <div class="field"><label>Výrobce</label><input name="manufacturer" list="product-manufacturer-options" value="${escapeAttr(p.manufacturer||'')}">
+          <datalist id="product-manufacturer-options">${[...new Set(state.products.map(x=>x.manufacturer).filter(Boolean))].map(m=>`<option value="${escapeAttr(m)}">`).join('')}</datalist>
+        </div>
+      </div>
+      <div class="field-row">
+        <div class="field"><label>Dodavatel</label><select name="supplierId">
+          <option value="">— nevybráno —</option>
+          ${state.suppliers.map(s=>`<option value="${s.id}" ${p.supplierId===s.id?'selected':''}>${escapeHtml(s.name)}</option>`).join('')}
+        </select></div>
+        <div class="field"><label>Jednotka</label><select name="unit">
+          ${PRODUCT_UNITS.map(u=>`<option value="${u}" ${(p.unit||'ks')===u?'selected':''}>${u}</option>`).join('')}
+        </select></div>
+      </div>
+      <div class="field-row">
+        <div class="field"><label>Sazba DPH</label><select name="vatRate">
+          ${VAT_RATES.map(r=>`<option value="${r}" ${(p.vatRate??21)===r?'selected':''}>${r}%</option>`).join('')}
+        </select></div>
+        <div class="field"><label>Datum expirace</label><input type="date" name="expiryDate" value="${p.expiryDate||''}"></div>
+      </div>
+      <div class="field"><label>Poznámka</label><textarea name="note">${escapeHtml(p.note||'')}</textarea></div>
+
+      <div class="section-title">Ceny</div>
+      <div class="field-row">
+        <div class="field"><label>Nákupní cena</label><input type="number" step="0.01" name="purchasePrice" id="pp-purchase" value="${p.purchasePrice||0}"></div>
+        <div class="field"><label>Prodejní cena</label><input type="number" step="0.01" name="salePrice" id="pp-sale" value="${p.salePrice||0}"></div>
+      </div>
+      <div class="margin-box" id="margin-box">
+        <div class="mb-item"><div class="mb-label">Zisk / ks</div><div class="mb-value" id="mb-profit">${fmt(margin.profit)} Kč</div></div>
+        <div class="mb-item"><div class="mb-label">Marže</div><div class="mb-value" id="mb-margin">${margin.marginPct.toFixed(1)}%</div></div>
+        <div class="mb-item"><div class="mb-label">Obchodní přirážka</div><div class="mb-value" id="mb-markup">${margin.markupPct.toFixed(1)}%</div></div>
+      </div>
+
+      <div class="section-title">Sklad</div>
+      ${editing ? `
+        <div class="stock-row">
+          <div class="sr-item"><div class="sr-label">Aktuální stav</div><div class="sr-value">${p.stockCurrent||0} ${escapeHtml(p.unit||'ks')}</div></div>
+          <div class="sr-item"><div class="sr-label">Rezervováno</div><div class="sr-value">${p.stockReserved||0}</div></div>
+          <div class="sr-item"><div class="sr-label">Dostupné</div><div class="sr-value">${stockAvailable(p)}</div></div>
+          <div class="sr-item"><div class="sr-label">Stav</div><div class="sr-value"><span class="pill ${stockPillClass(status)}">${stockIcon(status)} ${stockLabel(status)}</span></div></div>
+        </div>
+        <div class="field-row">
+          <div class="field"><label>Minimální stav</label><input type="number" step="1" name="stockMin" value="${p.stockMin||0}"></div>
+          <div class="field"></div>
+        </div>
+        <button type="button" class="btn secondary small" data-action="open-stock-movement" data-id="${p.id}">+ Skladový pohyb</button>
+        <div class="mini-label" style="margin-top:18px;">Historie pohybů (nesmazatelná)</div>
+        ${(p.movements||[]).length ? `
+          <div class="movement-row" style="font-weight:600;color:var(--ink-soft);font-size:11px;text-transform:uppercase;">
+            <div>Datum</div><div>Typ</div><div>Poznámka</div><div>Kdo</div><div>Množství</div>
+          </div>
+          ${[...p.movements].reverse().slice(0,50).map(m=>`
+            <div class="movement-row">
+              <div>${new Date(m.date).toLocaleString('cs-CZ')}</div>
+              <div>${escapeHtml(m.type)}</div>
+              <div>${escapeHtml(m.reason||m.note||'—')}</div>
+              <div>${escapeHtml(m.user||'—')}</div>
+              <div class="mv-qty ${m.qty>=0?'pos':'neg'}">${m.qty>=0?'+':''}${m.qty} → ${m.resultingStock}</div>
+            </div>
+          `).join('')}
+        ` : `<p style="font-size:12.5px;color:var(--ink-soft);">Zatím žádné skladové pohyby.</p>`}
+      ` : `
+        <div class="field-row">
+          <div class="field"><label>Počáteční stav skladu</label><input type="number" step="1" name="stockCurrent" value="${p.stockCurrent||0}"></div>
+          <div class="field"><label>Minimální stav</label><input type="number" step="1" name="stockMin" value="${p.stockMin||0}"></div>
+        </div>
+      `}
+
+      <div class="section-title">Čárový kód</div>
+      <div class="barcode-preview-box">
+        <svg id="barcode-preview-svg"></svg>
+        <div style="margin-top:10px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap;">
+          <button type="button" class="btn secondary small" data-action="regen-barcode-preview">↻ Překreslit</button>
+          ${editing ? `
+          <button type="button" class="btn secondary small" data-action="print-one-barcode" data-id="${p.id}">Tisk štítku</button>
+          <button type="button" class="btn secondary small" data-action="download-barcode-png" data-id="${p.id}">Export PNG</button>
+          <button type="button" class="btn secondary small" data-action="download-barcode-pdf" data-id="${p.id}">Export PDF</button>
+          ` : `<span style="font-size:12px;color:var(--ink-soft);align-self:center;">Tisk a export dostupné po uložení produktu.</span>`}
+        </div>
+      </div>
+
+      <div class="formfoot">
+        <button type="submit" class="btn">Uložit produkt</button>
+        <button type="button" class="btn secondary" data-action="nav" data-view="products">Zrušit</button>
+        ${editing ? `<button type="button" class="btn danger" data-action="delete-product" data-id="${p.id}">Smazat produkt</button>` : ''}
+      </div>
+      <input type="hidden" name="id" value="${p.id}">
+    </form>
+  `;
+}
+
+function setupProductForm(){
+  const form = document.getElementById('product-form');
+  if(!form) return;
+  setupProductPhotoDropzone();
+
+  const purchaseEl = document.getElementById('pp-purchase');
+  const saleEl = document.getElementById('pp-sale');
+  function updateMargin(){
+    const purchase = parseFloat(purchaseEl.value)||0;
+    const sale = parseFloat(saleEl.value)||0;
+    const profit = sale-purchase;
+    const marginPct = sale>0 ? (profit/sale*100) : 0;
+    const markupPct = purchase>0 ? (profit/purchase*100) : 0;
+    document.getElementById('mb-profit').textContent = fmt(profit)+' Kč';
+    document.getElementById('mb-margin').textContent = marginPct.toFixed(1)+'%';
+    document.getElementById('mb-markup').textContent = markupPct.toFixed(1)+'%';
+  }
+  if(purchaseEl){ purchaseEl.addEventListener('input', updateMargin); saleEl.addEventListener('input', updateMargin); }
+
+  function drawBarcodePreview(){
+    const svg = document.getElementById('barcode-preview-svg');
+    if(!svg) return;
+    const eanVal = document.getElementById('product-ean').value.trim();
+    const numberInput = form.querySelector('input[name="number"]');
+    const value = eanVal || (numberInput && numberInput.value.trim()) || peekProductNumber();
+    renderBarcodeToSvg(svg, value);
+  }
+  drawBarcodePreview();
+  const eanInput = document.getElementById('product-ean');
+  if(eanInput) eanInput.addEventListener('input', drawBarcodePreview);
+  const numberInputEl = form.querySelector('input[name="number"]');
+  if(numberInputEl) numberInputEl.addEventListener('input', drawBarcodePreview);
+
+  const eanBtn = document.getElementById('ean-lookup-btn');
+  if(eanBtn){
+    eanBtn.addEventListener('click', async ()=>{
+      const ean = document.getElementById('product-ean').value.trim();
+      const statusEl = document.getElementById('ean-lookup-status');
+      if(!ean){ if(statusEl) statusEl.textContent = 'Napiš nebo naskenuj EAN.'; return; }
+      if(statusEl) statusEl.textContent = 'Hledám v databázi produktů…';
+      eanBtn.disabled = true;
+      try{
+        const found = await eanLookup(ean);
+        if(!found){
+          if(statusEl) statusEl.textContent = 'Produkt s tímto EAN nebyl nalezen — doplň údaje ručně.';
+        } else {
+          if(found.name) form.querySelector('input[name="name"]').value = found.name;
+          if(found.manufacturer) form.querySelector('input[name="manufacturer"]').value = found.manufacturer;
+          if(found.category) form.querySelector('input[name="category"]').value = found.category;
+          if(found.image){
+            state.currentProductDraftPhoto = found.image;
+            const drop = document.getElementById('product-photo-drop');
+            if(drop) drop.innerHTML = `<img src="${found.image}" alt="Fotografie produktu">`;
+          }
+          if(statusEl) statusEl.textContent = 'Údaje doplněny — zkontroluj je a uprav podle potřeby.';
+        }
+      }catch(err){
+        if(statusEl) statusEl.textContent = 'Vyhledávání se nepovedlo, zkus to prosím znovu.';
+      } finally {
+        eanBtn.disabled = false;
+        drawBarcodePreview();
+      }
+    });
+  }
+
+  form.addEventListener('submit', onSubmitProduct);
+}
+
+async function onSubmitProduct(e){
+  e.preventDefault();
+  const fd = new FormData(e.target);
+  const id = fd.get('id');
+  const existing = productById(id);
+  let number = (fd.get('number')||'').trim();
+  if(number && state.products.some(p=>p.number===number && p.id!==id)){
+    alert('Toto produktové číslo už používá jiný produkt. Zvol jiné, nebo pole nech prázdné pro automatické vygenerování.');
+    return;
+  }
+  const ean = (fd.get('ean')||'').trim();
+  if(ean && state.products.some(p=>p.ean===ean && p.id!==id)){
+    alert('Tento EAN už má přiřazený jiný produkt.');
+    return;
+  }
+  if(!number) number = existing ? existing.number : generateUniqueProductNumber();
+  const photo = existing ? (state.currentProductDraftPhoto !== undefined && state.currentProductDraftPhoto !== existing.photo && state.currentProductDraftPhoto ? state.currentProductDraftPhoto : (document.getElementById('product-photo-drop')?.querySelector('img')?.src || existing.photo))
+    : (state.currentProductDraftPhoto || (document.getElementById('product-photo-drop')?.querySelector('img')?.src || ''));
+
+  const p = {
+    id: id || uid(),
+    number, ean, internalCode: fd.get('internalCode')||'',
+    name: fd.get('name'), description: fd.get('description')||'',
+    category: fd.get('category')||'', manufacturer: fd.get('manufacturer')||'',
+    supplierId: fd.get('supplierId')||'', unit: fd.get('unit')||'ks',
+    vatRate: parseFloat(fd.get('vatRate'))||0, note: fd.get('note')||'',
+    purchasePrice: parseFloat(fd.get('purchasePrice'))||0, salePrice: parseFloat(fd.get('salePrice'))||0,
+    stockCurrent: existing ? existing.stockCurrent : (parseFloat(fd.get('stockCurrent'))||0),
+    stockReserved: existing ? (existing.stockReserved||0) : 0,
+    stockMin: parseFloat(fd.get('stockMin'))||0,
+    expiryDate: fd.get('expiryDate')||'', photo, link: fd.get('link')||'',
+    archived: existing ? !!existing.archived : false,
+    createdAt: existing ? existing.createdAt : new Date().toISOString(),
+    movements: existing ? (existing.movements||[]) : (parseFloat(fd.get('stockCurrent'))||0)!==0 ? [{id:uid(), type:'počáteční stav', qty:(parseFloat(fd.get('stockCurrent'))||0), reason:'Založení produktu', note:'', date:new Date().toISOString(), user:state.currentUser, resultingStock:(parseFloat(fd.get('stockCurrent'))||0)}] : []
+  };
+  if(existing){ const idx = state.products.findIndex(x=>x.id===id); state.products[idx]=p; }
+  else{ state.products.push(p); }
+  try{ await saveProducts(); await saveProductSettings(); }
+  catch(err){ alert('Uložení produktu se nepovedlo, zkus to prosím znovu.'); return; }
+  state.newProductDraftId = null;
+  state.currentProductDraftPhoto = '';
+  state.eanLookupStatus = '';
+  state.view='products';
+  state.editingProductId=null;
+  render();
+}
+
+/* ---------- SKLADOVÝ POHYB ---------- */
+async function promptStockMovement(productId){
+  const p = productById(productId);
+  if(!p) return;
+  const types = ['příjem','výdej','prodej','vrácení','reklamace','inventura','ruční úprava'];
+  const typeInput = prompt(`Typ pohybu (${types.join(' / ')}):`, 'příjem');
+  if(typeInput===null) return;
+  const type = types.includes(typeInput.trim()) ? typeInput.trim() : 'ruční úprava';
+  const qtyRaw = prompt('Množství (kladné = přijde na sklad, záporné = odejde ze skladu):', '1');
+  if(qtyRaw===null) return;
+  const qty = parseFloat(qtyRaw);
+  if(isNaN(qty) || qty===0){ alert('Zadej platné nenulové množství.'); return; }
+  const reason = prompt('Důvod / poznámka:', type) || type;
+  const resulting = (p.stockCurrent||0) + qty;
+  if(resulting < 0 && !confirm(`Sklad produktu „${p.name}“ klesne do záporných hodnot (${resulting}). Pokračovat?`)) return;
+  p.stockCurrent = resulting;
+  p.movements = p.movements || [];
+  p.movements.push({ id: uid(), type, qty, reason, note:'', date: new Date().toISOString(), user: state.currentUser, resultingStock: resulting });
+  try{ await saveProducts(); }catch(err){ alert('Uložení se nepovedlo, zkus to prosím znovu.'); return; }
+  render();
+}
+
+/* ---------- SKLAD (přehled) ---------- */
+function viewStock(){
+  const active = state.products.filter(p=>!p.archived);
+  const low = active.filter(p=>stockStatus(p)==='low');
+  const out = active.filter(p=>stockStatus(p)==='out');
+  const expiring = active.filter(p=>{ const d=daysUntil(p.expiryDate); return d!=null && d<=90; }).sort((a,b)=>daysUntil(a.expiryDate)-daysUntil(b.expiryDate));
+  const stockValue = active.reduce((s,p)=>s+(p.purchasePrice||0)*(p.stockCurrent||0),0);
+  const allMovements = [];
+  active.forEach(p=>(p.movements||[]).forEach(m=>allMovements.push({...m, productName:p.name})));
+  allMovements.sort((a,b)=> new Date(b.date)-new Date(a.date));
+  return `
+    <div class="pagehead"><div><h1>Sklad</h1><p class="desc">Přehled skladových zásob, nízkých stavů a expirací.</p></div></div>
+    <div class="cards">
+      <div class="card"><div class="label">Hodnota skladu</div><div class="value accent num">${fmt(stockValue)} Kč</div></div>
+      <div class="card"><div class="label">Pod minimem</div><div class="value amber">${low.length}</div></div>
+      <div class="card"><div class="label">Není skladem</div><div class="value red">${out.length}</div></div>
+      <div class="card"><div class="label">Blíží se expirace (90 dní)</div><div class="value amber">${expiring.length}</div></div>
+    </div>
+
+    <div class="section-title" style="margin-top:0;">Nízký stav / vyprodáno</div>
+    ${(low.length+out.length) ? renderProductTable([...out, ...low], {selectable:false}) : emptyState('Vše v pořádku', 'Žádný produkt není pod minimálním stavem.')}
+
+    <div class="section-title">Blížící se expirace</div>
+    ${expiring.length ? `
+    <table>
+      <thead><tr><th>Produkt</th><th>Expirace</th><th>Zbývá dní</th><th>Skladem</th><th></th></tr></thead>
+      <tbody>
+        ${expiring.map(p=>`
+          <tr>
+            <td>${escapeHtml(p.name)}</td>
+            <td class="num">${p.expiryDate}</td>
+            <td class="num">${daysUntil(p.expiryDate)}</td>
+            <td class="num">${p.stockCurrent||0} ${escapeHtml(p.unit||'ks')}</td>
+            <td class="actions-cell no-print"><button class="iconbtn" data-action="open-product" data-id="${p.id}" title="Otevřít">✎</button></td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>
+    ` : emptyState('Žádné blížící se expirace', 'Produkty s vyplněným datem expirace do 90 dní se zobrazí zde.')}
+
+    <div class="section-title">Historie skladových pohybů (nesmazatelná)</div>
+    <table>
+      <thead><tr><th>Datum</th><th>Produkt</th><th>Typ</th><th>Poznámka</th><th>Kdo</th><th>Množství</th></tr></thead>
+      <tbody>
+        ${allMovements.slice(0,80).map(m=>`
+          <tr>
+            <td class="num">${new Date(m.date).toLocaleString('cs-CZ')}</td>
+            <td>${escapeHtml(m.productName)}</td>
+            <td>${escapeHtml(m.type)}</td>
+            <td>${escapeHtml(m.reason||m.note||'—')}</td>
+            <td>${escapeHtml(m.user||'—')}</td>
+            <td class="num" style="color:${m.qty>=0?'var(--accent)':'var(--red)'};font-weight:600;">${m.qty>=0?'+':''}${m.qty}</td>
+          </tr>
+        `).join('') || `<tr><td colspan="6" style="text-align:center;color:var(--ink-soft);padding:20px;">Zatím žádné pohyby.</td></tr>`}
+      </tbody>
+    </table>
+  `;
+}
+
+/* ---------- ČÁROVÉ KÓDY: TISK / EXPORT ---------- */
+function buildBarcodeLabelsHtml(products, qtyEach, showPrice){
+  let html = '';
+  products.forEach(p=>{
+    for(let i=0;i<qtyEach;i++){
+      html += `<div class="barcode-label">
+        <div class="bl-name">${escapeHtml(p.name||'')}</div>
+        <div class="bl-num">${escapeHtml(p.number||'')}</div>
+        <svg class="bl-svg" data-barcode-value="${escapeAttr(barcodeValueFor(p))}"></svg>
+        ${showPrice?`<div class="bl-price">${fmt(p.salePrice||0)} Kč</div>`:''}
+      </div>`;
+    }
+  });
+  return html;
+}
+function printProductBarcodes(ids, qty, showPrice){
+  const products = ids.map(id=>productById(id)).filter(Boolean);
+  if(!products.length) return;
+  let sheet = document.getElementById('barcode-print-sheet');
+  if(!sheet){
+    sheet = document.createElement('div');
+    sheet.id = 'barcode-print-sheet';
+    document.body.appendChild(sheet);
+  }
+  sheet.innerHTML = buildBarcodeLabelsHtml(products, qty||1, showPrice!==false);
+  sheet.querySelectorAll('svg[data-barcode-value]').forEach(svg=>{
+    renderBarcodeToSvg(svg, svg.getAttribute('data-barcode-value'));
+  });
+  sheet.classList.add('printing');
+  document.body.classList.add('printing-barcodes');
+  const cleanup = ()=>{
+    sheet.classList.remove('printing');
+    document.body.classList.remove('printing-barcodes');
+    window.removeEventListener('afterprint', cleanup);
+  };
+  window.addEventListener('afterprint', cleanup);
+  setTimeout(()=> window.print(), 60);
+}
+function downloadBarcodePng(productId){
+  const p = productById(productId);
+  if(!p) return;
+  const canvas = document.createElement('canvas');
+  try{
+    JsBarcode(canvas, barcodeValueFor(p), { format: barcodeFormatFor(barcodeValueFor(p)), displayValue:true, fontSize:16, height:70, margin:10 });
+    const url = canvas.toDataURL('image/png');
+    const a = document.createElement('a');
+    a.href = url; a.download = `carovy-kod-${(p.number||p.id).replace(/[^\w.-]+/g,'_')}.png`;
+    document.body.appendChild(a); a.click(); a.remove();
+  }catch(err){ alert('Export se nepovedl, zkus to prosím znovu.'); }
+}
+async function downloadBarcodePdf(ids, qty, showPrice){
+  const products = ids.map(id=>productById(id)).filter(Boolean);
+  if(!products.length || !window.html2pdf) return;
+  const wrap = document.createElement('div');
+  wrap.style.cssText = 'position:fixed;left:-9999px;top:0;background:#fff;padding:10px;';
+  wrap.innerHTML = buildBarcodeLabelsHtml(products, qty||1, showPrice!==false);
+  document.body.appendChild(wrap);
+  wrap.querySelectorAll('svg[data-barcode-value]').forEach(svg=>{ renderBarcodeToSvg(svg, svg.getAttribute('data-barcode-value')); });
+  try{
+    await html2pdf().set({
+      margin:10, filename:'carove-kody.pdf', image:{type:'jpeg',quality:0.98},
+      html2canvas:{scale:2, useCORS:true, backgroundColor:'#ffffff'}, jsPDF:{unit:'pt', format:'a4', orientation:'portrait'}
+    }).from(wrap).save();
+  }catch(err){ alert('Export PDF se nepovedl, zkus to prosím znovu.'); }
+  finally{ wrap.remove(); }
+}
+
+/* ---------- SKLAD ↔ FAKTURY (automatický odečet/vrácení) ---------- */
+function productStockDeltaMap(items){
+  const m = new Map();
+  (items||[]).forEach(it=>{
+    if(!it.productId) return;
+    m.set(it.productId, (m.get(it.productId)||0) + (parseFloat(it.qty)||0));
+  });
+  return m;
+}
+async function applyStockForInvoiceChange(oldItems, newItems, reasonLabel){
+  const oldMap = productStockDeltaMap(oldItems);
+  const newMap = productStockDeltaMap(newItems);
+  const allIds = new Set([...oldMap.keys(), ...newMap.keys()]);
+  if(!allIds.size) return;
+  const negatives = [];
+  allIds.forEach(pid=>{
+    const product = productById(pid);
+    if(!product) return;
+    const delta = (newMap.get(pid)||0) - (oldMap.get(pid)||0);
+    if(delta===0) return;
+    const resulting = (product.stockCurrent||0) - delta;
+    if(resulting<0) negatives.push(product.name);
+  });
+  if(negatives.length && !confirm(`Sklad u produktů (${negatives.join(', ')}) klesne do záporných hodnot. Pokračovat a uložit fakturu?`)) {
+    throw new Error('cancelled');
+  }
+  let changed = false;
+  allIds.forEach(pid=>{
+    const product = productById(pid);
+    if(!product) return;
+    const delta = (newMap.get(pid)||0) - (oldMap.get(pid)||0);
+    if(delta===0) return;
+    product.stockCurrent = (product.stockCurrent||0) - delta;
+    product.movements = product.movements || [];
+    product.movements.push({ id: uid(), type: delta>0?'prodej':'vrácení', qty: -delta, reason: reasonLabel, note:'', date: new Date().toISOString(), user: state.currentUser, resultingStock: product.stockCurrent });
+    changed = true;
+  });
+  if(changed) await saveProducts();
+}
+
+/* ---------- HROMADNÉ OPERACE S PRODUKTY ---------- */
+async function bulkUpdateProducts(ids, fields){
+  state.products.forEach(p=>{ if(ids.includes(p.id)) Object.assign(p, fields); });
+  try{ await saveProducts(); }catch(err){ alert('Uložení se nepovedlo, zkus to prosím znovu.'); }
+}
+
+/* ---------- IMPORT / EXPORT PRODUKTŮ ---------- */
+const PRODUCT_BULK_FIELDS = [
+  {key:'', label:'— Ignorovat —'},
+  {key:'name', label:'Produkt — název'},
+  {key:'ean', label:'Produkt — EAN'},
+  {key:'number', label:'Produkt — produktové číslo'},
+  {key:'internalCode', label:'Produkt — interní kód'},
+  {key:'category', label:'Produkt — kategorie'},
+  {key:'manufacturer', label:'Produkt — výrobce'},
+  {key:'supplierName', label:'Produkt — dodavatel (název)'},
+  {key:'unit', label:'Produkt — jednotka'},
+  {key:'vatRate', label:'Produkt — sazba DPH (%)'},
+  {key:'purchasePrice', label:'Produkt — nákupní cena'},
+  {key:'salePrice', label:'Produkt — prodejní cena'},
+  {key:'stockCurrent', label:'Produkt — stav skladu'},
+  {key:'stockMin', label:'Produkt — minimální stav'},
+  {key:'expiryDate', label:'Produkt — datum expirace'},
+  {key:'note', label:'Produkt — poznámka'},
+];
+function guessProductFieldForHeader(header){
+  const h = stripDiacritics(String(header||'')).toLowerCase().trim();
+  const rules = [
+    [/ean|čárov|carov|barcode/, 'ean'],
+    [/produktov.{0,3}č[íi]slo|product\s*number|sku/, 'number'],
+    [/intern[íi]\s*k[oó]d|internal\s*code/, 'internalCode'],
+    [/kategori/, 'category'],
+    [/v[ýy]robce|manufacturer|brand/, 'manufacturer'],
+    [/dodavatel|supplier/, 'supplierName'],
+    [/jednotk|^unit$/, 'unit'],
+    [/dph|vat/, 'vatRate'],
+    [/n[áa]kupn[íi]/, 'purchasePrice'],
+    [/prodejn[íi]|sale\s*price/, 'salePrice'],
+    [/minim[áa]ln[íi]/, 'stockMin'],
+    [/sklad|stock|mnoz?stv[íi]|quantity/, 'stockCurrent'],
+    [/expirac|expir|trvanliv/, 'expiryDate'],
+    [/pozn[áa]mka|note/, 'note'],
+    [/n[áa]zev|^name$|produkt/, 'name'],
+  ];
+  for(const [re,f] of rules){ if(re.test(h)) return f; }
+  return '';
+}
+async function handleProductBulkFile(file){
+  if(!file) return;
+  state.bulkImport.error = '';
+  state.bulkImport.fileName = file.name;
+  try{
+    const buf = await file.arrayBuffer();
+    const wb = XLSX.read(buf, { type:'array', cellDates:true });
+    const sheet = wb.Sheets[wb.SheetNames[0]];
+    const rows = XLSX.utils.sheet_to_json(sheet, { defval:'' });
+    if(!rows.length){ state.bulkImport.error = 'Soubor neobsahuje žádná data.'; render(); return; }
+    const headers = Object.keys(rows[0]);
+    const mapping = {};
+    headers.forEach(h=>{ mapping[h] = guessProductFieldForHeader(h); });
+    state.bulkImport.headers = headers; state.bulkImport.rows = rows; state.bulkImport.mapping = mapping;
+    state.bulkImport.step = 'mapping';
+  }catch(err){ state.bulkImport.error = 'Soubor se nepodařilo přečíst. Zkus .xlsx nebo .csv.'; }
+  render();
+}
+function computeProductBulkPreview(){
+  const bi = state.bulkImport;
+  const fieldToHeader = {};
+  Object.entries(bi.mapping).forEach(([h,f])=>{ if(f) fieldToHeader[f]=h; });
+  const get = (row,f) => fieldToHeader[f] ? row[fieldToHeader[f]] : undefined;
+  const items = []; let skipped = 0; let dupCount = 0;
+  const seenEans = new Set(state.products.map(p=>p.ean).filter(Boolean));
+  const seenNumbers = new Set(state.products.map(p=>p.number).filter(Boolean));
+  bi.rows.forEach(row=>{
+    const name = (get(row,'name')||'').toString().trim();
+    const ean = (get(row,'ean')||'').toString().trim();
+    if(!name && !ean){ skipped++; return; }
+    let isDup = false;
+    if(ean && seenEans.has(ean)) isDup = true;
+    const number = (get(row,'number')||'').toString().trim();
+    if(number && seenNumbers.has(number)) isDup = true;
+    if(isDup) dupCount++;
+    items.push({
+      name: name || '(bez názvu)', ean, number, internalCode: (get(row,'internalCode')||'').toString().trim(),
+      category: (get(row,'category')||'').toString().trim(), manufacturer: (get(row,'manufacturer')||'').toString().trim(),
+      supplierName: (get(row,'supplierName')||'').toString().trim(), unit: (get(row,'unit')||'ks').toString().trim()||'ks',
+      vatRate: bulkParseNumber(get(row,'vatRate'))||0, purchasePrice: bulkParseNumber(get(row,'purchasePrice'))||0,
+      salePrice: bulkParseNumber(get(row,'salePrice'))||0, stockCurrent: bulkParseNumber(get(row,'stockCurrent'))||0,
+      stockMin: bulkParseNumber(get(row,'stockMin'))||0, expiryDate: bulkParseDate(get(row,'expiryDate')),
+      note: (get(row,'note')||'').toString().trim(), isDup
+    });
+    if(ean) seenEans.add(ean);
+    if(number) seenNumbers.add(number);
+  });
+  bi.preview = { items, skipped, dupCount };
+}
+async function confirmProductBulkImport(){
+  const bi = state.bulkImport;
+  if(!bi || !bi.preview) return;
+  for(const it of bi.preview.items){
+    if(it.isDup) continue; // duplicity přeskočíme, ať nevzniknou konflikty
+    let supplierId = '';
+    if(it.supplierName){
+      let sup = state.suppliers.find(s=>stripDiacritics(s.name).toLowerCase()===stripDiacritics(it.supplierName).toLowerCase());
+      if(!sup){ sup = { ...blankSupplier(), name: it.supplierName }; state.suppliers.push(sup); }
+      supplierId = sup.id;
+    }
+    const number = it.number || generateUniqueProductNumber();
+    state.products.push({
+      ...blankProduct(), id: uid(), number, ean: it.ean, internalCode: it.internalCode,
+      name: it.name, category: it.category, manufacturer: it.manufacturer, supplierId,
+      unit: it.unit, vatRate: it.vatRate, purchasePrice: it.purchasePrice, salePrice: it.salePrice,
+      stockCurrent: it.stockCurrent, stockMin: it.stockMin, expiryDate: it.expiryDate, note: it.note,
+      movements: it.stockCurrent ? [{id:uid(), type:'počáteční stav', qty:it.stockCurrent, reason:'Import', note:'', date:new Date().toISOString(), user:state.currentUser, resultingStock:it.stockCurrent}] : []
+    });
+  }
+  await saveSuppliers();
+  await saveProducts();
+  await saveProductSettings();
+  state.bulkImport = null;
+  state.view = 'products';
+  render();
+}
+function exportProductsCsv(format){
+  const rows = state.products.map(p=>({
+    Název: p.name, EAN: p.ean, 'Produktové číslo': p.number, 'Interní kód': p.internalCode,
+    Kategorie: p.category, Výrobce: p.manufacturer, Dodavatel: (supplierById(p.supplierId)||{}).name||'',
+    Jednotka: p.unit, 'DPH %': p.vatRate, 'Nákupní cena': p.purchasePrice, 'Prodejní cena': p.salePrice,
+    Sklad: p.stockCurrent, Minimum: p.stockMin, Expirace: p.expiryDate, Poznámka: p.note
+  }));
+  const ws = XLSX.utils.json_to_sheet(rows);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Produkty');
+  XLSX.writeFile(wb, `produkty-export.${format==='csv'?'csv':'xlsx'}`, { bookType: format==='csv'?'csv':'xlsx' });
+}
+
+/* ---------- KONTEXTOVÉ MENU + KLÁVESOVÉ ZKRATKY (produkty) ---------- */
+function closeProductContextMenu(){
+  state.productContextMenu = null;
+  const el = document.getElementById('product-ctx-menu');
+  if(el) el.remove();
+}
+function openProductContextMenu(x, y, productId){
+  closeProductContextMenu();
+  const p = productById(productId);
+  if(!p) return;
+  const menu = document.createElement('div');
+  menu.className = 'ctx-menu';
+  menu.id = 'product-ctx-menu';
+  menu.style.left = Math.min(x, window.innerWidth-210)+'px';
+  menu.style.top = Math.min(y, window.innerHeight-260)+'px';
+  menu.innerHTML = `
+    <div class="ctx-item" data-action="open-product" data-id="${p.id}">Upravit</div>
+    <div class="ctx-item" data-action="duplicate-product" data-id="${p.id}">Duplikovat</div>
+    <div class="ctx-item" data-action="print-one-barcode" data-id="${p.id}">Tisk čárového kódu</div>
+    <div class="ctx-sep"></div>
+    <div class="ctx-item" data-action="open-stock-movement" data-id="${p.id}">Skladový pohyb</div>
+    <div class="ctx-sep"></div>
+    <div class="ctx-item" data-action="toggle-archive-product" data-id="${p.id}">${p.archived?'Obnovit z archivu':'Archivovat'}</div>
+    <div class="ctx-item danger" data-action="delete-product" data-id="${p.id}">Smazat</div>
+  `;
+  document.body.appendChild(menu);
+  document.addEventListener('click', closeProductContextMenu, { once:true });
+}
+
+function setupProductsView(){
+  const searchInput = document.getElementById('product-search-input');
+  if(searchInput){
+    searchInput.addEventListener('input', (e)=>{ state.productSearch = e.target.value; state.productVisibleCount = 150; render(); });
+  }
+  ['pf-stock','pf-category','pf-supplier','pf-manufacturer','pf-expiry','pf-archived'].forEach(id=>{
+    const el = document.getElementById(id);
+    if(!el) return;
+    el.addEventListener('change', ()=>{
+      const key = id.replace('pf-','');
+      state.productFilters[key] = el.value;
+      state.productVisibleCount = 150;
+      render();
+    });
+  });
+  // column resize
+  document.querySelectorAll('[data-col-resize]').forEach(handle=>{
+    handle.addEventListener('mousedown', (e)=>{
+      e.preventDefault(); e.stopPropagation();
+      const key = handle.getAttribute('data-col-resize');
+      const col = state.productColumns.find(c=>c.key===key);
+      const startX = e.clientX; const startW = col.width;
+      function onMove(ev){ col.width = Math.max(40, startW + (ev.clientX-startX)); const th = handle.closest('th'); if(th) th.style.width = col.width+'px'; }
+      function onUp(){ document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp); saveProductColumns(); }
+      document.addEventListener('mousemove', onMove);
+      document.addEventListener('mouseup', onUp);
+    });
+  });
+  // context menu on rows
+  document.querySelectorAll('[data-product-row]').forEach(row=>{
+    row.addEventListener('contextmenu', (e)=>{
+      e.preventDefault();
+      openProductContextMenu(e.clientX, e.clientY, row.getAttribute('data-product-row'));
+    });
+    row.addEventListener('dblclick', ()=>{ state.view='product-form'; state.editingProductId=row.getAttribute('data-product-row'); render(); });
+  });
+}
+
+function productsKeyHandler(e){
+  if(state.view!=='products') return;
+  const tag = (document.activeElement && document.activeElement.tagName || '').toLowerCase();
+  if(tag==='input' || tag==='textarea' || tag==='select') return;
+  if(e.key==='n' || e.key==='N'){ state.view='product-form'; state.editingProductId=null; state.newProductDraftId=null; render(); }
+  else if(e.key==='Delete' || e.key==='Backspace'){
+    if(state.selectedProductIds.size){
+      e.preventDefault();
+      if(confirm(`Smazat ${state.selectedProductIds.size} vybraných produktů?`)){
+        state.products = state.products.filter(p=>!state.selectedProductIds.has(p.id));
+        saveProducts();
+        state.selectedProductIds.clear();
+        render();
+      }
+    }
+  } else if(e.key==='Escape'){ state.selectedProductIds.clear(); closeProductContextMenu(); render(); }
+}
+document.addEventListener('keydown', productsKeyHandler);
+
 /* ---------- HELPERS ---------- */
 function escapeHtml(s){ if(s==null) return ''; return String(s).replace(/[&<>"']/g, m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
 function escapeAttr(s){ return escapeHtml(s); }
@@ -2463,6 +3696,11 @@ function afterRender(){
   if(userCredsForm){ userCredsForm.addEventListener('submit', onSubmitUserCreds); }
   const clientForm = document.getElementById('client-form');
   if(clientForm){ clientForm.addEventListener('submit', onSubmitClient); }
+  const supplierForm = document.getElementById('supplier-form');
+  if(supplierForm){ supplierForm.addEventListener('submit', onSubmitSupplier); }
+  setupProductForm();
+  if(state.view==='products') setupProductsView();
+  setupProductPicker();
   setupAresCombo();
   ['client-address','client-delivery-address'].forEach(setupAddressGroupAutocomplete);
   setupAresCombo({ name:'co-name', list:'co-name-list', status:'co-ares-status', ico:'co-ico', dic:'co-dic', addrPrefix:'co-address' });
@@ -2522,7 +3760,11 @@ function afterRender(){
   }
   const bulkFileInput = document.getElementById('bulk-file-input');
   if(bulkFileInput){
-    bulkFileInput.addEventListener('change', ()=>{ if(bulkFileInput.files[0]) handleBulkFile(bulkFileInput.files[0]); });
+    bulkFileInput.addEventListener('change', ()=>{
+      if(!bulkFileInput.files[0]) return;
+      if(state.bulkImport && state.bulkImport.mode==='products') handleProductBulkFile(bulkFileInput.files[0]);
+      else handleBulkFile(bulkFileInput.files[0]);
+    });
   }
   document.querySelectorAll('select[data-action="bulk-map"]').forEach(sel=>{
     sel.addEventListener('change', ()=>{ state.bulkImport.mapping[sel.getAttribute('data-header')] = sel.value; });
@@ -3076,6 +4318,48 @@ function setupClientCombo(){
   });
 }
 
+function setupProductPicker(){
+  const input = document.getElementById('product-picker-input');
+  const list = document.getElementById('product-picker-list');
+  if(!input || !list) return;
+
+  function renderList(query){
+    const q = stripDiacritics(query||'').toLowerCase().trim();
+    const matches = state.products.filter(p=>{
+      if(p.archived) return false;
+      if(!q) return true;
+      return stripDiacritics(`${p.name} ${p.ean||''} ${p.number||''} ${p.internalCode||''}`).toLowerCase().includes(q);
+    }).slice(0,30);
+    if(!matches.length){
+      list.innerHTML = `<div class="combo-empty">Žádný produkt neodpovídá.</div>`;
+    } else {
+      list.innerHTML = matches.map(p=>`
+        <div class="combo-item" data-id="${p.id}">
+          <div>${escapeHtml(p.name)} <span class="num" style="color:var(--ink-soft);">${fmt(p.salePrice||0)} Kč</span></div>
+          <div class="sub">${escapeHtml(p.number||'')}${p.ean?' · EAN '+escapeHtml(p.ean):''} · sklad ${stockAvailable(p)} ${escapeHtml(p.unit||'ks')}</div>
+        </div>
+      `).join('');
+    }
+    list.classList.add('open');
+  }
+  input.addEventListener('focus', ()=> renderList(input.value));
+  input.addEventListener('input', ()=> renderList(input.value));
+  list.addEventListener('mousedown', (e)=>{
+    const item = e.target.closest('.combo-item');
+    if(!item) return;
+    const p = productById(item.getAttribute('data-id'));
+    if(p){
+      state.formItems.push({ desc: p.name, qty:1, unit: p.unit||'ks', price: p.salePrice||0, vat: p.vatRate||0, productId: p.id, ean: p.ean||'', productNumber: p.number||'' });
+      input.value = '';
+      render();
+    }
+    list.classList.remove('open');
+  });
+  document.addEventListener('click', (e)=>{
+    if(e.target!==input && !list.contains(e.target)) list.classList.remove('open');
+  });
+}
+
 document.addEventListener('click', async (e)=>{
   const el = e.target.closest('[data-action]');
   if(!el) return;
@@ -3091,7 +4375,7 @@ document.addEventListener('click', async (e)=>{
     state.authView='login'; state.view='dashboard';
     render();
   }
-  else if(action==='nav'){ state.view = el.getAttribute('data-view'); state.editingInvoiceId=null; state.editingClientId=null; state.viewingClientId=null; state.newClientDraftId=null; state.newClientDraftAttachments=[]; state.editingCompanyId=null; state.newCompanyDraftId=null; state.newCompanyDraft={logo:'',signature:'',stamp:''}; state.companyNotice=''; state.formItems=[]; state.formCompanyId=null; state.selectedInvoiceIds.clear(); state.selectedClientIds.clear(); render(); }
+  else if(action==='nav'){ state.view = el.getAttribute('data-view'); state.editingInvoiceId=null; state.editingClientId=null; state.viewingClientId=null; state.newClientDraftId=null; state.newClientDraftAttachments=[]; state.editingCompanyId=null; state.newCompanyDraftId=null; state.newCompanyDraft={logo:'',signature:'',stamp:''}; state.companyNotice=''; state.formItems=[]; state.formCompanyId=null; state.selectedInvoiceIds.clear(); state.selectedClientIds.clear(); state.editingSupplierId=null; state.viewingSupplierId=null; state.editingProductId=null; state.newProductDraftId=null; state.currentProductDraftPhoto=''; state.eanLookupStatus=''; state.selectedProductIds.clear(); closeProductContextMenu(); state.productColsPanelOpen=false; render(); }
   else if(action==='new-invoice'){ state.view='invoice-form'; state.editingInvoiceId=null; state.formItems=[]; state.formCompanyId=null; render(); }
   else if(action==='toggle-invoice-select'){
     const cid = el.getAttribute('data-id');
@@ -3184,7 +4468,15 @@ document.addEventListener('click', async (e)=>{
   }
   else if(action==='edit-invoice'){ state.view='invoice-form'; state.editingInvoiceId=id; state.formItems=[]; state.formCompanyId=null; render(); }
   else if(action==='preview-invoice'){ state.view='invoice-preview'; state.previewId=id; render(); }
-  else if(action==='delete-invoice'){ if(confirm('Smazat tuto fakturu?')){ state.invoices = state.invoices.filter(i=>i.id!==id); await saveInvoices(); render(); } }
+  else if(action==='delete-invoice'){
+    if(confirm('Smazat tuto fakturu?')){
+      const inv = state.invoices.find(i=>i.id===id);
+      if(inv) await applyStockForInvoiceChange(inv.items, [], 'Storno faktury '+inv.number).catch(()=>{});
+      state.invoices = state.invoices.filter(i=>i.id!==id);
+      await saveInvoices();
+      render();
+    }
+  }
   else if(action==='toggle-paid'){
     const inv = state.invoices.find(i=>i.id===id);
     if(inv){ inv.paid = !inv.paid; inv.paidDate = inv.paid ? todayISO() : null; await saveInvoices(); render(); }
@@ -3287,16 +4579,22 @@ document.addEventListener('click', async (e)=>{
   }
   else if(action==='trigger-bulk-file'){ const fi=document.getElementById('bulk-file-input'); if(fi) fi.click(); }
   else if(action==='bulk-to-preview'){
-    const sel = document.getElementById('bulk-company-select');
-    if(sel) state.bulkImport.companyId = sel.value;
-    computeBulkPreview();
+    if(state.bulkImport.mode==='products'){ computeProductBulkPreview(); }
+    else {
+      const sel = document.getElementById('bulk-company-select');
+      if(sel) state.bulkImport.companyId = sel.value;
+      computeBulkPreview();
+    }
     state.bulkImport.step = 'preview';
     render();
   }
   else if(action==='bulk-back-to-mapping'){ state.bulkImport.step='mapping'; render(); }
   else if(action==='bulk-confirm'){
     const btn = el; btn.disabled = true; btn.textContent = 'Importuji…';
-    try{ await confirmBulkImport(); }
+    try{
+      if(state.bulkImport.mode==='products') await confirmProductBulkImport();
+      else await confirmBulkImport();
+    }
     catch(err){ alert('Import se nepovedl, zkus to prosím znovu.'); btn.disabled=false; btn.textContent='Potvrdit a importovat'; }
   }
   else if(action==='dash-preset'){
@@ -3320,6 +4618,159 @@ document.addEventListener('click', async (e)=>{
     const companyId = el.getAttribute('data-company-id');
     if(confirm('Odebrat tento obrázek?')) await removeBrandingImage(field, companyId);
   }
+  /* --- Dodavatelé --- */
+  else if(action==='new-supplier'){ state.view='supplier-form'; state.editingSupplierId=null; render(); }
+  else if(action==='edit-supplier'){ state.view='supplier-form'; state.editingSupplierId=id; render(); }
+  else if(action==='view-supplier'){ state.view='supplier-detail'; state.viewingSupplierId=id; render(); }
+  else if(action==='delete-supplier'){
+    const used = state.products.some(p=>p.supplierId===id);
+    const msg = used ? 'Tento dodavatel je přiřazený k produktům — ty zůstanou, jen se u nich zruší přiřazení. Smazat dodavatele?' : 'Smazat tohoto dodavatele?';
+    if(confirm(msg)){
+      state.products.forEach(p=>{ if(p.supplierId===id) p.supplierId=''; });
+      state.suppliers = state.suppliers.filter(s=>s.id!==id);
+      await saveProducts(); await saveSuppliers();
+      state.view='suppliers'; render();
+    }
+  }
+  else if(action==='new-product-for-supplier'){ state.view='product-form'; state.editingProductId=null; state.newProductDraftId=null; state.newProductForSupplierId=id; render(); }
+  /* --- Produkty --- */
+  else if(action==='new-product'){ state.view='product-form'; state.editingProductId=null; state.newProductDraftId=null; render(); }
+  else if(action==='open-product'){ state.view='product-form'; state.editingProductId=id; render(); }
+  else if(action==='duplicate-product'){
+    const p = productById(id);
+    if(p){
+      const copy = { ...JSON.parse(JSON.stringify(p)), id: uid(), number: generateUniqueProductNumber(), ean:'', name: p.name+' (kopie)', movements:[], stockCurrent:0 };
+      state.products.push(copy);
+      await saveProducts(); await saveProductSettings();
+      closeProductContextMenu();
+      state.view='product-form'; state.editingProductId=copy.id; render();
+    }
+  }
+  else if(action==='toggle-archive-product'){
+    const p = productById(id);
+    if(p){ p.archived = !p.archived; await saveProducts(); closeProductContextMenu(); render(); }
+  }
+  else if(action==='delete-product'){
+    if(confirm('Smazat tento produkt? Historie skladových pohybů se ztratí.')){
+      state.products = state.products.filter(p=>p.id!==id);
+      await saveProducts();
+      closeProductContextMenu();
+      state.selectedProductIds.delete(id);
+      state.view='products'; state.editingProductId=null;
+      render();
+    }
+  }
+  else if(action==='remove-product-photo'){ state.currentProductDraftPhoto=''; const editing = state.editingProductId?productById(state.editingProductId):null; if(editing) editing.photo=''; render(); }
+  else if(action==='regen-barcode-preview'){
+    const svg = document.getElementById('barcode-preview-svg');
+    const form = document.getElementById('product-form');
+    if(svg && form){
+      const eanVal = document.getElementById('product-ean').value.trim();
+      const numberInput = form.querySelector('input[name="number"]');
+      renderBarcodeToSvg(svg, eanVal || (numberInput&&numberInput.value.trim()) || peekProductNumber());
+    }
+  }
+  else if(action==='open-stock-movement'){ await promptStockMovement(id); }
+  else if(action==='print-one-barcode'){ closeProductContextMenu(); printProductBarcodes([id], 1, true); }
+  else if(action==='download-barcode-png'){ downloadBarcodePng(id); }
+  else if(action==='download-barcode-pdf'){ await downloadBarcodePdf([id], 1, true); }
+  else if(action==='toggle-product-select'){
+    const pid = el.getAttribute('data-id');
+    if(state.selectedProductIds.has(pid)) state.selectedProductIds.delete(pid); else state.selectedProductIds.add(pid);
+    render();
+  }
+  else if(action==='toggle-select-all-products'){
+    const checked = el.checked;
+    document.querySelectorAll('#products-tbody input[data-action="toggle-product-select"]').forEach(cb=>{
+      const pid = cb.getAttribute('data-id');
+      if(checked) state.selectedProductIds.add(pid); else state.selectedProductIds.delete(pid);
+    });
+    render();
+  }
+  else if(action==='sort-products'){
+    const key = el.getAttribute('data-key');
+    if(state.productSort.key===key) state.productSort.dir = state.productSort.dir==='asc'?'desc':'asc';
+    else state.productSort = { key, dir:'asc' };
+    render();
+  }
+  else if(action==='products-show-more'){ state.productVisibleCount += 150; render(); }
+  else if(action==='toggle-cols-panel'){ state.productColsPanelOpen = !state.productColsPanelOpen; render(); }
+  else if(action==='toggle-col-visible'){
+    const col = state.productColumns.find(c=>c.key===el.getAttribute('data-key'));
+    if(col){ col.visible = el.checked; saveProductColumns(); }
+  }
+  else if(action==='move-col'){
+    const key = el.getAttribute('data-key');
+    const dir = parseInt(el.getAttribute('data-dir'),10);
+    const idx = state.productColumns.findIndex(c=>c.key===key);
+    const swapIdx = idx+dir;
+    if(swapIdx>=0 && swapIdx<state.productColumns.length){
+      [state.productColumns[idx], state.productColumns[swapIdx]] = [state.productColumns[swapIdx], state.productColumns[idx]];
+      await saveProductColumns();
+      render();
+    }
+  }
+  else if(action==='bulk-clear-selection'){ state.selectedInvoiceIds.clear(); state.selectedClientIds.clear(); state.selectedProductIds.clear(); render(); }
+  else if(action==='bulk-print-barcodes'){ printProductBarcodes([...state.selectedProductIds], 1, true); }
+  else if(action==='bulk-edit-products-price'){
+    const mode = prompt('Jak upravit prodejní cenu vybraných produktů?\nNapiš buď pevnou částku (např. 199), nebo procentuální změnu s % (např. +10% nebo -5%).');
+    if(mode===null) return;
+    const trimmed = mode.trim();
+    const ids = [...state.selectedProductIds];
+    if(/%$/.test(trimmed)){
+      const pct = parseFloat(trimmed)/100;
+      state.products.forEach(p=>{ if(ids.includes(p.id)) p.salePrice = Math.max(0, Math.round((p.salePrice||0)*(1+pct)*100)/100); });
+      await saveProducts(); render();
+    } else {
+      const val = parseFloat(trimmed);
+      if(!isNaN(val)) await bulkUpdateProducts(ids, { salePrice: val });
+      render();
+    }
+  }
+  else if(action==='bulk-edit-products-vat'){
+    const val = prompt('Nová sazba DPH (%) pro vybrané produkty:', '21');
+    if(val===null) return;
+    const rate = parseFloat(val);
+    if(!isNaN(rate)) await bulkUpdateProducts([...state.selectedProductIds], { vatRate: rate });
+    render();
+  }
+  else if(action==='bulk-edit-products-supplier'){
+    if(!state.suppliers.length){ alert('Nejdřív přidej alespoň jednoho dodavatele.'); return; }
+    const names = state.suppliers.map((s,i)=>`${i+1}. ${s.name}`).join('\n');
+    const val = prompt(`Zadej číslo dodavatele:\n${names}`);
+    if(val===null) return;
+    const idx = parseInt(val,10)-1;
+    if(state.suppliers[idx]) await bulkUpdateProducts([...state.selectedProductIds], { supplierId: state.suppliers[idx].id });
+    render();
+  }
+  else if(action==='bulk-edit-products-category'){
+    const val = prompt('Nová kategorie pro vybrané produkty:');
+    if(val===null) return;
+    await bulkUpdateProducts([...state.selectedProductIds], { category: val.trim() });
+    render();
+  }
+  else if(action==='bulk-archive-products'){
+    if(confirm(`Archivovat ${state.selectedProductIds.size} vybraných produktů?`)){
+      await bulkUpdateProducts([...state.selectedProductIds], { archived:true });
+      state.selectedProductIds.clear();
+      render();
+    }
+  }
+  else if(action==='bulk-delete-products'){
+    const n = state.selectedProductIds.size;
+    if(confirm(`Opravdu smazat ${n} vybraných produktů?`)){
+      state.products = state.products.filter(p=>!state.selectedProductIds.has(p.id));
+      await saveProducts();
+      state.selectedProductIds.clear();
+      render();
+    }
+  }
+  else if(action==='goto-bulk-import-products'){
+    state.view='bulk-import';
+    state.bulkImport = { mode:'products', step:'upload', error:'', fileName:'', headers:[], rows:[], mapping:{}, preview:null };
+    render();
+  }
+  else if(action==='export-products'){ exportProductsCsv('xlsx'); }
 });
 
 async function downloadInvoicePdf(id, triggerEl){
@@ -3409,6 +4860,12 @@ async function onSubmitInvoice(e){
     paidDate: fd.get('paidDate')||null,
     createdBy: id ? (state.invoices.find(i=>i.id===id)||{}).createdBy || state.currentUser : state.currentUser
   };
+  const oldItemsForStock = id ? ((state.invoices.find(i=>i.id===id)||{}).items || []) : [];
+  try{
+    await applyStockForInvoiceChange(oldItemsForStock, invoice.items, 'Faktura '+invoice.number);
+  }catch(err){
+    if(err && err.message==='cancelled') return; // uživatel zrušil kvůli zápornému skladu
+  }
   if(id){
     const idx = state.invoices.findIndex(i=>i.id===id);
     state.invoices[idx] = invoice;
