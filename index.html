@@ -1337,8 +1337,8 @@ function renderInvoiceTable(list, tbodyId, selectable){
           <td><span class="pill ${s}">${statusLabel(s)}</span></td>
           <td>${escapeHtml(inv.createdBy||'—')}</td>
           <td class="actions-cell no-print">
-            <button class="iconbtn" data-action="edit-invoice" data-id="${inv.id}" title="Upravit">✎</button>
-            <button class="iconbtn" data-action="delete-invoice" data-id="${inv.id}" title="Smazat">✕</button>
+            <button class="iconbtn" data-action="edit-invoice" data-id="${inv.id}" title="Upravit"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg></button>
+            <button class="iconbtn" data-action="delete-invoice" data-id="${inv.id}" title="Smazat"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
           </td>
         </tr>`;
       }).join('')}
@@ -1551,7 +1551,7 @@ function renderItemRows(){
         <input type="number" step="0.1" min="0" max="100" list="vat-rate-options" data-field="vat" data-index="${idx}" value="${it.vat}">
       </td>
       <td class="col-total num" style="white-space:nowrap;padding-top:14px;">${fmt(lineTotal)} Kč</td>
-      <td class="col-remove"><button type="button" class="iconbtn no-print" data-action="remove-item" data-index="${idx}">✕</button></td>
+      <td class="col-remove"><button type="button" class="iconbtn no-print" data-action="remove-item" data-index="${idx}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></td>
     </tr>`;
   }).join('');
 }
@@ -2043,8 +2043,8 @@ function viewClients(){
             <td>${escapeHtml(c.contactPhone||'—')}</td>
             <td class="actions-cell no-print">
               <button class="iconbtn" data-action="client-to-invoice" data-id="${c.id}" title="Nová faktura">🧾</button>
-              <button class="iconbtn" data-action="edit-client" data-id="${c.id}" title="Upravit">✎</button>
-              <button class="iconbtn" data-action="delete-client" data-id="${c.id}" title="Smazat">✕</button>
+              <button class="iconbtn" data-action="edit-client" data-id="${c.id}" title="Upravit"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg></button>
+              <button class="iconbtn" data-action="delete-client" data-id="${c.id}" title="Smazat"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
             </td>
           </tr>`;}).join('')}
         <tr id="clients-empty-row" style="display:none;"><td colspan="7" class="empty">Žádný odběratel neodpovídá hledání.</td></tr>
@@ -2272,8 +2272,8 @@ function viewSettings(){
             ${co.ico?`<span style="color:var(--ink-soft);font-size:12.5px;">IČO: ${escapeHtml(co.ico)}</span>`:''}
           </span>
           <span>
-            <button class="iconbtn" data-action="edit-company" data-id="${co.id}" title="Upravit">✎</button>
-            <button class="iconbtn" data-action="delete-company" data-id="${co.id}" title="Smazat">✕</button>
+            <button class="iconbtn" data-action="edit-company" data-id="${co.id}" title="Upravit"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg></button>
+            <button class="iconbtn" data-action="delete-company" data-id="${co.id}" title="Smazat"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
           </span>
         </div>
       `).join('') : `<p style="font-size:13px;color:var(--ink-soft);">Zatím žádné další firmy.</p>`}
@@ -3199,8 +3199,8 @@ function viewSuppliers(){
             <td>${escapeHtml(s.contactPhone||'—')}</td>
             <td class="num">${n}</td>
             <td class="actions-cell no-print">
-              <button class="iconbtn" data-action="edit-supplier" data-id="${s.id}" title="Upravit">✎</button>
-              <button class="iconbtn" data-action="delete-supplier" data-id="${s.id}" title="Smazat">✕</button>
+              <button class="iconbtn" data-action="edit-supplier" data-id="${s.id}" title="Upravit"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg></button>
+              <button class="iconbtn" data-action="delete-supplier" data-id="${s.id}" title="Smazat"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
             </td>
           </tr>`;
         }).join('')}
@@ -3370,7 +3370,7 @@ function renderProductTable(list, opts){
           ${selectable?`<td class="no-print" style="padding:0;"><span class="checkbox-hit" data-action="toggle-product-select" data-id="${p.id}"><input type="checkbox" data-action="toggle-product-select" data-id="${p.id}" ${state.selectedProductIds.has(p.id)?'checked':''}></span></td>`:''}
           ${cols.map(c=>`<td>${productCellContent(p,c.key)}</td>`).join('')}
           <td class="actions-cell no-print">
-            <button class="iconbtn" data-action="delete-product" data-id="${p.id}" title="Smazat">✕</button>
+            <button class="iconbtn" data-action="delete-product" data-id="${p.id}" title="Smazat"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
           </td>
         </tr>`).join('')}
     </tbody>
@@ -3593,8 +3593,8 @@ function viewProductForm(){
               <div>${escapeHtml(m.user||'—')}</div>
               <div class="mv-qty ${m.qty>=0?'pos':'neg'}">${m.qty>=0?'+':''}${m.qty} → ${m.resultingStock}</div>
               <div class="actions-cell no-print">
-                <button type="button" class="iconbtn" data-action="edit-movement" data-id="${p.id}" data-mid="${m.id}" title="Upravit">✎</button>
-                <button type="button" class="iconbtn" data-action="delete-movement" data-id="${p.id}" data-mid="${m.id}" title="Smazat">✕</button>
+                <button type="button" class="iconbtn" data-action="edit-movement" data-id="${p.id}" data-mid="${m.id}" title="Upravit"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg></button>
+                <button type="button" class="iconbtn" data-action="delete-movement" data-id="${p.id}" data-mid="${m.id}" title="Smazat"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
               </div>
             </div>
           `).join('')}
@@ -4013,7 +4013,7 @@ function viewStock(){
             <td class="num">${daysUntil(p.expiryDate)}</td>
             <td class="num">${p.stockCurrent||0} ${escapeHtml(p.unit||'ks')}</td>
             <td>${escapeHtml(formatLocation(p.location)) || '—'}</td>
-            <td class="actions-cell no-print"><button class="iconbtn" data-action="open-product" data-id="${p.id}" title="Otevřít">✎</button></td>
+            <td class="actions-cell no-print"><button class="iconbtn" data-action="open-product" data-id="${p.id}" title="Otevřít"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg></button></td>
           </tr>
         `).join('')}
       </tbody>
@@ -4033,8 +4033,8 @@ function viewStock(){
             <td>${escapeHtml(m.user||'—')}</td>
             <td class="num" style="color:${m.qty>=0?'var(--accent)':'var(--red)'};font-weight:600;">${m.qty>=0?'+':''}${m.qty}</td>
             <td class="actions-cell no-print">
-              <button type="button" class="iconbtn" data-action="edit-movement" data-id="${m.productId}" data-mid="${m.id}" title="Upravit">✎</button>
-              <button type="button" class="iconbtn" data-action="delete-movement" data-id="${m.productId}" data-mid="${m.id}" title="Smazat">✕</button>
+              <button type="button" class="iconbtn" data-action="edit-movement" data-id="${m.productId}" data-mid="${m.id}" title="Upravit"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg></button>
+              <button type="button" class="iconbtn" data-action="delete-movement" data-id="${m.productId}" data-mid="${m.id}" title="Smazat"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
             </td>
           </tr>
         `).join('') || `<tr><td colspan="7" style="text-align:center;color:var(--ink-soft);padding:20px;">Zatím žádné pohyby.</td></tr>`}
