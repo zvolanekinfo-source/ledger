@@ -438,8 +438,23 @@
   .barcode-label .bl-num{font-size:10px;color:var(--ink-soft);margin-bottom:4px;font-family:'IBM Plex Mono',monospace;}
   .barcode-label .bl-price{font-size:13px;font-weight:700;margin-top:4px;}
   #barcode-print-sheet{display:none;}
+  #product-code-print-sheet{display:none;}
+  #product-info-print-sheet{display:none;}
+  .pinfo-sheet{padding:24px;max-width:640px;}
+  .pinfo-sheet .pi-head{display:flex;gap:20px;align-items:flex-start;margin-bottom:20px;}
+  .pinfo-sheet .pi-photo{width:110px;height:110px;object-fit:cover;border-radius:8px;border:1px solid var(--line);flex-shrink:0;}
+  .pinfo-sheet .pi-name{font-family:'Fraunces',serif;font-size:22px;font-weight:600;margin-bottom:6px;}
+  .pinfo-sheet .pi-row{display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--line);font-size:13.5px;}
+  .pinfo-sheet .pi-row span:first-child{color:var(--ink-soft);}
+  .pinfo-sheet .pi-row span:last-child{font-weight:600;}
+  .pinfo-sheet .pi-codes{display:flex;gap:24px;margin-top:22px;flex-wrap:wrap;}
+  .pinfo-sheet .pi-code-box{text-align:center;border:1px solid var(--line);border-radius:8px;padding:14px;}
+  .pinfo-sheet .pi-code-box .pi-code-label{font-size:10.5px;text-transform:uppercase;letter-spacing:.6px;color:var(--ink-soft);margin-bottom:8px;}
   @media print{
     #barcode-print-sheet.printing{display:block !important;position:fixed;inset:0;background:#fff;z-index:9999;padding:16px;}
+    #product-code-print-sheet.printing{display:flex !important;position:fixed;inset:0;background:#fff;z-index:9999;align-items:center;justify-content:center;padding:4%;}
+    #product-code-print-sheet.printing svg{width:92%;height:auto;max-width:100%;}
+    #product-info-print-sheet.printing{display:block !important;position:fixed;inset:0;background:#fff;z-index:9999;}
     body.printing-barcodes > #app{display:none !important;}
   }
 
@@ -2636,7 +2651,7 @@ function blankProduct(){
   return {
     id: uid(), number:'', ean:'', internalCode:'', name:'', description:'',
     category:'', manufacturer:'', supplierId:'', unit:'ks', vatRate:21, note:'',
-    purchasePrice:0, salePrice:0,
+    purchasePrice:0, salePrice:0, costs:0,
     stockCurrent:0, stockReserved:0, stockMin:0, location:blankLocation(), barcodeType:'EAN13',
     expiryDate:'', photo:'', link:'', archived:false, createdAt:new Date().toISOString(),
     movements:[]
@@ -2649,11 +2664,12 @@ function productById(id){ return state.products.find(p=>p.id===id); }
 function supplierById(id){ return state.suppliers.find(s=>s.id===id); }
 
 function productMargin(p){
-  const purchase = p.purchasePrice||0, sale = p.salePrice||0;
-  const profit = sale-purchase;
+  const purchase = p.purchasePrice||0, sale = p.salePrice||0, costs = p.costs||0;
+  const totalCost = purchase + costs;
+  const profit = sale - totalCost;
   const marginPct = sale>0 ? (profit/sale*100) : 0;
-  const markupPct = purchase>0 ? (profit/purchase*100) : 0;
-  return { profit, marginPct, markupPct };
+  const markupPct = totalCost>0 ? (profit/totalCost*100) : 0;
+  return { profit, marginPct, markupPct, totalCost };
 }
 function stockAvailable(p){ return (p.stockCurrent||0) - (p.stockReserved||0); }
 function stockStatus(p){
@@ -3198,6 +3214,13 @@ function viewProductForm(){
       <div class="barcode-preview-box" style="max-width:340px;">
         <svg id="product-number-barcode-svg"></svg>
         <div id="product-number-barcode-error" style="display:none;font-size:11.5px;color:var(--red);margin-top:6px;">Zadané číslo není platný EAN-13 — obrázek zobrazen jako Code 128.</div>
+        ${editing ? `
+        <div style="margin-top:12px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap;">
+          <button type="button" class="btn secondary small" data-action="print-product-code-only" data-id="${p.id}">Tisk produktového kódu</button>
+          <button type="button" class="btn secondary small" data-action="print-product-info" data-id="${p.id}">Tisk informací</button>
+        </div>
+        <p style="font-size:11px;color:var(--ink-soft);margin:8px 0 0 0;">„Tisk produktového kódu" vytiskne jen samotný kód (přizpůsobí se velikosti štítku). „Tisk informací" vytiskne kompletní údaje o produktu s oběma kódy (interním i EAN výrobce, pokud je zadaný).</p>
+        ` : `<p style="font-size:12px;color:var(--ink-soft);margin-top:10px;">Tisk kódu a informací bude dostupný po uložení produktu.</p>`}
       </div>
       <div class="mini-label" style="margin-top:18px;">Umístění a pohyby na skladě (patří k tomuto kódu)</div>
       ${locationFieldGroup(p.location)}
@@ -3237,9 +3260,10 @@ function viewProductForm(){
         </select></div>
       </div>
       <div class="field-row">
-        <div class="field"><label>Sazba DPH</label><select name="vatRate">
-          ${VAT_RATES.map(r=>`<option value="${r}" ${(p.vatRate??21)===r?'selected':''}>${r}%</option>`).join('')}
-        </select></div>
+        <div class="field"><label>Sazba DPH</label>
+          <input type="number" step="0.1" min="0" max="100" name="vatRate" list="product-vat-options" value="${p.vatRate??21}">
+          <datalist id="product-vat-options">${VAT_RATES.map(r=>`<option value="${r}">`).join('')}</datalist>
+        </div>
         <div class="field"><label>Datum expirace</label><input type="date" name="expiryDate" value="${p.expiryDate||''}"></div>
       </div>
       <div class="field"><label>Poznámka</label><textarea name="note">${escapeHtml(p.note||'')}</textarea></div>
@@ -3248,6 +3272,10 @@ function viewProductForm(){
       <div class="field-row">
         <div class="field"><label>Nákupní cena</label><input type="number" step="0.01" name="purchasePrice" id="pp-purchase" value="${p.purchasePrice||0}"></div>
         <div class="field"><label>Prodejní cena</label><input type="number" step="0.01" name="salePrice" id="pp-sale" value="${p.salePrice||0}"></div>
+      </div>
+      <div class="field-row">
+        <div class="field"><label>Náklady (doprava, balení…)</label><input type="number" step="0.01" name="costs" id="pp-costs" value="${p.costs||0}"></div>
+        <div class="field"></div>
       </div>
       <div class="margin-box" id="margin-box">
         <div class="mb-item"><div class="mb-label">Zisk / ks</div><div class="mb-value" id="mb-profit">${fmt(margin.profit)} Kč</div></div>
@@ -3291,17 +3319,21 @@ function setupProductForm(){
 
   const purchaseEl = document.getElementById('pp-purchase');
   const saleEl = document.getElementById('pp-sale');
+  const costsEl = document.getElementById('pp-costs');
   function updateMargin(){
     const purchase = parseFloat(purchaseEl.value)||0;
     const sale = parseFloat(saleEl.value)||0;
-    const profit = sale-purchase;
+    const costs = parseFloat(costsEl && costsEl.value)||0;
+    const totalCost = purchase + costs;
+    const profit = sale - totalCost;
     const marginPct = sale>0 ? (profit/sale*100) : 0;
-    const markupPct = purchase>0 ? (profit/purchase*100) : 0;
+    const markupPct = totalCost>0 ? (profit/totalCost*100) : 0;
     document.getElementById('mb-profit').textContent = fmt(profit)+' Kč';
     document.getElementById('mb-margin').textContent = marginPct.toFixed(1)+'%';
     document.getElementById('mb-markup').textContent = markupPct.toFixed(1)+'%';
   }
   if(purchaseEl){ purchaseEl.addEventListener('input', updateMargin); saleEl.addEventListener('input', updateMargin); }
+  if(costsEl) costsEl.addEventListener('input', updateMargin);
 
   function drawProductNumberBarcode(){
     const svg = document.getElementById('product-number-barcode-svg');
@@ -3418,7 +3450,7 @@ async function onSubmitProduct(e){
     category: fd.get('category')||'', manufacturer: fd.get('manufacturer')||'',
     supplierId: fd.get('supplierId')||'', unit: fd.get('unit')||'ks',
     vatRate: parseFloat(fd.get('vatRate'))||0, note: fd.get('note')||'',
-    purchasePrice: parseFloat(fd.get('purchasePrice'))||0, salePrice: parseFloat(fd.get('salePrice'))||0,
+    purchasePrice: parseFloat(fd.get('purchasePrice'))||0, salePrice: parseFloat(fd.get('salePrice'))||0, costs: parseFloat(fd.get('costs'))||0,
     stockCurrent: existing ? existing.stockCurrent : (parseFloat(fd.get('stockCurrent'))||0),
     stockReserved: existing ? (existing.stockReserved||0) : 0,
     stockMin: parseFloat(fd.get('stockMin'))||0, location: gatherLocationField(fd),
@@ -3592,6 +3624,81 @@ function buildBarcodeLabelsHtml(products, qtyEach, showPrice){
     }
   });
   return html;
+}
+function printProductCodeOnly(productId){
+  const p = productById(productId);
+  if(!p) return;
+  let sheet = document.getElementById('product-code-print-sheet');
+  if(!sheet){
+    sheet = document.createElement('div');
+    sheet.id = 'product-code-print-sheet';
+    document.body.appendChild(sheet);
+  }
+  sheet.innerHTML = `<svg id="product-code-only-svg"></svg>`;
+  const svg = document.getElementById('product-code-only-svg');
+  renderAutoBarcodeToSvg(svg, p.number || p.ean || '');
+  sheet.classList.add('printing');
+  document.body.classList.add('printing-barcodes');
+  const cleanup = ()=>{
+    sheet.classList.remove('printing');
+    document.body.classList.remove('printing-barcodes');
+    window.removeEventListener('afterprint', cleanup);
+  };
+  window.addEventListener('afterprint', cleanup);
+  setTimeout(()=> window.print(), 60);
+}
+function printProductInfoSheet(productId){
+  const p = productById(productId);
+  if(!p) return;
+  let sheet = document.getElementById('product-info-print-sheet');
+  if(!sheet){
+    sheet = document.createElement('div');
+    sheet.id = 'product-info-print-sheet';
+    document.body.appendChild(sheet);
+  }
+  const sup = supplierById(p.supplierId);
+  const loc = formatLocation(p.location);
+  const hasOwnCode = !!p.number;
+  const hasMfrEan = !!p.ean && p.ean !== p.number;
+  sheet.innerHTML = `
+    <div class="pinfo-sheet">
+      <div class="pi-head">
+        ${p.photo ? `<img class="pi-photo" src="${p.photo}" alt="">` : ''}
+        <div>
+          <div class="pi-name">${escapeHtml(p.name||'(bez názvu)')}</div>
+          ${p.description?`<div style="font-size:12.5px;color:var(--ink-soft);">${escapeHtml(p.description)}</div>`:''}
+        </div>
+      </div>
+      <div class="pi-row"><span>Produktové číslo</span><span>${escapeHtml(p.number||'—')}</span></div>
+      ${hasMfrEan?`<div class="pi-row"><span>EAN výrobce</span><span>${escapeHtml(p.ean)}</span></div>`:''}
+      <div class="pi-row"><span>Kategorie</span><span>${escapeHtml(p.category||'—')}</span></div>
+      <div class="pi-row"><span>Výrobce</span><span>${escapeHtml(p.manufacturer||'—')}</span></div>
+      <div class="pi-row"><span>Dodavatel</span><span>${escapeHtml(sup?sup.name:'—')}</span></div>
+      <div class="pi-row"><span>Nákupní cena</span><span>${fmt(p.purchasePrice||0)} Kč</span></div>
+      <div class="pi-row"><span>Náklady</span><span>${fmt(p.costs||0)} Kč</span></div>
+      <div class="pi-row"><span>Prodejní cena</span><span>${fmt(p.salePrice||0)} Kč</span></div>
+      <div class="pi-row"><span>Sazba DPH</span><span>${p.vatRate??21}%</span></div>
+      <div class="pi-row"><span>Sklad</span><span>${stockAvailable(p)} ${escapeHtml(p.unit||'ks')}</span></div>
+      <div class="pi-row"><span>Umístění</span><span>${loc?escapeHtml(loc):'—'}</span></div>
+      ${p.expiryDate?`<div class="pi-row"><span>Expirace</span><span>${p.expiryDate}</span></div>`:''}
+      ${p.note?`<div class="pi-row"><span>Poznámka</span><span>${escapeHtml(p.note)}</span></div>`:''}
+      <div class="pi-codes">
+        ${hasOwnCode?`<div class="pi-code-box"><div class="pi-code-label">Interní kód (EAN-13)</div><svg id="pi-code-own"></svg></div>`:''}
+        ${hasMfrEan?`<div class="pi-code-box"><div class="pi-code-label">EAN výrobce</div><svg id="pi-code-mfr"></svg></div>`:''}
+      </div>
+    </div>
+  `;
+  if(hasOwnCode){ const svg = document.getElementById('pi-code-own'); if(svg) renderAutoBarcodeToSvg(svg, p.number); }
+  if(hasMfrEan){ const svg = document.getElementById('pi-code-mfr'); if(svg) renderAutoBarcodeToSvg(svg, p.ean); }
+  sheet.classList.add('printing');
+  document.body.classList.add('printing-barcodes');
+  const cleanup = ()=>{
+    sheet.classList.remove('printing');
+    document.body.classList.remove('printing-barcodes');
+    window.removeEventListener('afterprint', cleanup);
+  };
+  window.addEventListener('afterprint', cleanup);
+  setTimeout(()=> window.print(), 60);
 }
 function printProductBarcodes(ids, qty, showPrice){
   const products = ids.map(id=>productById(id)).filter(Boolean);
@@ -4930,6 +5037,8 @@ document.addEventListener('click', async (e)=>{
 
   else if(action==='open-stock-movement'){ await promptStockMovement(id); }
   else if(action==='print-one-barcode'){ closeProductContextMenu(); printProductBarcodes([id], 1, true); }
+  else if(action==='print-product-code-only'){ printProductCodeOnly(id); }
+  else if(action==='print-product-info'){ printProductInfoSheet(id); }
   else if(action==='download-barcode-png'){ downloadBarcodePng(id); }
   else if(action==='download-barcode-pdf'){ await downloadBarcodePdf([id], 1, true); }
   else if(action==='toggle-product-select'){
