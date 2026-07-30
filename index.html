@@ -537,6 +537,7 @@ let state = {
   backupDates: [],
   dashboardFilter: { preset:'all', from:'', to:'', clientId:'', status:'' },
   invoiceFilter: { search:'', from:'', to:'', clientId:'', status:'' },
+  invoiceSort: 'date-desc',
   lastLoginEmail: '',
 
   /* --- Produkty / Dodavatelé / Sklad --- */
@@ -1245,7 +1246,18 @@ function emptyState(title, sub){
 function viewInvoices(){
   const f = state.invoiceFilter;
   const filtered = applyInvoiceFilters(state.invoices, f);
-  const sorted = [...filtered].sort((a,b)=> (b.number||'').localeCompare(a.number||''));
+  const sortKey = state.invoiceSort || 'date-desc';
+  const sorted = [...filtered].sort((a,b)=>{
+    if(sortKey==='date-desc') return (b.issueDate||'').localeCompare(a.issueDate||'');
+    if(sortKey==='date-asc') return (a.issueDate||'').localeCompare(b.issueDate||'');
+    if(sortKey==='number-desc') return (b.number||'').localeCompare(a.number||'');
+    if(sortKey==='number-asc') return (a.number||'').localeCompare(b.number||'');
+    if(sortKey==='amount-desc') return invoiceTotals(b).total - invoiceTotals(a).total;
+    if(sortKey==='amount-asc') return invoiceTotals(a).total - invoiceTotals(b).total;
+    if(sortKey==='due-asc') return (a.dueDate||'').localeCompare(b.dueDate||'');
+    if(sortKey==='due-desc') return (b.dueDate||'').localeCompare(a.dueDate||'');
+    return (b.number||'').localeCompare(a.number||'');
+  });
   const anyFilterActive = f.search || f.from || f.to || f.clientId || f.status;
   return `
     <div class="pagehead">
@@ -1256,8 +1268,21 @@ function viewInvoices(){
       </div>
     </div>
     <div class="filter-bar no-print">
-      <div class="search-row" style="margin-bottom:14px;">
-        <input type="text" id="inv-search" class="search-input" placeholder="Hledat podle čísla faktury nebo odběratele…" value="${escapeAttr(f.search)}">
+      <div class="search-row" style="margin-bottom:14px;display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;">
+        <input type="text" id="inv-search" class="search-input" placeholder="Hledat podle čísla faktury nebo odběratele…" value="${escapeAttr(f.search)}" style="flex:1;min-width:220px;">
+        <div class="field" style="margin-bottom:0;min-width:200px;">
+          <label>Řazení</label>
+          <select id="inv-sort">
+            <option value="date-desc" ${sortKey==='date-desc'?'selected':''}>Datum vystavení — od nejnovější</option>
+            <option value="date-asc" ${sortKey==='date-asc'?'selected':''}>Datum vystavení — od nejstarší</option>
+            <option value="number-desc" ${sortKey==='number-desc'?'selected':''}>Číslo faktury — sestupně</option>
+            <option value="number-asc" ${sortKey==='number-asc'?'selected':''}>Číslo faktury — vzestupně</option>
+            <option value="amount-desc" ${sortKey==='amount-desc'?'selected':''}>Částka — nejvyšší</option>
+            <option value="amount-asc" ${sortKey==='amount-asc'?'selected':''}>Částka — nejnižší</option>
+            <option value="due-asc" ${sortKey==='due-asc'?'selected':''}>Splatnost — nejbližší</option>
+            <option value="due-desc" ${sortKey==='due-desc'?'selected':''}>Splatnost — nejvzdálenější</option>
+          </select>
+        </div>
       </div>
       <div class="filter-row">
         <div class="field"><label>Od</label><input type="date" id="inv-from" value="${f.from||''}"></div>
@@ -1281,7 +1306,7 @@ function renderInvoiceTable(list, tbodyId, selectable){
   return `
   <table>
     <thead><tr>
-      ${selectable?`<th style="width:36px;"><input type="checkbox" data-action="toggle-select-all-invoices" ${list.length && list.every(i=>state.selectedInvoiceIds.has(i.id))?'checked':''}></th>`:''}
+      ${selectable?`<th style="width:60px;"><input type="checkbox" data-action="toggle-select-all-invoices" ${list.length && list.every(i=>state.selectedInvoiceIds.has(i.id))?'checked':''}></th>`:''}
       <th>Číslo</th><th>Odběratel</th><th>Vystaveno</th><th>Splatnost</th><th>Částka</th><th>Stav</th><th>Vytvořil</th><th style="width:70px;"></th>
     </tr></thead>
     <tbody ${tbodyId?`id="${tbodyId}"`:''}>
@@ -1976,7 +2001,7 @@ function viewClients(){
     `)}
     <table>
       <thead><tr>
-        <th style="width:36px;"><input type="checkbox" data-action="toggle-select-all-clients" ${state.clients.length && state.clients.every(c=>state.selectedClientIds.has(c.id))?'checked':''}></th>
+        <th style="width:60px;"><input type="checkbox" data-action="toggle-select-all-clients" ${state.clients.length && state.clients.every(c=>state.selectedClientIds.has(c.id))?'checked':''}></th>
         <th>Název</th><th>IČO</th><th>Kontaktní osoba</th><th>Kontaktní e-mail</th><th>Telefon</th><th style="width:90px;"></th></tr></thead>
       <tbody id="clients-tbody">
         ${sortedClients().map(c=>{
@@ -3295,7 +3320,7 @@ function renderProductTable(list, opts){
   <div class="prod-table-wrap">
   <table class="prod-table">
     <thead><tr>
-      ${selectable?`<th style="width:36px;"><input type="checkbox" data-action="toggle-select-all-products" ${shown.length && shown.every(p=>state.selectedProductIds.has(p.id))?'checked':''}></th>`:''}
+      ${selectable?`<th style="width:60px;"><input type="checkbox" data-action="toggle-select-all-products" ${shown.length && shown.every(p=>state.selectedProductIds.has(p.id))?'checked':''}></th>`:''}
       ${cols.map(c=>`<th data-action="sort-products" data-key="${c.key}" class="${state.productSort.key===c.key?'sorted':''}" style="width:${c.width}px;">${escapeHtml(c.label)}${state.productSort.key===c.key?(state.productSort.dir==='asc'?' ▲':' ▼'):''}<span class="th-resize" data-col-resize="${c.key}"></span></th>`).join('')}
       <th style="width:70px;"></th>
     </tr></thead>
@@ -4551,6 +4576,8 @@ function afterRender(){
       render();
     });
   });
+  const invSortSelect = document.getElementById('inv-sort');
+  if(invSortSelect){ invSortSelect.addEventListener('change', ()=>{ state.invoiceSort = invSortSelect.value; render(); }); }
   const invSearchInput = document.getElementById('inv-search');
   if(invSearchInput){
     invSearchInput.addEventListener('input', (e)=>{
