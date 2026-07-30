@@ -1292,10 +1292,10 @@ function viewInvoiceForm(){
       <div class="section-title">Základní údaje</div>
       <div class="field-row">
         <div class="field">
-          <label>Dodavatel</label>
+          <label>Firma (vystavovatel)</label>
           <select name="companyId" id="inv-company-select">
             ${state.companies.map(co=>`<option value="${co.id}" ${inv.companyId===co.id?'selected':''}>${escapeHtml(co.name||'(bez názvu)')}</option>`).join('')}
-            <option value="__new__">+ Napsat nového dodavatele…</option>
+            <option value="__new__">+ Napsat novou firmu…</option>
           </select>
         </div>
         <div class="field"><label>Číslo faktury</label><input name="number" id="inv-number-input" value="${inv.number}" required></div>
@@ -1326,7 +1326,7 @@ function viewInvoiceForm(){
           <div class="field"><label>Číslo účtu</label><input name="newCoAccount"></div>
           <div class="field"><label>IBAN (pro QR platbu)</label><input name="newCoIban"></div>
         </div>
-        <p style="font-size:11.5px;color:var(--ink-soft);margin:-4px 0 4px 0;">Nový dodavatel se uloží po odeslání faktury a příště půjde vybrat rovnou ze seznamu (i doplnit v Nastavení).</p>
+        <p style="font-size:11.5px;color:var(--ink-soft);margin:-4px 0 4px 0;">Nová firma se uloží po odeslání faktury a příště půjde vybrat rovnou ze seznamu (i doplnit v Nastavení).</p>
       </div>
       <div class="client-detail-box" id="client-detail-box" style="${selClient?'':'display:none;'}">
         <div class="field-row">
@@ -2465,7 +2465,7 @@ function viewBulkImport(){
         </table>
         ${(!isContacts && !isProducts) ? `
         <div class="field" style="max-width:320px;margin-top:14px;">
-          <label>Dodavatel na importovaných fakturách</label>
+          <label>Firma na importovaných fakturách</label>
           <select id="bulk-company-select">
             ${state.companies.map(co=>`<option value="${co.id}" ${(bi.companyId||state.companies[0].id)===co.id?'selected':''}>${escapeHtml(co.name||'(bez názvu)')}</option>`).join('')}
           </select>
@@ -4555,11 +4555,11 @@ document.addEventListener('click', async (e)=>{
   else if(action==='new-company'){ state.view='company-form'; state.editingCompanyId=null; state.newCompanyDraftId=null; state.newCompanyDraft={logo:'',signature:'',stamp:''}; state.companyNotice=''; render(); }
   else if(action==='edit-company'){ state.view='company-form'; state.editingCompanyId=id; state.companyNotice=''; render(); }
   else if(action==='delete-company'){
-    if(state.companies.length<=1){ alert('Musí zůstat aspoň jeden dodavatel.'); return; }
+    if(state.companies.length<=1){ alert('Musí zůstat aspoň jedna firma.'); return; }
     const usedOnInvoice = state.invoices.some(i=>i.companyId===id);
     const msg = usedOnInvoice
-      ? 'Tento dodavatel je použitý na existujících fakturách — ty zůstanou beze změny, jen se dodavatel odebere ze seznamu pro nové faktury. Smazat?'
-      : 'Smazat tohoto dodavatele?';
+      ? 'Tato firma je použitá na existujících fakturách — ty zůstanou beze změny, jen se firma odebere ze seznamu pro nové faktury. Smazat?'
+      : 'Smazat tuto firmu?';
     if(confirm(msg)){ state.companies = state.companies.filter(co=>co.id!==id); await saveCompanies(); render(); }
   }
   else if(action==='view-client'){ state.view='client-detail'; state.viewingClientId=id; render(); }
@@ -4820,7 +4820,7 @@ async function onSubmitInvoice(e){
   let companyId = fd.get('companyId');
   if(companyId === '__new__'){
     const name = (fd.get('newCoName')||'').trim();
-    if(!name){ alert('Zadej alespoň název nového dodavatele.'); return; }
+    if(!name){ alert('Zadej alespoň název nové firmy.'); return; }
     const newCompany = {
       id: uid(), name, address: fd.get('newCoAddress')||'', ico: fd.get('newCoIco')||'', dic: fd.get('newCoDic')||'',
       email: fd.get('newCoEmail')||'', phone: fd.get('newCoPhone')||'', account: fd.get('newCoAccount')||'', iban: fd.get('newCoIban')||'',
