@@ -440,7 +440,8 @@
   #barcode-print-sheet{display:none;}
   #product-code-print-sheet{display:none;}
   #product-info-print-sheet{display:none;}
-  .pinfo-sheet{padding:24px;max-width:640px;}
+  .pinfo-sheet{padding:24px;max-width:640px;page-break-after:always;}
+  .pinfo-sheet:last-child{page-break-after:auto;}
   .pinfo-sheet .pi-head{display:flex;gap:20px;align-items:flex-start;margin-bottom:20px;}
   .pinfo-sheet .pi-photo{width:110px;height:110px;object-fit:cover;border-radius:8px;border:1px solid var(--line);flex-shrink:0;}
   .pinfo-sheet .pi-name{font-family:'Fraunces',serif;font-size:22px;font-weight:600;margin-bottom:6px;}
@@ -450,11 +451,15 @@
   .pinfo-sheet .pi-codes{display:flex;gap:24px;margin-top:22px;flex-wrap:wrap;}
   .pinfo-sheet .pi-code-box{text-align:center;border:1px solid var(--line);border-radius:8px;padding:14px;}
   .pinfo-sheet .pi-code-box .pi-code-label{font-size:10.5px;text-transform:uppercase;letter-spacing:.6px;color:var(--ink-soft);margin-bottom:8px;}
+  .code-only-block{text-align:center;padding:6% 4%;page-break-after:always;}
+  .code-only-block:last-child{page-break-after:auto;}
+  .code-only-block svg{width:80%;height:auto;max-width:520px;}
   @media print{
-    #barcode-print-sheet.printing{display:block !important;position:fixed;inset:0;background:#fff;z-index:9999;padding:16px;}
-    #product-code-print-sheet.printing{display:flex !important;position:fixed;inset:0;background:#fff;z-index:9999;align-items:center;justify-content:center;padding:4%;}
-    #product-code-print-sheet.printing svg{width:92%;height:auto;max-width:100%;}
-    #product-info-print-sheet.printing{display:block !important;position:fixed;inset:0;background:#fff;z-index:9999;}
+    html,body{height:auto !important;}
+    #barcode-print-sheet.printing,#product-code-print-sheet.printing,#product-info-print-sheet.printing{
+      display:block !important;background:#fff;padding:0;margin:0;
+    }
+    body.printing-barcodes{background:#fff;}
     body.printing-barcodes > #app{display:none !important;}
   }
 
@@ -517,6 +522,7 @@ let state = {
   suppliers: [],
   products: [],
   productSettings: { prefix:'PRD-', nextNumber:1, padding:6 },
+  inventorySettings: { valuationMethod: 'average' },
   productColumns: null,
   editingSupplierId: null,
   viewingSupplierId: null,
@@ -766,6 +772,7 @@ async function loadAll(){
   state.suppliers = state.suppliers.map(s=>({ attachments:[], ...s }));
   try{ const r = await window.storage.get('products', true); state.products = r ? JSON.parse(r.value) : []; }catch(e){ state.products = []; }
   try{ const r = await window.storage.get('product-settings', true); state.productSettings = r ? JSON.parse(r.value) : { prefix:'PRD-', nextNumber:1, padding:6 }; }catch(e){ state.productSettings = { prefix:'PRD-', nextNumber:1, padding:6 }; }
+  try{ const r = await window.storage.get('inventory-settings', true); state.inventorySettings = r ? JSON.parse(r.value) : { valuationMethod:'average' }; }catch(e){ state.inventorySettings = { valuationMethod:'average' }; }
   try{ const r = await window.storage.get('product-columns', true); state.productColumns = r ? JSON.parse(r.value) : null; }catch(e){ state.productColumns = null; }
   if(!state.productColumns) state.productColumns = DEFAULT_PRODUCT_COLUMNS.map(c=>({...c}));
   else {
@@ -793,6 +800,7 @@ async function saveInvoices(){ await window.storage.set('invoices', JSON.stringi
 async function saveSuppliers(){ await window.storage.set('suppliers', JSON.stringify(state.suppliers), true); saveSnapshotBackup(); }
 async function saveProducts(){ await window.storage.set('products', JSON.stringify(state.products), true); saveSnapshotBackup(); }
 async function saveProductSettings(){ await window.storage.set('product-settings', JSON.stringify(state.productSettings), true); }
+async function saveInventorySettings(){ await window.storage.set('inventory-settings', JSON.stringify(state.inventorySettings), true); }
 async function saveProductColumns(){ await window.storage.set('product-columns', JSON.stringify(state.productColumns), true); }
 
 /* ---------- BACKUP / SNAPSHOTS ---------- */
@@ -2085,6 +2093,23 @@ function viewSettings(){
       </p>
     </div>
 
+    <div class="section-title" style="margin-top:30px;">Oceňování skladu</div>
+    <div class="form-card">
+      <p style="font-size:13px;color:var(--ink-soft);margin-top:0;">
+        Jak se má počítat hodnota skladu a náklady u prodaného zboží, když se nákupní cena v čase mění (nové dávky, jiné DPH apod.).
+      </p>
+      <div class="field" style="max-width:360px;">
+        <label>Metoda oceňování</label>
+        <select id="inventory-valuation-select">
+          <option value="average" ${(state.inventorySettings.valuationMethod||'average')==='average'?'selected':''}>Průměrné náklady (vážený průměr)</option>
+          <option value="fifo" ${state.inventorySettings.valuationMethod==='fifo'?'selected':''}>FIFO (první dovnitř, první ven)</option>
+        </select>
+      </div>
+      <p style="font-size:11.5px;color:var(--ink-soft);margin:8px 0 0 0;">
+        „Průměrné náklady" počítá cenu skladem jako vážený průměr ze všech příjmů. „FIFO" předpokládá, že se nejdřív prodává nejstarší dávka, a hodnotu skladu počítá z cen dávek, které ještě reálně zbývají.
+      </p>
+    </div>
+
     <div class="section-title" style="margin-top:30px;">Zálohování dat</div>
     <div class="form-card">
       <p style="font-size:13px;color:var(--ink-soft);margin-top:0;">
@@ -2663,6 +2688,33 @@ function blankSupplier(){
 function productById(id){ return state.products.find(p=>p.id===id); }
 function supplierById(id){ return state.suppliers.find(s=>s.id===id); }
 
+function computeProductStockValue(p){
+  const method = (state.inventorySettings && state.inventorySettings.valuationMethod) || 'average';
+  const movements = (p.movements||[]).slice().sort((a,b)=> new Date(a.date)-new Date(b.date));
+  if(!movements.length) return (p.purchasePrice||0) * (p.stockCurrent||0);
+  if(method==='fifo'){
+    const layers = [];
+    movements.forEach(m=>{
+      if(m.qty>0){ layers.push({ qty:m.qty, unitCost: (m.unitCost!=null?m.unitCost:(p.purchasePrice||0)) }); }
+      else if(m.qty<0){
+        let toRemove = -m.qty;
+        while(toRemove>0 && layers.length){
+          const layer = layers[0];
+          const take = Math.min(layer.qty, toRemove);
+          layer.qty -= take; toRemove -= take;
+          if(layer.qty<=0) layers.shift();
+        }
+      }
+    });
+    return layers.reduce((s,l)=> s + l.qty*l.unitCost, 0);
+  }
+  // průměrné náklady (weighted average)
+  const incoming = movements.filter(m=>m.qty>0);
+  const totalQty = incoming.reduce((s,m)=>s+m.qty,0);
+  const totalCost = incoming.reduce((s,m)=> s + m.qty*(m.unitCost!=null?m.unitCost:(p.purchasePrice||0)), 0);
+  const avgCost = totalQty>0 ? totalCost/totalQty : (p.purchasePrice||0);
+  return avgCost * (p.stockCurrent||0);
+}
 function productMargin(p){
   const purchase = p.purchasePrice||0, sale = p.salePrice||0, costs = p.costs||0;
   const totalCost = purchase + costs;
@@ -3067,7 +3119,7 @@ function viewProducts(){
   const list = filteredSortedProducts();
   const categories = [...new Set(all.map(p=>p.category).filter(Boolean))].sort();
   const manufacturers = [...new Set(all.map(p=>p.manufacturer).filter(Boolean))].sort();
-  const stockValue = all.reduce((s,p)=>s+(p.purchasePrice||0)*(p.stockCurrent||0),0);
+  const stockValue = all.reduce((s,p)=>s+computeProductStockValue(p),0);
   const belowMin = all.filter(p=>!p.archived && stockStatus(p)==='low').length;
   const noPhoto = all.filter(p=>!p.archived && !p.photo).length;
   const noEan = all.filter(p=>!p.archived && !p.ean).length;
@@ -3089,12 +3141,13 @@ function viewProducts(){
     </div>
 
     ${renderBulkBar(state.selectedProductIds.size, 'produktů', `
-      <button type="button" class="btn secondary small" data-action="bulk-print-barcodes">Tisk čárových kódů</button>
+      <button type="button" class="btn secondary small" data-action="bulk-print-product-code">Tisk produktového kódu</button>
+      <button type="button" class="btn secondary small" data-action="bulk-print-product-info">Tisk informací</button>
       <button type="button" class="btn secondary small" data-action="bulk-edit-products-price">Změnit ceny</button>
       <button type="button" class="btn secondary small" data-action="bulk-edit-products-vat">Změnit DPH</button>
       <button type="button" class="btn secondary small" data-action="bulk-edit-products-supplier">Změnit dodavatele</button>
       <button type="button" class="btn secondary small" data-action="bulk-edit-products-category">Změnit kategorii</button>
-      <button type="button" class="btn secondary small" data-action="bulk-archive-products">Archivovat</button>
+      <button type="button" class="btn secondary small" data-action="bulk-archive-products">${[...state.selectedProductIds].length && [...state.selectedProductIds].every(id=>{ const pr=productById(id); return pr && pr.archived; }) ? 'Odebrat archivaci' : 'Archivovat'}</button>
       <button type="button" class="btn danger small" data-action="bulk-delete-products">Smazat vybrané</button>
     `)}
 
@@ -3338,7 +3391,6 @@ function viewProductForm(){
       <div class="formfoot">
         <button type="submit" class="btn">Uložit produkt</button>
         <button type="button" class="btn secondary" data-action="nav" data-view="products">Zrušit</button>
-        ${editing ? `<button type="button" class="btn secondary" data-action="toggle-archive-product" data-id="${p.id}">${p.archived?'Odebrat archivaci':'Archivovat'}</button>` : ''}
         ${editing ? `<button type="button" class="btn danger" data-action="delete-product" data-id="${p.id}">Smazat produkt</button>` : ''}
       </div>
       <input type="hidden" name="id" value="${p.id}">
@@ -3500,7 +3552,7 @@ async function onSubmitProduct(e){
     barcodeType: fd.get('barcodeType') || 'EAN13',
     archived: existing ? !!existing.archived : false,
     createdAt: existing ? existing.createdAt : new Date().toISOString(),
-    movements: existing ? (existing.movements||[]) : (parseFloat(fd.get('stockCurrent'))||0)!==0 ? [{id:uid(), type:'počáteční stav', qty:(parseFloat(fd.get('stockCurrent'))||0), reason:'Založení produktu', note:'', date:new Date().toISOString(), user:state.currentUser, resultingStock:(parseFloat(fd.get('stockCurrent'))||0)}] : []
+    movements: existing ? (existing.movements||[]) : (parseFloat(fd.get('stockCurrent'))||0)!==0 ? [{id:uid(), type:'počáteční stav', qty:(parseFloat(fd.get('stockCurrent'))||0), reason:'Založení produktu', note:'', date:new Date().toISOString(), user:state.currentUser, resultingStock:(parseFloat(fd.get('stockCurrent'))||0), unitCost: parseFloat(fd.get('purchasePrice'))||0}] : []
   };
   if(existing){ const idx = state.products.findIndex(x=>x.id===id); state.products[idx]=p; }
   else{ state.products.push(p); }
@@ -3531,7 +3583,7 @@ async function promptStockMovement(productId){
   if(resulting < 0 && !confirm(`Sklad produktu „${p.name}“ klesne do záporných hodnot (${resulting}). Pokračovat?`)) return;
   p.stockCurrent = resulting;
   p.movements = p.movements || [];
-  p.movements.push({ id: uid(), type, qty, reason, note:'', date: new Date().toISOString(), user: state.currentUser, resultingStock: resulting });
+  p.movements.push({ id: uid(), type, qty, reason, note:'', date: new Date().toISOString(), user: state.currentUser, resultingStock: resulting, unitCost: p.purchasePrice||0 });
   try{ await saveProducts(); }catch(err){ alert('Uložení se nepovedlo, zkus to prosím znovu.'); return; }
   render();
 }
@@ -3591,7 +3643,7 @@ function viewStock(){
   const low = active.filter(p=>stockStatus(p)==='low');
   const out = active.filter(p=>stockStatus(p)==='out');
   const expiring = active.filter(p=>{ const d=daysUntil(p.expiryDate); return d!=null && d<=90; }).sort((a,b)=>daysUntil(a.expiryDate)-daysUntil(b.expiryDate));
-  const stockValue = active.reduce((s,p)=>s+(p.purchasePrice||0)*(p.stockCurrent||0),0);
+  const stockValue = active.reduce((s,p)=>s+computeProductStockValue(p),0);
   const allMovements = [];
   active.forEach(p=>(p.movements||[]).forEach(m=>allMovements.push({...m, productName:p.name})));
   allMovements.sort((a,b)=> new Date(b.date)-new Date(a.date));
@@ -3667,18 +3719,21 @@ function buildBarcodeLabelsHtml(products, qtyEach, showPrice){
   });
   return html;
 }
-function printProductCodeOnly(productId){
-  const p = productById(productId);
-  if(!p) return;
+function printProductCodeOnly(productIds){
+  const ids = Array.isArray(productIds) ? productIds : [productIds];
+  const products = ids.map(id=>productById(id)).filter(Boolean);
+  if(!products.length) return;
   let sheet = document.getElementById('product-code-print-sheet');
   if(!sheet){
     sheet = document.createElement('div');
     sheet.id = 'product-code-print-sheet';
     document.body.appendChild(sheet);
   }
-  sheet.innerHTML = `<svg id="product-code-only-svg"></svg>`;
-  const svg = document.getElementById('product-code-only-svg');
-  renderAutoBarcodeToSvg(svg, p.number || p.ean || '');
+  sheet.innerHTML = products.map((p,i)=>`<div class="code-only-block"><svg id="product-code-only-svg-${i}"></svg></div>`).join('');
+  products.forEach((p,i)=>{
+    const svg = document.getElementById('product-code-only-svg-'+i);
+    if(svg) renderAutoBarcodeToSvg(svg, p.number || p.ean || '');
+  });
   sheet.classList.add('printing');
   document.body.classList.add('printing-barcodes');
   const cleanup = ()=>{
@@ -3689,20 +3744,13 @@ function printProductCodeOnly(productId){
   window.addEventListener('afterprint', cleanup);
   setTimeout(()=> window.print(), 60);
 }
-function printProductInfoSheet(productId){
-  const p = productById(productId);
-  if(!p) return;
-  let sheet = document.getElementById('product-info-print-sheet');
-  if(!sheet){
-    sheet = document.createElement('div');
-    sheet.id = 'product-info-print-sheet';
-    document.body.appendChild(sheet);
-  }
+function productInfoSheetHtml(p){
   const sup = supplierById(p.supplierId);
   const loc = formatLocation(p.location);
   const hasOwnCode = !!p.number;
   const hasMfrEan = !!p.ean && p.ean !== p.number;
-  sheet.innerHTML = `
+  return {
+    html: `
     <div class="pinfo-sheet">
       <div class="pi-head">
         ${p.photo ? `<img class="pi-photo" src="${p.photo}" alt="">` : ''}
@@ -3727,13 +3775,25 @@ function printProductInfoSheet(productId){
       ${p.expiryDate?`<div class="pi-row"><span>Expirace</span><span>${p.expiryDate}</span></div>`:''}
       ${p.note?`<div class="pi-row"><span>Poznámka</span><span>${escapeHtml(p.note)}</span></div>`:''}
       <div class="pi-codes">
-        ${hasOwnCode?`<div class="pi-code-box"><div class="pi-code-label">Interní kód (EAN-13)</div><svg id="pi-code-own"></svg></div>`:''}
-        ${hasMfrEan?`<div class="pi-code-box"><div class="pi-code-label">EAN výrobce</div><svg id="pi-code-mfr"></svg></div>`:''}
+        ${hasOwnCode?`<div class="pi-code-box"><div class="pi-code-label">Interní kód (EAN-13)</div><svg class="pi-code-own" data-code="${escapeAttr(p.number)}"></svg></div>`:''}
+        ${hasMfrEan?`<div class="pi-code-box"><div class="pi-code-label">EAN výrobce</div><svg class="pi-code-mfr" data-code="${escapeAttr(p.ean)}"></svg></div>`:''}
       </div>
     </div>
-  `;
-  if(hasOwnCode){ const svg = document.getElementById('pi-code-own'); if(svg) renderAutoBarcodeToSvg(svg, p.number); }
-  if(hasMfrEan){ const svg = document.getElementById('pi-code-mfr'); if(svg) renderAutoBarcodeToSvg(svg, p.ean); }
+  `};
+}
+function printProductInfoSheet(productIds){
+  const ids = Array.isArray(productIds) ? productIds : [productIds];
+  const products = ids.map(id=>productById(id)).filter(Boolean);
+  if(!products.length) return;
+  let sheet = document.getElementById('product-info-print-sheet');
+  if(!sheet){
+    sheet = document.createElement('div');
+    sheet.id = 'product-info-print-sheet';
+    document.body.appendChild(sheet);
+  }
+  sheet.innerHTML = products.map(p=>productInfoSheetHtml(p).html).join('');
+  sheet.querySelectorAll('svg.pi-code-own').forEach(svg=> renderAutoBarcodeToSvg(svg, svg.getAttribute('data-code')));
+  sheet.querySelectorAll('svg.pi-code-mfr').forEach(svg=> renderAutoBarcodeToSvg(svg, svg.getAttribute('data-code')));
   sheet.classList.add('printing');
   document.body.classList.add('printing-barcodes');
   const cleanup = ()=>{
@@ -3950,7 +4010,7 @@ async function confirmProductBulkImport(){
       name: it.name, category: it.category, manufacturer: it.manufacturer, supplierId,
       unit: it.unit, vatRate: it.vatRate, purchasePrice: it.purchasePrice, salePrice: it.salePrice,
       stockCurrent: it.stockCurrent, stockMin: it.stockMin, location: it.location ? { warehouse: it.location, rack:'', shelf:'', spot:'' } : blankLocation(), expiryDate: it.expiryDate, note: it.note,
-      movements: it.stockCurrent ? [{id:uid(), type:'počáteční stav', qty:it.stockCurrent, reason:'Import', note:'', date:new Date().toISOString(), user:state.currentUser, resultingStock:it.stockCurrent}] : []
+      movements: it.stockCurrent ? [{id:uid(), type:'počáteční stav', qty:it.stockCurrent, reason:'Import', note:'', date:new Date().toISOString(), user:state.currentUser, resultingStock:it.stockCurrent, unitCost:it.purchasePrice||0}] : []
     });
   }
   await saveSuppliers();
@@ -4158,6 +4218,14 @@ function afterRender(){
       filterInvoiceRows(e.target.value);
     });
     if(state.invoiceFilter.search) filterInvoiceRows(state.invoiceFilter.search);
+  }
+  const inventoryValuationSelect = document.getElementById('inventory-valuation-select');
+  if(inventoryValuationSelect){
+    inventoryValuationSelect.addEventListener('change', async ()=>{
+      state.inventorySettings.valuationMethod = inventoryValuationSelect.value;
+      await saveInventorySettings();
+      render();
+    });
   }
   const restoreFileInput = document.getElementById('restore-file-input');
   if(restoreFileInput){
@@ -5103,7 +5171,7 @@ document.addEventListener('click', async (e)=>{
     p.stockCurrent = resulting;
     p.movements = p.movements || [];
     const fullReason = [note, changedParts.length?('aktualizováno: '+changedParts.join(', ')):''].filter(Boolean).join(' — ') || type;
-    p.movements.push({ id: uid(), type, qty, reason: fullReason, note:'', date: new Date().toISOString(), user: state.currentUser, resultingStock: resulting });
+    p.movements.push({ id: uid(), type, qty, reason: fullReason, note:'', date: new Date().toISOString(), user: state.currentUser, resultingStock: resulting, unitCost: p.purchasePrice||0 });
     try{ await saveProducts(); }catch(err){ alert('Uložení se nepovedlo, zkus to prosím znovu.'); return; }
     render();
   }
@@ -5150,6 +5218,8 @@ document.addEventListener('click', async (e)=>{
   }
   else if(action==='bulk-clear-selection'){ state.selectedInvoiceIds.clear(); state.selectedClientIds.clear(); state.selectedProductIds.clear(); render(); }
   else if(action==='bulk-print-barcodes'){ printProductBarcodes([...state.selectedProductIds], 1, true); }
+  else if(action==='bulk-print-product-code'){ printProductCodeOnly([...state.selectedProductIds]); }
+  else if(action==='bulk-print-product-info'){ printProductInfoSheet([...state.selectedProductIds]); }
   else if(action==='bulk-edit-products-price'){
     const mode = prompt('Jak upravit prodejní cenu vybraných produktů?\nNapiš buď pevnou částku (např. 199), nebo procentuální změnu s % (např. +10% nebo -5%).');
     if(mode===null) return;
@@ -5188,8 +5258,12 @@ document.addEventListener('click', async (e)=>{
     render();
   }
   else if(action==='bulk-archive-products'){
-    if(confirm(`Archivovat ${state.selectedProductIds.size} vybraných produktů?`)){
-      await bulkUpdateProducts([...state.selectedProductIds], { archived:true });
+    const ids = [...state.selectedProductIds];
+    const allArchived = ids.length && ids.every(pid=>{ const pr=productById(pid); return pr && pr.archived; });
+    const newState = !allArchived;
+    const msg = newState ? `Archivovat ${ids.length} vybraných produktů?` : `Odebrat archivaci u ${ids.length} vybraných produktů?`;
+    if(confirm(msg)){
+      await bulkUpdateProducts(ids, { archived:newState });
       state.selectedProductIds.clear();
       render();
     }
