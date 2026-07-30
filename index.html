@@ -1321,7 +1321,7 @@ function renderInvoiceTable(list, tbodyId, selectable){
   <table class="fixed-table">
     <thead><tr>
       ${selectable?`<th style="width:60px;"><input type="checkbox" data-action="toggle-select-all-invoices" ${list.length && list.every(i=>state.selectedInvoiceIds.has(i.id))?'checked':''}></th>`:''}
-      <th style="width:110px;">Číslo</th><th>Odběratel</th><th style="width:110px;">Vystaveno</th><th style="width:110px;">Splatnost</th><th style="width:130px;">Částka</th><th style="width:130px;">Stav</th><th style="width:170px;">Vytvořil</th><th style="width:70px;"></th>
+      <th style="width:110px;">Číslo</th><th>Odběratel</th><th style="width:140px;">Vystaveno</th><th style="width:140px;">Splatnost</th><th style="width:150px;">Částka</th><th style="width:170px;">Stav</th><th style="width:220px;">Vytvořil</th><th style="width:70px;"></th>
     </tr></thead>
     <tbody ${tbodyId?`id="${tbodyId}"`:''}>
       ${list.map(inv=>{
@@ -4024,7 +4024,7 @@ function viewStock(){
 
     <div class="section-title">Historie skladových pohybů</div>
     <table class="fixed-table">
-      <thead><tr><th style="width:150px;">Datum</th><th style="width:150px;">Produkt</th><th style="width:110px;">Typ</th><th>Poznámka</th><th style="width:170px;">Kdo</th><th style="width:100px;">Množství</th><th style="width:60px;"></th></tr></thead>
+      <thead><tr><th style="width:175px;">Datum</th><th style="width:150px;">Produkt</th><th style="width:110px;">Typ</th><th>Poznámka</th><th style="width:210px;">Kdo</th><th style="width:100px;">Množství</th><th style="width:60px;"></th></tr></thead>
       <tbody>
         ${allMovements.slice(0,80).map(m=>`
           <tr>
