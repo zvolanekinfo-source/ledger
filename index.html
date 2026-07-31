@@ -231,11 +231,11 @@
   .import-preview .col{flex:1;}
   .import-preview .k{font-size:10.5px;text-transform:uppercase;letter-spacing:1px;color:var(--ink-soft);margin-bottom:4px;}
   .badge{display:inline-block;font-size:11px;padding:2px 8px;border-radius:10px;background:var(--accent-soft);color:var(--accent);margin-left:6px;}
-  .iconbtn{background:transparent;border:none;color:var(--ink-soft);font-size:13px;width:26px;height:26px;padding:0;display:inline-block;vertical-align:middle;line-height:26px;text-align:center;}
+  .iconbtn{background:transparent;border:none;color:var(--ink-soft);font-size:13px;width:24px;height:24px;padding:0;display:inline-block;vertical-align:middle;line-height:24px;text-align:center;}
   .iconbtn svg{vertical-align:middle;}
   .iconbtn:hover{color:var(--red);}
-  .actions-cell{text-align:right;white-space:nowrap;}
-  .actions-cell .iconbtn + .iconbtn{margin-left:6px;}
+  .actions-cell{text-align:right;white-space:nowrap;padding-right:14px !important;}
+  .actions-cell .iconbtn + .iconbtn{margin-left:2px;}
 
   /* INVOICE PREVIEW */
   .preview-wrap{display:flex;gap:24px;align-items:flex-start;}
@@ -1328,7 +1328,7 @@ function renderInvoiceTable(list, tbodyId, selectable){
   <table class="fixed-table">
     <thead><tr>
       ${selectable?`<th style="width:60px;"><input type="checkbox" data-action="toggle-select-all-invoices" ${list.length && list.every(i=>state.selectedInvoiceIds.has(i.id))?'checked':''}></th>`:''}
-      <th style="width:110px;">Číslo</th><th>Odběratel</th><th style="width:140px;">Vystaveno</th><th style="width:140px;">Splatnost</th><th style="width:150px;">Částka</th><th style="width:170px;">Stav</th><th style="width:220px;">Vytvořil</th><th style="width:70px;"></th>
+      <th style="width:110px;">Číslo</th><th>Odběratel</th><th style="width:140px;">Vystaveno</th><th style="width:140px;">Splatnost</th><th style="width:150px;">Částka</th><th style="width:170px;">Stav</th><th style="width:220px;">Vytvořil</th><th style="width:90px;"></th>
     </tr></thead>
     <tbody ${tbodyId?`id="${tbodyId}"`:''}>
       ${list.map(inv=>{
@@ -3200,7 +3200,7 @@ function viewSuppliers(){
     ${list.length ? `
     <div class="table-scroll">
     <table class="fixed-table">
-      <thead><tr><th>Název</th><th style="width:130px;">IČO</th><th style="width:170px;">Kontaktní osoba</th><th style="width:220px;">E-mail</th><th style="width:140px;">Telefon</th><th style="width:100px;">Produktů</th><th style="width:70px;"></th></tr></thead>
+      <thead><tr><th>Název</th><th style="width:130px;">IČO</th><th style="width:170px;">Kontaktní osoba</th><th style="width:220px;">E-mail</th><th style="width:140px;">Telefon</th><th style="width:100px;">Produktů</th><th style="width:90px;"></th></tr></thead>
       <tbody>
         ${list.map(s=>{
           const n = state.products.filter(p=>p.supplierId===s.id).length;
@@ -3376,7 +3376,7 @@ function renderProductTable(list, opts){
     <thead><tr>
       ${selectable?`<th style="width:60px;"><input type="checkbox" data-action="toggle-select-all-products" ${shown.length && shown.every(p=>state.selectedProductIds.has(p.id))?'checked':''}></th>`:''}
       ${cols.map(c=>`<th data-action="sort-products" data-key="${c.key}" class="${state.productSort.key===c.key?'sorted':''}" style="width:${c.width}px;">${escapeHtml(c.label)}${state.productSort.key===c.key?(state.productSort.dir==='asc'?' ▲':' ▼'):''}<span class="th-resize" data-col-resize="${c.key}"></span></th>`).join('')}
-      <th style="width:70px;"></th>
+      <th style="width:90px;"></th>
     </tr></thead>
     <tbody id="products-tbody">
       ${shown.map(p=>`
