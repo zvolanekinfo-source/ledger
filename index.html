@@ -500,6 +500,14 @@
     #app{min-height:0 !important;}
     .preview-wrap{display:block;}
     .invoice-sheet{box-shadow:none;border:none;width:auto;border-radius:0;}
+    .invoice-sheet .inv-body{padding:22px 34px !important;}
+    .invoice-sheet .inv-header{padding-bottom:14px !important;margin-bottom:14px !important;}
+    .invoice-sheet .info-grid{margin-bottom:16px !important;}
+    .invoice-sheet .info-card{padding:12px 14px !important;font-size:12px !important;line-height:1.45 !important;}
+    .invoice-sheet table.lines td{padding:8px 10px !important;}
+    .invoice-sheet .signoff{margin-top:16px !important;}
+    .invoice-sheet .note{margin-top:12px !important;padding-top:10px !important;}
+    .invoice-sheet .inv-footer{margin-top:12px !important;padding-top:8px !important;}
     * { -webkit-print-color-adjust:exact !important;print-color-adjust:exact !important;color-adjust:exact !important; }
   }
 </style>
@@ -1315,6 +1323,7 @@ function viewInvoices(){
     </div>
     ${renderBulkBar(state.selectedInvoiceIds.size, 'faktur', `
       <button type="button" class="btn secondary small" data-action="bulk-print-invoices">Tisk vybraných</button>
+      <button type="button" class="btn secondary small" data-action="bulk-save-invoices">Uložit vybrané</button>
       <button type="button" class="btn secondary small" data-action="bulk-mark-paid">Označit jako zaplacené</button>
       <button type="button" class="btn secondary small" data-action="bulk-mark-unpaid">Označit jako nezaplacené</button>
       <button type="button" class="btn danger small" data-action="bulk-delete-invoices">Smazat vybrané</button>
@@ -1884,6 +1893,34 @@ function buildInvoiceSheetBlock(inv, idx){
       </div>
   </div>`;
   return { html, spayd, idx };
+}
+async function downloadSelectedInvoicesPdf(ids){
+  if(!window.html2pdf) return;
+  for(const id of ids){
+    const inv = state.invoices.find(i=>i.id===id);
+    if(!inv) continue;
+    const block = buildInvoiceSheetBlock(inv, 0);
+    const wrap = document.createElement('div');
+    wrap.style.cssText = 'background:#fff;width:760px;';
+    wrap.innerHTML = block.html;
+    document.body.appendChild(wrap);
+    if(block.spayd && window.QRCode){
+      const target = wrap.querySelector('#qr-holder-0');
+      if(target){ target.innerHTML=''; new QRCode(target, { text: block.spayd, width:110, height:110, correctLevel: QRCode.CorrectLevel.M }); }
+    }
+    const sheetEl = wrap.querySelector('.invoice-sheet');
+    try{
+      await html2pdf().set({
+        margin: 0,
+        filename: `Faktura-${(inv.number||'doklad').replace(/[^\w.-]+/g,'_')}.pdf`,
+        image: { type:'jpeg', quality:0.98 },
+        html2canvas: { scale:2, useCORS:true, backgroundColor:'#ffffff' },
+        jsPDF: { unit:'pt', format:'a4', orientation:'portrait' },
+        pagebreak: { mode:['avoid-all'] }
+      }).from(sheetEl || wrap).save();
+    }catch(err){ console.error(err); }
+    finally{ wrap.remove(); }
+  }
 }
 function printSelectedInvoices(ids){
   const invoices = ids.map(id=>state.invoices.find(i=>i.id===id)).filter(Boolean);
@@ -5360,6 +5397,7 @@ document.addEventListener('click', async (e)=>{
     render();
   }
   else if(action==='bulk-print-invoices'){ printSelectedInvoices([...state.selectedInvoiceIds]); }
+  else if(action==='bulk-save-invoices'){ await downloadSelectedInvoicesPdf([...state.selectedInvoiceIds]); }
   else if(action==='bulk-mark-paid' || action==='bulk-mark-unpaid'){
     const paid = action==='bulk-mark-paid';
     state.invoices.forEach(inv=>{
