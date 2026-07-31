@@ -601,17 +601,27 @@ const VAT_RATES = [21, 12, 0];
 
 function uid(){ return Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
 function fmt(n){ return (Math.round((n+Number.EPSILON)*100)/100).toLocaleString('cs-CZ',{minimumFractionDigits:2,maximumFractionDigits:2}); }
-function stabilizeQrForCapture(container){
-  // html2canvas nemá spolehlivé zachytit živý <canvas>/přepínání canvas<->img z knihovny pro QR kódy —
-  // převedeme ho proto těsně před exportem na obyčejný <img>, který html2canvas zvládá bez problémů.
-  if(!container) return;
-  const canvas = container.querySelector('canvas');
-  if(canvas){
-    try{
-      const dataUrl = canvas.toDataURL('image/png');
-      container.innerHTML = `<img src="${dataUrl}" width="${canvas.width}" height="${canvas.height}" style="display:block;width:110px;height:110px;">`;
-    }catch(e){ console.error('QR stabilize failed', e); }
-  }
+function renderQrCode(container, text){
+  // Vykreslí QR kód mimo viditelnou stránku a do cíle vloží až hotový <img> —
+  // obchází tím vnitřní přepínání canvas/img v knihovně, které html2canvas
+  // nedokáže spolehlivě zachytit při generování PDF.
+  if(!container || !text || !window.QRCode) return;
+  container.innerHTML = '';
+  const temp = document.createElement('div');
+  temp.style.cssText = 'position:absolute;left:-9999px;top:-9999px;';
+  document.body.appendChild(temp);
+  try{
+    new QRCode(temp, { text, width:110, height:110, correctLevel: QRCode.CorrectLevel.M });
+    const img = temp.querySelector('img');
+    const canvas = temp.querySelector('canvas');
+    let dataUrl = '';
+    if(img && img.src && img.src.indexOf('data:')===0) dataUrl = img.src;
+    else if(canvas){ try{ dataUrl = canvas.toDataURL('image/png'); }catch(e){} }
+    if(dataUrl){
+      container.innerHTML = `<img src="${dataUrl}" width="110" height="110" style="display:block;width:110px;height:110px;">`;
+    }
+  }catch(e){ console.error('QR render failed', e); }
+  finally{ temp.remove(); }
 }
 function currencyLabel(cur){ return (!cur || cur==='CZK') ? 'Kč' : cur; }
 function todayISO(){ return new Date().toISOString().slice(0,10); }
@@ -1925,14 +1935,11 @@ async function downloadSelectedInvoicesPdf(ids){
     wrap.style.cssText = 'background:#fff;width:760px;';
     wrap.innerHTML = block.html;
     document.body.appendChild(wrap);
-    if(block.spayd && window.QRCode){
-      const target = wrap.querySelector('#qr-holder-0');
-      if(target){ target.innerHTML=''; new QRCode(target, { text: block.spayd, width:110, height:110, correctLevel: QRCode.CorrectLevel.M }); }
+    if(block.spayd){
+      renderQrCode(wrap.querySelector('#qr-holder-0'), block.spayd);
     }
     const sheetEl = wrap.querySelector('.invoice-sheet');
     if(sheetEl) sheetEl.classList.add('pdf-compact');
-    stabilizeQrForCapture(wrap.querySelector('#qr-holder-0'));
-    await new Promise(r=>setTimeout(r,300));
     try{
       await html2pdf().set({
         margin: 0,
@@ -1958,9 +1965,8 @@ function printSelectedInvoices(ids){
   const blocks = invoices.map((inv,idx)=> buildInvoiceSheetBlock(inv, idx));
   sheet.innerHTML = blocks.map(b=>b.html).join('');
   blocks.forEach(b=>{
-    if(b.spayd && window.QRCode){
-      const target = document.getElementById('qr-holder-'+b.idx);
-      if(target){ target.innerHTML=''; new QRCode(target, { text: b.spayd, width:110, height:110, correctLevel: QRCode.CorrectLevel.M }); }
+    if(b.spayd){
+      renderQrCode(document.getElementById('qr-holder-'+b.idx), b.spayd);
     }
   });
   sheet.classList.add('printing');
@@ -4663,10 +4669,7 @@ function afterRender(){
   if(spaydHolder){
     const val = spaydHolder.getAttribute('data-spayd');
     const target = document.getElementById('qr-holder');
-    if(val && target && window.QRCode){
-      target.innerHTML='';
-      new QRCode(target, { text: val, width:110, height:110, correctLevel: QRCode.CorrectLevel.M });
-    }
+    if(val && target) renderQrCode(target, val);
   }
 
   const invoiceForm = document.getElementById('invoice-form');
@@ -5919,8 +5922,6 @@ async function downloadInvoicePdf(id, triggerEl){
   const originalLabel = triggerEl ? triggerEl.textContent : '';
   if(triggerEl){ triggerEl.textContent='Generuji…'; triggerEl.disabled = true; }
   sheet.classList.add('pdf-compact');
-  stabilizeQrForCapture(document.getElementById('qr-holder'));
-  await new Promise(r=>setTimeout(r,300));
   try{
     await html2pdf().set({
       margin: 0,
