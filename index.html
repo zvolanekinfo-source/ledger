@@ -799,7 +799,7 @@ async function loadAll(){
     invoiceTerms:'',
     defaultPaymentMethod:'', invoiceAccent:'#1F5C4D',
     logo:'', signature:'', stamp:'', showLogo:true, showStamp:true, showSignature:true, showQr:true,
-    inventoryValuationMethod:'average'
+    inventoryValuationMethod:'average', logoScale:100, signatureScale:100, stampScale:100
   };
   if(!state.companies.length){
     state.companies = [{ id: uid(), ...companyDefaults }];
@@ -1617,7 +1617,7 @@ function viewInvoicePreview(){
         <div class="inv-body">
         <div class="inv-header">
           <div class="inv-header-left">
-            ${showLogo ? `<img class="inv-logo" src="${co.logo}" alt="Logo">` : `<div class="inv-logo-placeholder">LOGO</div>`}
+            ${showLogo ? `<img class="inv-logo" src="${co.logo}" alt="Logo" style="height:${Math.round(48*((co.logoScale||100)/100))}px;">` : `<div class="inv-logo-placeholder">LOGO</div>`}
             <div>
               <div class="inv-co-name">${escapeHtml(co.name||'Vaše firma')}</div>
               ${co.tagline?`<div class="inv-co-tagline">${escapeHtml(co.tagline)}</div>`:''}
@@ -1719,8 +1719,8 @@ function viewInvoicePreview(){
             <div class="signoff-terms">${co.invoiceTerms?escapeHtml(co.invoiceTerms):''}</div>
             <div class="signbox">
               <div class="sig-stack">
-                ${showSignature?`<img class="sig-img" src="${co.signature}" alt="Podpis">`:''}
-                ${showStamp?`<img class="co-stamp-img" src="${co.stamp}" alt="Razítko">`:''}
+                ${showSignature?`<img class="sig-img" src="${co.signature}" alt="Podpis" style="max-height:${Math.round(60*((co.signatureScale||100)/100))}px;">`:''}
+                ${showStamp?`<img class="co-stamp-img" src="${co.stamp}" alt="Razítko" style="max-height:${Math.round(64*((co.stampScale||100)/100))}px;">`:''}
               </div>
               <div class="sig-line">Podpis a razítko</div>
             </div>
@@ -1765,7 +1765,7 @@ function buildInvoiceSheetBlock(inv, idx){
         <div class="inv-body">
         <div class="inv-header">
           <div class="inv-header-left">
-            ${showLogo ? `<img class="inv-logo" src="${co.logo}" alt="Logo">` : `<div class="inv-logo-placeholder">LOGO</div>`}
+            ${showLogo ? `<img class="inv-logo" src="${co.logo}" alt="Logo" style="height:${Math.round(48*((co.logoScale||100)/100))}px;">` : `<div class="inv-logo-placeholder">LOGO</div>`}
             <div>
               <div class="inv-co-name">${escapeHtml(co.name||'Vaše firma')}</div>
               ${co.tagline?`<div class="inv-co-tagline">${escapeHtml(co.tagline)}</div>`:''}
@@ -1867,8 +1867,8 @@ function buildInvoiceSheetBlock(inv, idx){
             <div class="signoff-terms">${co.invoiceTerms?escapeHtml(co.invoiceTerms):''}</div>
             <div class="signbox">
               <div class="sig-stack">
-                ${showSignature?`<img class="sig-img" src="${co.signature}" alt="Podpis">`:''}
-                ${showStamp?`<img class="co-stamp-img" src="${co.stamp}" alt="Razítko">`:''}
+                ${showSignature?`<img class="sig-img" src="${co.signature}" alt="Podpis" style="max-height:${Math.round(60*((co.signatureScale||100)/100))}px;">`:''}
+                ${showStamp?`<img class="co-stamp-img" src="${co.stamp}" alt="Razítko" style="max-height:${Math.round(64*((co.stampScale||100)/100))}px;">`:''}
               </div>
               <div class="sig-line">Podpis a razítko</div>
             </div>
@@ -2236,11 +2236,18 @@ function renderAttachmentsBox(entity, entityType){
 /* ---------- SETTINGS ---------- */
 function brandSlot(co, field, title, sub, imgAlt){
   const val = co[field];
+  const scale = co[field+'Scale'] || 100;
   return `
     <div class="brand-slot">
       <div class="bs-title">${title}</div>
       <div class="bs-sub">${sub}</div>
-      <div class="bs-preview">${val ? `<img src="${val}" alt="${imgAlt}">` : `<span class="bs-empty">Zatím nic nenahráno</span>`}</div>
+      <div class="bs-preview">${val ? `<img src="${val}" alt="${imgAlt}" id="bs-img-${field}" style="transform:scale(${scale/100});transition:transform .1s;">` : `<span class="bs-empty">Zatím nic nenahráno</span>`}</div>
+      ${val ? `
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
+        <input type="range" min="30" max="200" step="5" name="${field}Scale" id="bs-range-${field}" value="${scale}" style="flex:1;" oninput="document.getElementById('bs-img-${field}').style.transform='scale('+(this.value/100)+')';document.getElementById('bs-scale-label-${field}').textContent=this.value+'%';">
+        <span id="bs-scale-label-${field}" class="num" style="font-size:11.5px;color:var(--ink-soft);width:40px;text-align:right;">${scale}%</span>
+      </div>
+      ` : `<input type="hidden" name="${field}Scale" value="${scale}">`}
       <div class="bs-actions">
         <button type="button" class="btn secondary small" data-action="upload-branding" data-field="${field}" data-company-id="${co.id}">${val?'Nahradit':'Nahrát'}</button>
         ${val?`<button type="button" class="btn danger small" data-action="remove-branding" data-field="${field}" data-company-id="${co.id}">Odebrat</button>`:''}
@@ -6073,6 +6080,7 @@ async function onSubmitCompany(e){
     defaultDueDays: parseInt(fd.get('defaultDueDays'))||14, defaultNote: fd.get('defaultNote'),
     invoiceTerms: fd.get('invoiceTerms'), defaultPaymentMethod: fd.get('defaultPaymentMethod'),
     inventoryValuationMethod: fd.get('inventoryValuationMethod') || 'average',
+    logoScale: parseInt(fd.get('logoScale'),10)||100, signatureScale: parseInt(fd.get('signatureScale'),10)||100, stampScale: parseInt(fd.get('stampScale'),10)||100,
     showLogo: fd.get('showLogo')==='1', showStamp: fd.get('showStamp')==='1',
     showSignature: fd.get('showSignature')==='1', showQr: fd.get('showQr')==='1',
     logo: existing ? existing.logo : (isDraft ? state.newCompanyDraft.logo : ''),
