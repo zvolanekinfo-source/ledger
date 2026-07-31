@@ -6208,7 +6208,17 @@ async function removeBrandingImage(field, companyId){
 
 window.addEventListener('unhandledrejection', (e)=>{
   console.error('Unhandled error:', e.reason);
-  const msg = (e.reason && e.reason.message) ? e.reason.message : String(e.reason||'neznámá chyba');
+  let msg;
+  if(e.reason instanceof Error){
+    msg = e.reason.message;
+  } else if(typeof Event!=='undefined' && e.reason instanceof Event){
+    const t = e.reason.target;
+    const tag = (t && t.tagName) ? t.tagName.toLowerCase() : '';
+    const src = (t && (t.src||t.href)) ? ` (${t.src||t.href})` : '';
+    msg = `nepodařilo se načíst${tag?' prvek <'+tag+'>':''}${src} — typ události: ${e.reason.type}`;
+  } else {
+    msg = String(e.reason||'neznámá chyba');
+  }
   alert('Něco se nepovedlo uložit nebo načíst. Zkus akci prosím zopakovat.\n\nPodrobnost: ' + msg);
 });
 
