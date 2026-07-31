@@ -297,8 +297,8 @@
   .invoice-sheet .totals{width:230px;flex-shrink:0;}
   .invoice-sheet .totals .trow{display:flex;justify-content:space-between;font-size:13px;padding:5px 0;color:var(--ink-soft);}
   .invoice-sheet .totals .trow.grand{
-    font-family:'Inter',sans-serif;font-size:16px;font-weight:700;color:var(--inv-accent);
-    border-top:1.5px solid var(--ink);margin-top:8px;padding-top:14px;letter-spacing:-0.2px;
+    font-family:'Inter',sans-serif;font-size:13.5px;font-weight:700;color:var(--inv-accent);
+    border-top:1.5px solid var(--ink);margin-top:8px;padding-top:10px;letter-spacing:-0.1px;
   }
   .invoice-sheet .note{margin-top:24px;font-size:12px;color:var(--ink-soft);border-top:1px solid var(--line);padding-top:16px;white-space:pre-wrap;}
 
@@ -1619,11 +1619,12 @@ function viewInvoicePreview(){
           <div class="inv-header-left">
             ${showLogo ? `<img class="inv-logo" src="${co.logo}" alt="Logo">` : `<div class="inv-logo-placeholder">LOGO</div>`}
             <div>
-              <div class="inv-co-name">${escapeHtml(co.name||'Vaše firma')}${co.vatPayer===false?' <span style="font-size:11px;font-weight:500;color:var(--ink-soft);">(neplátce DPH)</span>':''}</div>
+              <div class="inv-co-name">${escapeHtml(co.name||'Vaše firma')}</div>
               ${co.tagline?`<div class="inv-co-tagline">${escapeHtml(co.tagline)}</div>`:''}
             </div>
           </div>
           <div class="inv-header-right">
+            ${co.vatPayer===false?'<div style="font-size:10.5px;font-weight:600;color:var(--ink-soft);margin-bottom:3px;">(neplátce DPH)</div>':''}
             <div class="inv-doctitle">Faktura číslo:</div>
             <div class="inv-docnum">${escapeHtml(inv.number)}</div>
             ${inv.paid ? `<div class="paid-badge">Zaplaceno</div>` : ''}
@@ -1766,11 +1767,12 @@ function buildInvoiceSheetBlock(inv, idx){
           <div class="inv-header-left">
             ${showLogo ? `<img class="inv-logo" src="${co.logo}" alt="Logo">` : `<div class="inv-logo-placeholder">LOGO</div>`}
             <div>
-              <div class="inv-co-name">${escapeHtml(co.name||'Vaše firma')}${co.vatPayer===false?' <span style="font-size:11px;font-weight:500;color:var(--ink-soft);">(neplátce DPH)</span>':''}</div>
+              <div class="inv-co-name">${escapeHtml(co.name||'Vaše firma')}</div>
               ${co.tagline?`<div class="inv-co-tagline">${escapeHtml(co.tagline)}</div>`:''}
             </div>
           </div>
           <div class="inv-header-right">
+            ${co.vatPayer===false?'<div style="font-size:10.5px;font-weight:600;color:var(--ink-soft);margin-bottom:3px;">(neplátce DPH)</div>':''}
             <div class="inv-doctitle">Faktura číslo:</div>
             <div class="inv-docnum">${escapeHtml(inv.number)}</div>
             ${inv.paid ? `<div class="paid-badge">Zaplaceno</div>` : ''}
