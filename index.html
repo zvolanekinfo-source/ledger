@@ -264,7 +264,7 @@
   .invoice-sheet .inv-co-tagline{font-size:12px;color:var(--ink-soft);margin-top:2px;}
   .invoice-sheet .inv-header-right{text-align:right;flex-shrink:0;}
   .invoice-sheet .inv-doctitle{font-family:'Inter',sans-serif;font-size:11px;font-weight:600;color:var(--ink-soft);letter-spacing:1.5px;text-transform:uppercase;}
-  .invoice-sheet .inv-docnum{font-family:'Inter',sans-serif;color:var(--ink);font-size:19px;font-weight:600;margin-top:6px;letter-spacing:-0.2px;}
+  .invoice-sheet .inv-docnum{font-family:'Inter',sans-serif;color:var(--ink);font-size:15px;font-weight:600;margin-top:4px;letter-spacing:-0.1px;}
   .invoice-sheet .paid-badge{
     display:inline-block;margin-top:10px;
     color:var(--inv-accent);background:var(--inv-accent-soft);
@@ -297,8 +297,8 @@
   .invoice-sheet .totals{width:230px;flex-shrink:0;}
   .invoice-sheet .totals .trow{display:flex;justify-content:space-between;font-size:13px;padding:5px 0;color:var(--ink-soft);}
   .invoice-sheet .totals .trow.grand{
-    font-family:'Inter',sans-serif;font-size:21px;font-weight:700;color:var(--inv-accent);
-    border-top:1.5px solid var(--ink);margin-top:8px;padding-top:14px;letter-spacing:-0.3px;
+    font-family:'Inter',sans-serif;font-size:16px;font-weight:700;color:var(--inv-accent);
+    border-top:1.5px solid var(--ink);margin-top:8px;padding-top:14px;letter-spacing:-0.2px;
   }
   .invoice-sheet .note{margin-top:24px;font-size:12px;color:var(--ink-soft);border-top:1px solid var(--line);padding-top:16px;white-space:pre-wrap;}
 
@@ -584,6 +584,7 @@ const VAT_RATES = [21, 12, 0];
 
 function uid(){ return Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
 function fmt(n){ return (Math.round((n+Number.EPSILON)*100)/100).toLocaleString('cs-CZ',{minimumFractionDigits:2,maximumFractionDigits:2}); }
+function currencyLabel(cur){ return (!cur || cur==='CZK') ? 'Kč' : cur; }
 function todayISO(){ return new Date().toISOString().slice(0,10); }
 function addDays(dateStr, days){ const d = new Date(dateStr); d.setDate(d.getDate()+days); return d.toISOString().slice(0,10); }
 function stripDiacritics(s){ return (s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,''); }
@@ -1372,7 +1373,7 @@ function renderBulkBar(count, entityLabel, actions){
 
 function blankInvoice(){
   const c = state.companies[0];
-  const num = `${c.prefix}${String(c.nextNumber).padStart(4,'0')}`;
+  const num = `${c.prefix}${c.nextNumber}`;
   const preselected = state.preselectClientId && clientById(state.preselectClientId) ? state.preselectClientId : (state.clients[0]?state.clients[0].id:null);
   state.preselectClientId = null;
   return {
@@ -1465,7 +1466,7 @@ function viewInvoiceForm(){
         <div class="field"><label>Datum splatnosti</label><input type="date" name="dueDate" value="${inv.dueDate}" required></div>
       </div>
       <div class="field-row">
-        <div class="field"><label>Datum zdanitelného plnění</label><input type="date" name="taxDate" value="${inv.taxDate}"></div>
+        <div class="field" id="tax-date-field" style="${vatPayerNow?'':'display:none;'}"><label>Datum zdanitelného plnění</label><input type="date" name="taxDate" value="${inv.taxDate}"></div>
         <div class="field"><label>Variabilní symbol</label><input name="variableSymbol" value="${inv.variableSymbol||''}"></div>
       </div>
       <div class="field-row">
@@ -1623,7 +1624,7 @@ function viewInvoicePreview(){
             </div>
           </div>
           <div class="inv-header-right">
-            <div class="inv-doctitle">Faktura</div>
+            <div class="inv-doctitle">Faktura číslo:</div>
             <div class="inv-docnum">${escapeHtml(inv.number)}</div>
             ${inv.paid ? `<div class="paid-badge">Zaplaceno</div>` : ''}
           </div>
@@ -1672,7 +1673,7 @@ function viewInvoicePreview(){
             <tbody>
               ${(inv.items||[]).map(it=>{
                 const lt=(it.qty||0)*(it.price||0)*(1+(it.vat||0)/100);
-                return `<tr><td>${escapeHtml(it.desc)}</td><td class="num">${it.qty} ${escapeHtml(it.unit||'')}</td><td class="num">${fmt(it.price)} ${cur}</td><td class="num">${it.vat}%</td><td class="num">${fmt(lt)} ${cur}</td></tr>`;
+                return `<tr><td>${escapeHtml(it.desc)}</td><td class="num">${it.qty} ${escapeHtml(it.unit||'')}</td><td class="num">${fmt(it.price)} ${currencyLabel(cur)}</td><td class="num">${it.vat}%</td><td class="num">${fmt(lt)} ${currencyLabel(cur)}</td></tr>`;
               }).join('')}
             </tbody>
           </table>
@@ -1684,11 +1685,11 @@ function viewInvoicePreview(){
               <div>QR platba</div>
             </div>` : ''}
             <div class="totals">
-              <div class="trow"><span>Základ daně</span><span>${fmt(t.base)} ${cur}</span></div>
-              ${co.vatPayer!==false?`<div class="trow"><span>DPH</span><span>${fmt(t.vat)} ${cur}</span></div>`:''}
-              ${discountAmount!==0?`<div class="trow"><span>Sleva</span><span>-${fmt(discountAmount)} ${cur}</span></div>`:''}
-              ${roundingAmount!==0?`<div class="trow"><span>Zaokrouhlení</span><span>${roundingAmount>0?'+':''}${fmt(roundingAmount)} ${cur}</span></div>`:''}
-              <div class="trow grand"><span>K úhradě</span><span>${fmt(roundedTotal)} ${cur}</span></div>
+              ${co.vatPayer!==false?`<div class="trow"><span>Základ daně</span><span>${fmt(t.base)} ${currencyLabel(cur)}</span></div>`:''}
+              ${co.vatPayer!==false?`<div class="trow"><span>DPH</span><span>${fmt(t.vat)} ${currencyLabel(cur)}</span></div>`:''}
+              ${discountAmount!==0?`<div class="trow"><span>Sleva</span><span>-${fmt(discountAmount)} ${currencyLabel(cur)}</span></div>`:''}
+              ${roundingAmount!==0?`<div class="trow"><span>Zaokrouhlení</span><span>${roundingAmount>0?'+':''}${fmt(roundingAmount)} ${currencyLabel(cur)}</span></div>`:''}
+              <div class="trow grand"><span>K úhradě</span><span>${fmt(roundedTotal)} ${currencyLabel(cur)}</span></div>
             </div>
           </div>
 
@@ -1751,7 +1752,7 @@ function buildInvoiceSheetBlock(inv, idx){
             </div>
           </div>
           <div class="inv-header-right">
-            <div class="inv-doctitle">Faktura</div>
+            <div class="inv-doctitle">Faktura číslo:</div>
             <div class="inv-docnum">${escapeHtml(inv.number)}</div>
             ${inv.paid ? `<div class="paid-badge">Zaplaceno</div>` : ''}
           </div>
@@ -1800,7 +1801,7 @@ function buildInvoiceSheetBlock(inv, idx){
             <tbody>
               ${(inv.items||[]).map(it=>{
                 const lt=(it.qty||0)*(it.price||0)*(1+(it.vat||0)/100);
-                return `<tr><td>${escapeHtml(it.desc)}</td><td class="num">${it.qty} ${escapeHtml(it.unit||'')}</td><td class="num">${fmt(it.price)} ${cur}</td><td class="num">${it.vat}%</td><td class="num">${fmt(lt)} ${cur}</td></tr>`;
+                return `<tr><td>${escapeHtml(it.desc)}</td><td class="num">${it.qty} ${escapeHtml(it.unit||'')}</td><td class="num">${fmt(it.price)} ${currencyLabel(cur)}</td><td class="num">${it.vat}%</td><td class="num">${fmt(lt)} ${currencyLabel(cur)}</td></tr>`;
               }).join('')}
             </tbody>
           </table>
@@ -1812,11 +1813,11 @@ function buildInvoiceSheetBlock(inv, idx){
               <div>QR platba</div>
             </div>` : ''}
             <div class="totals">
-              <div class="trow"><span>Základ daně</span><span>${fmt(t.base)} ${cur}</span></div>
-              ${co.vatPayer!==false?`<div class="trow"><span>DPH</span><span>${fmt(t.vat)} ${cur}</span></div>`:''}
-              ${discountAmount!==0?`<div class="trow"><span>Sleva</span><span>-${fmt(discountAmount)} ${cur}</span></div>`:''}
-              ${roundingAmount!==0?`<div class="trow"><span>Zaokrouhlení</span><span>${roundingAmount>0?'+':''}${fmt(roundingAmount)} ${cur}</span></div>`:''}
-              <div class="trow grand"><span>K úhradě</span><span>${fmt(roundedTotal)} ${cur}</span></div>
+              ${co.vatPayer!==false?`<div class="trow"><span>Základ daně</span><span>${fmt(t.base)} ${currencyLabel(cur)}</span></div>`:''}
+              ${co.vatPayer!==false?`<div class="trow"><span>DPH</span><span>${fmt(t.vat)} ${currencyLabel(cur)}</span></div>`:''}
+              ${discountAmount!==0?`<div class="trow"><span>Sleva</span><span>-${fmt(discountAmount)} ${currencyLabel(cur)}</span></div>`:''}
+              ${roundingAmount!==0?`<div class="trow"><span>Zaokrouhlení</span><span>${roundingAmount>0?'+':''}${fmt(roundingAmount)} ${currencyLabel(cur)}</span></div>`:''}
+              <div class="trow grand"><span>K úhradě</span><span>${fmt(roundedTotal)} ${currencyLabel(cur)}</span></div>
             </div>
           </div>
 
@@ -5148,6 +5149,8 @@ function setupInvoiceCompanySelect(){
     const vatPayerNow = co.vatPayer !== false;
     const table = document.querySelector('.items-table');
     const note = document.getElementById('vat-off-note');
+    const taxDateField = document.getElementById('tax-date-field');
+    if(taxDateField) taxDateField.style.display = vatPayerNow ? '' : 'none';
     if(table) table.classList.toggle('no-vat', !vatPayerNow);
     if(note) note.style.display = vatPayerNow ? 'none' : '';
     if(!vatPayerNow){
@@ -5171,7 +5174,7 @@ function setupInvoiceCompanySelect(){
     box.style.display = val==='__new__' ? '' : 'none';
     if(!isEditing && val!=='__new__' && numberInput){
       const co = companyById(val);
-      if(co) numberInput.value = `${co.prefix||''}${String(co.nextNumber||1).padStart(4,'0')}`;
+      if(co) numberInput.value = `${co.prefix||''}${co.nextNumber||1}`;
     }
     if(val!=='__new__'){ state.formCompanyId = val; applyVat(val); }
   }
