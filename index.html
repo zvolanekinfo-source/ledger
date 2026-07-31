@@ -494,6 +494,15 @@
     body.printing-barcodes > #app{display:none !important;}
   }
 
+  .invoice-sheet.pdf-compact .inv-body{padding:22px 34px !important;}
+  .invoice-sheet.pdf-compact .inv-header{padding-bottom:14px !important;margin-bottom:14px !important;}
+  .invoice-sheet.pdf-compact .info-grid{margin-bottom:16px !important;}
+  .invoice-sheet.pdf-compact .info-card{padding:12px 14px !important;font-size:12px !important;line-height:1.45 !important;}
+  .invoice-sheet.pdf-compact table.lines td{padding:8px 10px !important;}
+  .invoice-sheet.pdf-compact .signoff{margin-top:16px !important;}
+  .invoice-sheet.pdf-compact .note{margin-top:12px !important;padding-top:10px !important;}
+  .invoice-sheet.pdf-compact .inv-footer{margin-top:12px !important;padding-top:8px !important;}
+
   @media print{
     .sidebar,.pagehead,.preview-side,.no-print{display:none !important;}
     body,.main{background:#fff;padding:0;margin:0;min-height:0 !important;height:auto !important;}
@@ -1909,6 +1918,8 @@ async function downloadSelectedInvoicesPdf(ids){
       if(target){ target.innerHTML=''; new QRCode(target, { text: block.spayd, width:110, height:110, correctLevel: QRCode.CorrectLevel.M }); }
     }
     const sheetEl = wrap.querySelector('.invoice-sheet');
+    if(sheetEl) sheetEl.classList.add('pdf-compact');
+    await new Promise(r=>setTimeout(r,120));
     try{
       await html2pdf().set({
         margin: 0,
@@ -5894,6 +5905,8 @@ async function downloadInvoicePdf(id, triggerEl){
   if(!inv || !sheet || !window.html2pdf){ window.print(); return; }
   const originalLabel = triggerEl ? triggerEl.textContent : '';
   if(triggerEl){ triggerEl.textContent='Generuji…'; triggerEl.disabled = true; }
+  sheet.classList.add('pdf-compact');
+  await new Promise(r=>setTimeout(r,120));
   try{
     await html2pdf().set({
       margin: 0,
@@ -5907,6 +5920,7 @@ async function downloadInvoicePdf(id, triggerEl){
     console.error(err);
     alert('Stažení PDF se nepovedlo, zkus to prosím znovu.');
   } finally {
+    sheet.classList.remove('pdf-compact');
     if(triggerEl){ triggerEl.textContent = originalLabel || 'Stáhnout PDF'; triggerEl.disabled = false; }
   }
 }
