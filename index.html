@@ -623,6 +623,26 @@ function renderQrCode(container, text){
   }catch(e){ console.error('QR render failed', e); }
   finally{ temp.remove(); }
 }
+function waitForImageReady(container){
+  // Safari (na rozdíl od Chromu) nemusí mít obrázek s data: URL hned po vložení
+  // do DOM opravdu "domalovaný" — html2canvas ho pak vyfotí prázdný.
+  // Počkáme na skutečné dekódování/načtení, s krátkým fallback timeoutem.
+  return new Promise((resolve)=>{
+    const img = container ? container.querySelector('img') : null;
+    if(!img){ resolve(); return; }
+    let done = false;
+    const finish = ()=>{ if(!done){ done = true; resolve(); } };
+    if(img.decode){
+      img.decode().then(finish).catch(finish);
+    } else if(img.complete && img.naturalWidth > 0){
+      finish();
+    } else {
+      img.addEventListener('load', finish, { once:true });
+      img.addEventListener('error', finish, { once:true });
+    }
+    setTimeout(finish, 400);
+  });
+}
 function currencyLabel(cur){ return (!cur || cur==='CZK') ? 'Kč' : cur; }
 function todayISO(){ return new Date().toISOString().slice(0,10); }
 function addDays(dateStr, days){ const d = new Date(dateStr); d.setDate(d.getDate()+days); return d.toISOString().slice(0,10); }
@@ -1937,6 +1957,7 @@ async function downloadSelectedInvoicesPdf(ids){
     document.body.appendChild(wrap);
     if(block.spayd){
       renderQrCode(wrap.querySelector('#qr-holder-0'), block.spayd);
+      await waitForImageReady(wrap.querySelector('#qr-holder-0'));
     }
     const sheetEl = wrap.querySelector('.invoice-sheet');
     if(sheetEl) sheetEl.classList.add('pdf-compact');
@@ -1945,7 +1966,7 @@ async function downloadSelectedInvoicesPdf(ids){
         margin: 0,
         filename: `Faktura-${(inv.number||'doklad').replace(/[^\w.-]+/g,'_')}.pdf`,
         image: { type:'jpeg', quality:0.98 },
-        html2canvas: { scale:2, useCORS:true, backgroundColor:'#ffffff' },
+        html2canvas: { scale:2, useCORS:true, allowTaint:true, backgroundColor:'#ffffff' },
         jsPDF: { unit:'pt', format:'a4', orientation:'portrait' },
         pagebreak: { mode:['avoid-all'] }
       }).from(sheetEl || wrap).save();
@@ -5928,7 +5949,10 @@ async function downloadInvoicePdf(id, triggerEl){
   const qrTarget = document.getElementById('qr-holder');
   if(spaydHolder && qrTarget){
     const spaydVal = spaydHolder.getAttribute('data-spayd');
-    if(spaydVal) renderQrCode(qrTarget, spaydVal);
+    if(spaydVal){
+      renderQrCode(qrTarget, spaydVal);
+      await waitForImageReady(qrTarget);
+    }
   }
   sheet.classList.add('pdf-compact');
   try{
@@ -5936,7 +5960,7 @@ async function downloadInvoicePdf(id, triggerEl){
       margin: 0,
       filename: `Faktura-${(inv.number||'doklad').replace(/[^\w.-]+/g,'_')}.pdf`,
       image: { type:'jpeg', quality:0.98 },
-      html2canvas: { scale:2, useCORS:true, backgroundColor:'#ffffff' },
+      html2canvas: { scale:2, useCORS:true, allowTaint:true, backgroundColor:'#ffffff' },
       jsPDF: { unit:'pt', format:'a4', orientation:'portrait' },
       pagebreak: { mode:['avoid-all'] }
     }).from(sheet).save();
