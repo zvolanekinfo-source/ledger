@@ -602,23 +602,42 @@ const VAT_RATES = [21, 12, 0];
 function uid(){ return Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
 function fmt(n){ return (Math.round((n+Number.EPSILON)*100)/100).toLocaleString('cs-CZ',{minimumFractionDigits:2,maximumFractionDigits:2}); }
 function renderQrCode(container, text){
-  // Vykreslí QR kód mimo viditelnou stránku a do cíle vloží až hotový <img> —
-  // obchází tím vnitřní přepínání canvas/img v knihovně, které html2canvas
-  // nedokáže spolehlivě zachytit při generování PDF.
+  // Vykreslí QR kód jako čisté SVG (vektorové čtverečky) přímo z interní
+  // matice knihovny — ne jako obrázek s data: URL. html2canvas (používá se
+  // při stažení PDF) nedokáže na Safari spolehlivě zachytit dynamicky
+  // vytvořený <img>, ale SVG je běžný DOM obsah a zachytí se spolehlivě
+  // na všech prohlížečích, stejně jako text nebo divy.
   if(!container || !text || !window.QRCode) return;
   container.innerHTML = '';
   const temp = document.createElement('div');
   temp.style.cssText = 'position:absolute;left:-9999px;top:-9999px;';
   document.body.appendChild(temp);
   try{
-    new QRCode(temp, { text, width:110, height:110, correctLevel: QRCode.CorrectLevel.M });
-    const img = temp.querySelector('img');
-    const canvas = temp.querySelector('canvas');
-    let dataUrl = '';
-    if(img && img.src && img.src.indexOf('data:')===0) dataUrl = img.src;
-    else if(canvas){ try{ dataUrl = canvas.toDataURL('image/png'); }catch(e){} }
-    if(dataUrl){
-      container.innerHTML = `<img src="${dataUrl}" width="110" height="110" style="display:block;width:110px;height:110px;">`;
+    const size = 110;
+    const qr = new QRCode(temp, { text, width:size, height:size, correctLevel: QRCode.CorrectLevel.M });
+    const model = qr && qr._oQRCode;
+    if(model && typeof model.getModuleCount==='function' && typeof model.isDark==='function'){
+      const count = model.getModuleCount();
+      const cell = size / count;
+      let rects = '';
+      for(let row=0; row<count; row++){
+        for(let col=0; col<count; col++){
+          if(model.isDark(row, col)){
+            const x = (col*cell).toFixed(2);
+            const y = (row*cell).toFixed(2);
+            rects += `<rect x="${x}" y="${y}" width="${(cell+0.6).toFixed(2)}" height="${(cell+0.6).toFixed(2)}" fill="#000"/>`;
+          }
+        }
+      }
+      container.innerHTML = `<svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" style="display:block;background:#fff;">${rects}</svg>`;
+    } else {
+      // Záložní cesta, kdyby se interní API knihovny změnilo
+      const canvas = temp.querySelector('canvas');
+      let dataUrl = '';
+      if(canvas){ try{ dataUrl = canvas.toDataURL('image/png'); }catch(e){} }
+      if(dataUrl){
+        container.innerHTML = `<img src="${dataUrl}" width="${size}" height="${size}" style="display:block;width:${size}px;height:${size}px;">`;
+      }
     }
   }catch(e){ console.error('QR render failed', e); }
   finally{ temp.remove(); }
