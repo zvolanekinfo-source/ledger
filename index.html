@@ -5942,6 +5942,21 @@ async function downloadInvoicePdf(id, triggerEl){
   if(!inv || !sheet || !window.html2pdf){ window.print(); return; }
   const originalLabel = triggerEl ? triggerEl.textContent : '';
   if(triggerEl){ triggerEl.textContent='Generuji…'; triggerEl.disabled = true; }
+
+  // DOČASNÁ DIAGNOSTIKA — pomáhá zjistit, kde přesně se QR kód ztrácí.
+  // (Bezpečně se dá smazat, jakmile bude problém vyřešený.)
+  try{
+    const qrHolder = document.getElementById('qr-holder');
+    const co = companyById(inv.companyId) || state.companies[0];
+    const libInfo = `window.QRCode načtený: ${typeof window.QRCode !== 'undefined'}\nIBAN firmy: "${co ? (co.iban||'(prázdný)') : '(firma nenalezena)'}"`;
+    const info = qrHolder
+      ? `qr-holder NALEZEN v DOM.\nDélka obsahu: ${qrHolder.innerHTML.length} znaků.\nObsahuje "<svg": ${qrHolder.innerHTML.indexOf('<svg')>=0}.\nPrvních 120 znaků obsahu:\n${qrHolder.innerHTML.slice(0,120)}`
+      : 'qr-holder v DOM VŮBEC NENALEZEN!';
+    alert('DIAGNOSTIKA 1 (před generováním PDF):\n\n' + libInfo + '\n\n' + info);
+  }catch(diagErr){
+    alert('DIAGNOSTIKA 1 selhala s chybou: ' + (diagErr && diagErr.message));
+  }
+
   sheet.classList.add('pdf-compact');
   try{
     await html2pdf().set({
@@ -5952,9 +5967,10 @@ async function downloadInvoicePdf(id, triggerEl){
       jsPDF: { unit:'pt', format:'a4', orientation:'portrait' },
       pagebreak: { mode:['avoid-all'] }
     }).from(sheet).save();
+    alert('DIAGNOSTIKA 2: PDF se vygenerovalo bez chyby (funkce doběhla do konce).');
   } catch(err){
     console.error(err);
-    alert('Stažení PDF se nepovedlo, zkus to prosím znovu.');
+    alert('DIAGNOSTIKA 2: PDF generování SKONČILO CHYBOU:\n\n' + (err && err.message ? err.message : String(err)) + '\n\n' + (err && err.stack ? err.stack.slice(0,400) : ''));
   } finally {
     sheet.classList.remove('pdf-compact');
     if(triggerEl){ triggerEl.textContent = originalLabel || 'Stáhnout PDF'; triggerEl.disabled = false; }
