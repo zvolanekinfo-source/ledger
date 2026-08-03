@@ -535,7 +535,8 @@ let state = {
   userPermissions: {},
   currentUser: null,
   currentUserId: null,
-  authView: 'login', // 'login' | 'register'
+  authView: 'login', // 'login' | 'register' | 'forgot' | 'reset-password'
+  recoverySession: null,
   authError: '',
   authNotice: '',
   editingInvoiceId: null,
@@ -756,6 +757,95 @@ async function signOutRemote(){
       headers: { 'apikey': SUPABASE_KEY, 'Authorization': 'Bearer ' + session.access_token }
     });
   }catch(e){}
+}
+
+/* ---------- ZAPOMENUTÉ HESLO ----------
+   Standardní Supabase flow: pošleme e-mail s odkazem, který uživatele
+   přivede zpátky do appky s tokenem v URL (#access_token=...&type=recovery).
+   Appka to pozná, ověření tím proběhlo kliknutím na odkaz v e-mailu (jiné
+   ověření se neděje) a rovnou nabídne nastavení nového hesla. Po uložení je
+   token použit i k rovnovou přihlášení, takže žádný další krok není potřeba. */
+async function requestPasswordReset(email){
+  const redirectTo = window.location.origin + window.location.pathname;
+  const res = await fetch(SUPABASE_AUTH + '/recover', {
+    method: 'POST',
+    headers: { 'apikey': SUPABASE_KEY, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, options: { redirect_to: redirectTo } })
+  });
+  const data = await res.json().catch(()=>({}));
+  if(!res.ok){
+    throw new Error(data.error_description || data.msg || data.error || 'Nepovedlo se odeslat e-mail.');
+  }
+  return data;
+}
+function parseRecoveryHash(){
+  const hash = window.location.hash;
+  if(!hash || hash.length<2) return null;
+  const params = new URLSearchParams(hash.slice(1));
+  if(params.get('type')!=='recovery') return null;
+  const access_token = params.get('access_token');
+  const refresh_token = params.get('refresh_token');
+  if(!access_token) return null;
+  return { access_token, refresh_token, expires_in: parseInt(params.get('expires_in')||'3600',10) };
+}
+async function fetchRecoveryUser(access_token){
+  const res = await fetch(SUPABASE_AUTH + '/user', {
+    headers: { 'apikey': SUPABASE_KEY, 'Authorization': 'Bearer ' + access_token }
+  });
+  if(!res.ok) return null;
+  return res.json().catch(()=>null);
+}
+async function onSubmitForgotPassword(e){
+  e.preventDefault();
+  const fd = new FormData(e.target);
+  const email = (fd.get('email')||'').trim();
+  if(!email){ state.authError = 'Zadej e-mail.'; render(); return; }
+  const btn = e.target.querySelector('button[type="submit"]');
+  if(btn) btn.disabled = true;
+  try{
+    await requestPasswordReset(email);
+    state.authError = '';
+    state.authNotice = 'Pokud tenhle e-mail v appce existuje, poslali jsme na něj odkaz pro nastavení nového hesla. Zkontroluj schránku (i spam) a klikni na odkaz v e-mailu.';
+    state.authView = 'login';
+    render();
+  }catch(err){
+    state.authError = err.message || 'Nepovedlo se odeslat e-mail, zkus to prosím znovu.';
+    render();
+  }
+}
+async function onSubmitResetPassword(e){
+  e.preventDefault();
+  const fd = new FormData(e.target);
+  const password = fd.get('password');
+  const password2 = fd.get('password2');
+  if(!password || password.length<8){ state.authError = 'Heslo musí mít aspoň 8 znaků.'; render(); return; }
+  if(password!==password2){ state.authError = 'Zadaná hesla se neshodují.'; render(); return; }
+  const rec = state.recoverySession;
+  if(!rec){ state.authError = 'Odkaz už není platný, zkus si o obnovení hesla požádat znovu.'; state.authView='forgot'; render(); return; }
+  const btn = e.target.querySelector('button[type="submit"]');
+  if(btn) btn.disabled = true;
+  try{
+    const res = await fetch(SUPABASE_AUTH + '/user', {
+      method: 'PUT',
+      headers: { 'apikey': SUPABASE_KEY, 'Authorization': 'Bearer ' + rec.access_token, 'Content-Type':'application/json' },
+      body: JSON.stringify({ password })
+    });
+    const data = await res.json().catch(()=>({}));
+    if(!res.ok) throw new Error(data.error_description || data.msg || 'Nastavení hesla se nepovedlo.');
+    persistSession({
+      access_token: rec.access_token,
+      refresh_token: rec.refresh_token,
+      expires_at: Date.now() + (rec.expires_in||3600)*1000 - 15000,
+      user: { id: data.id, email: data.email }
+    });
+    state.recoverySession = null;
+    state.authError = ''; state.authNotice = '';
+    await afterLogin();
+  }catch(err){
+    state.authError = err.message || 'Nastavení hesla se nepovedlo, zkus to prosím znovu.';
+    if(btn) btn.disabled = false;
+    render();
+  }
 }
 
 async function updateOwnAuthUser(fields){
@@ -1183,6 +1273,8 @@ function render(){
 /* ---------- AUTH ---------- */
 function renderAuth(){
   const view = state.authView || 'login';
+  const titles = { register:'Vytvořit účet', forgot:'Obnovit heslo', 'reset-password':'Nastavit nové heslo' };
+  const subs = { register:'', forgot:'Pošleme ti e-mail s odkazem pro nastavení nového hesla.', 'reset-password':'Zadej nové heslo ke svému účtu.' };
   return `
     <div class="login-wrap">
       <div class="login-side">
@@ -1196,16 +1288,21 @@ function renderAuth(){
       <div class="login-form-side">
         <div class="login-card">
           <div class="brand-head">
-            <div class="display">${view==='register' ? 'Vytvořit účet' : 'Vítej zpět'}</div>
-            <div class="sub">${view==='register' ? '' : 'Přihlas se ke sdílené fakturaci.'}</div>
+            <div class="display">${titles[view] || 'Vítej zpět'}</div>
+            <div class="sub">${subs[view] !== undefined ? subs[view] : 'Přihlas se ke sdílené fakturaci.'}</div>
           </div>
+          ${(view==='login'||view==='register') ? `
           <div class="auth-tabs">
             <div class="auth-tab ${view==='login'?'active':''}" data-action="auth-switch" data-view="login">Přihlásit se</div>
             <div class="auth-tab ${view==='register'?'active':''}" data-action="auth-switch" data-view="register">Registrace</div>
           </div>
+          ` : ''}
           ${state.authError?`<div class="login-error">${escapeHtml(state.authError)}</div>`:''}
           ${state.authNotice?`<div class="login-error" style="background:var(--accent-soft);color:var(--accent);">${escapeHtml(state.authNotice)}</div>`:''}
-          ${view==='register' ? renderRegisterForm() : renderLoginForm()}
+          ${view==='register' ? renderRegisterForm()
+            : view==='forgot' ? renderForgotPasswordForm()
+            : view==='reset-password' ? renderResetPasswordForm()
+            : renderLoginForm()}
         </div>
       </div>
     </div>
@@ -1220,6 +1317,35 @@ function renderLoginForm(){
       </div>
       <div class="field"><label>Heslo</label><input name="password" type="password" autocomplete="current-password" required></div>
       <button type="submit" class="btn" style="width:100%;">Přihlásit se</button>
+      <div style="text-align:center;margin-top:14px;">
+        <button type="button" class="btn-link" data-action="auth-switch" data-view="forgot">Zapomenuté heslo?</button>
+      </div>
+    </form>
+  `;
+}
+
+function renderForgotPasswordForm(){
+  return `
+    <form id="forgot-form">
+      <div class="field"><label>E-mail</label>
+        <input name="email" type="email" autocomplete="username" placeholder="jmeno@firma.cz" value="${escapeAttr(state.lastLoginEmail||'')}" autofocus required>
+      </div>
+      <button type="submit" class="btn" style="width:100%;">Poslat odkaz pro nastavení nového hesla</button>
+      <div style="text-align:center;margin-top:14px;">
+        <button type="button" class="btn-link" data-action="auth-switch" data-view="login">Zpět na přihlášení</button>
+      </div>
+    </form>
+  `;
+}
+
+function renderResetPasswordForm(){
+  const email = state.recoverySession && state.recoverySession.email;
+  return `
+    <form id="reset-password-form">
+      ${email ? `<p style="font-size:13px;color:var(--ink-soft);margin:-4px 0 14px 0;">Účet: <b>${escapeHtml(email)}</b></p>` : ''}
+      <div class="field"><label>Nové heslo</label><input name="password" type="password" autocomplete="new-password" required minlength="8" autofocus></div>
+      <div class="field"><label>Nové heslo znovu</label><input name="password2" type="password" autocomplete="new-password" required minlength="8"></div>
+      <button type="submit" class="btn" style="width:100%;">Nastavit heslo a přihlásit se</button>
     </form>
   `;
 }
@@ -1242,6 +1368,10 @@ function afterRenderAuth(){
   if(lf) lf.addEventListener('submit', onSubmitLogin);
   const rf = document.getElementById('register-form');
   if(rf) rf.addEventListener('submit', onSubmitRegister);
+  const ff = document.getElementById('forgot-form');
+  if(ff) ff.addEventListener('submit', onSubmitForgotPassword);
+  const rpf = document.getElementById('reset-password-form');
+  if(rpf) rpf.addEventListener('submit', onSubmitResetPassword);
 }
 
 async function afterLogin(){
@@ -5502,7 +5632,7 @@ document.addEventListener('click', async (e)=>{
   const action = el.getAttribute('data-action');
   const id = el.getAttribute('data-id');
 
-  if(action==='auth-switch'){ state.authView = el.getAttribute('data-view'); state.authError=''; render(); }
+  if(action==='auth-switch'){ state.authView = el.getAttribute('data-view'); state.authError=''; state.authNotice=''; render(); }
   else if(action==='logout'){
     await signOutRemote();
     persistSession(null);
@@ -6374,6 +6504,18 @@ window.addEventListener('unhandledrejection', (e)=>{
 /* ---------- INIT ---------- */
 (async function(){
   document.getElementById('app').innerHTML = '<div style="padding:60px;font-family:Inter,sans-serif;color:#5C6B66;">Načítám…</div>';
+  const recovery = parseRecoveryHash();
+  if(recovery){
+    // Uživatel přišel z odkazu v e-mailu ("zapomenuté heslo") — samotné
+    // ověření proběhlo kliknutím na tenhle odkaz, takže rovnou nabídneme
+    // nastavení nového hesla, žádný další krok navíc.
+    history.replaceState(null, '', window.location.pathname + window.location.search);
+    const info = await fetchRecoveryUser(recovery.access_token);
+    state.recoverySession = { ...recovery, email: info ? info.email : '' };
+    state.authView = 'reset-password';
+    render();
+    return;
+  }
   loadSessionFromStorage();
   if(session){
     const fresh = await ensureFreshSession();
