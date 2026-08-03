@@ -532,6 +532,7 @@ let state = {
   clients: [],
   invoices: [],
   users: [],
+  userPermissions: {},
   currentUser: null,
   currentUserId: null,
   authView: 'login', // 'login' | 'register'
@@ -789,6 +790,61 @@ function isCurrentUserAdmin(){
   return !!me && me.role==='admin';
 }
 
+/* ---------- OPRÁVNĚNÍ UŽIVATELŮ (přístup do záložek, skrytí cen) ---------- */
+// Poznámka k bezpečnosti: tohle je omezení na úrovni rozhraní (UI) — schová
+// zaměstnanci záložky a ceny v appce samotné. Nejde o zabezpečení na úrovni
+// databáze/úložiště, takže technicky zdatný uživatel by se k datům teoreticky
+// mohl dostat i jinak (např. přes vývojářskou konzoli prohlížeče).
+const TAB_DEFS = [
+  { key:'dashboard', label:'Přehled' },
+  { key:'invoices', label:'Faktury' },
+  { key:'clients', label:'Odběratelé' },
+  { key:'suppliers', label:'Dodavatelé' },
+  { key:'products', label:'Produkty' },
+  { key:'stock', label:'Sklad' }
+];
+const VIEW_TO_TAB = {
+  dashboard:'dashboard',
+  invoices:'invoices', 'invoice-form':'invoices', 'invoice-preview':'invoices', 'bulk-import':'invoices',
+  clients:'clients', 'client-form':'clients', 'client-detail':'clients',
+  suppliers:'suppliers', 'supplier-form':'suppliers', 'supplier-detail':'suppliers',
+  products:'products', 'product-form':'products',
+  stock:'stock'
+};
+function defaultUserPermissions(){
+  // Výchozí je plný přístup — omezení nastavuje admin ručně za konkrétního
+  // člověka, aby se stávajícím uživatelům při zapnutí funkce nic neschovalo.
+  const tabs = {};
+  TAB_DEFS.forEach(t=> tabs[t.key] = true);
+  return { tabs, hidePrices:false };
+}
+function getUserPermissions(userId){
+  const saved = state.userPermissions[userId];
+  const def = defaultUserPermissions();
+  if(!saved) return def;
+  return { tabs: { ...def.tabs, ...(saved.tabs||{}) }, hidePrices: !!saved.hidePrices };
+}
+function canAccessTab(tabKey){
+  if(!tabKey) return true;
+  if(isCurrentUserAdmin()) return true;
+  return !!getUserPermissions(state.currentUserId).tabs[tabKey];
+}
+function firstAccessibleView(){
+  if(isCurrentUserAdmin()) return 'dashboard';
+  const perm = getUserPermissions(state.currentUserId);
+  const firstTab = TAB_DEFS.find(t=> perm.tabs[t.key]);
+  return firstTab ? firstTab.key : 'settings';
+}
+function pricesHiddenForMe(){
+  if(isCurrentUserAdmin()) return false;
+  return !!getUserPermissions(state.currentUserId).hidePrices;
+}
+function money(formattedText){
+  // Použít na hotový naformátovaný text částky (např. "1 234,00 Kč").
+  return pricesHiddenForMe() ? '•••' : formattedText;
+}
+async function saveUserPermissions(){ await window.storage.set('user-permissions', JSON.stringify(state.userPermissions), true); }
+
 async function sbRequest(path, options = {}){
   await ensureFreshSession();
   const headers = {
@@ -889,6 +945,7 @@ async function loadAll(){
   try{ const r = await window.storage.get('inventory-settings', true); state.inventorySettings = r ? JSON.parse(r.value) : { valuationMethod:'average' }; }catch(e){ state.inventorySettings = { valuationMethod:'average' }; }
   try{ const r = await window.storage.get('product-columns', true); state.productColumns = r ? JSON.parse(r.value) : null; }catch(e){ state.productColumns = null; }
   try{ const r = await window.storage.get('expiry-settings', true); state.expirySettings = r ? JSON.parse(r.value) : { value:90, unit:'days' }; }catch(e){ state.expirySettings = { value:90, unit:'days' }; }
+  try{ const r = await window.storage.get('user-permissions', true); state.userPermissions = r ? JSON.parse(r.value) : {}; }catch(e){ state.userPermissions = {}; }
   if(!state.productColumns) state.productColumns = DEFAULT_PRODUCT_COLUMNS.map(c=>({...c}));
   else {
     const existingKeys = new Set(state.productColumns.map(c=>c.key));
@@ -1094,18 +1151,22 @@ function render(){
     afterRenderAuth();
     return;
   }
+  const neededTab = VIEW_TO_TAB[state.view];
+  if(neededTab && !canAccessTab(neededTab)){
+    state.view = firstAccessibleView();
+  }
   app.innerHTML = `
     <div class="sidebar">
       <div class="brand">
         <div class="display">ledgers</div>
         <div class="sub">Fakturační kniha</div>
       </div>
-      <div class="navitem ${state.view==='dashboard'?'active':''}" data-action="nav" data-view="dashboard">Přehled</div>
-      <div class="navitem ${state.view==='invoices'||state.view==='invoice-form'||state.view==='invoice-preview'?'active':''}" data-action="nav" data-view="invoices">Faktury</div>
-      <div class="navitem ${state.view==='clients'||state.view==='client-form'||state.view==='client-detail'?'active':''}" data-action="nav" data-view="clients">Odběratelé</div>
-      <div class="navitem ${state.view==='suppliers'||state.view==='supplier-form'||state.view==='supplier-detail'?'active':''}" data-action="nav" data-view="suppliers">Dodavatelé</div>
-      <div class="navitem ${state.view==='products'||state.view==='product-form'?'active':''}" data-action="nav" data-view="products">Produkty</div>
-      <div class="navitem ${state.view==='stock'?'active':''}" data-action="nav" data-view="stock">Sklad</div>
+      ${canAccessTab('dashboard')?`<div class="navitem ${state.view==='dashboard'?'active':''}" data-action="nav" data-view="dashboard">Přehled</div>`:''}
+      ${canAccessTab('invoices')?`<div class="navitem ${state.view==='invoices'||state.view==='invoice-form'||state.view==='invoice-preview'?'active':''}" data-action="nav" data-view="invoices">Faktury</div>`:''}
+      ${canAccessTab('clients')?`<div class="navitem ${state.view==='clients'||state.view==='client-form'||state.view==='client-detail'?'active':''}" data-action="nav" data-view="clients">Odběratelé</div>`:''}
+      ${canAccessTab('suppliers')?`<div class="navitem ${state.view==='suppliers'||state.view==='supplier-form'||state.view==='supplier-detail'?'active':''}" data-action="nav" data-view="suppliers">Dodavatelé</div>`:''}
+      ${canAccessTab('products')?`<div class="navitem ${state.view==='products'||state.view==='product-form'?'active':''}" data-action="nav" data-view="products">Produkty</div>`:''}
+      ${canAccessTab('stock')?`<div class="navitem ${state.view==='stock'?'active':''}" data-action="nav" data-view="stock">Sklad</div>`:''}
       <div class="navitem ${['settings','company-form','account-form','colleague-form','user-creds-form'].includes(state.view)?'active':''}" data-action="nav" data-view="settings">Nastavení</div>
       <div class="sidebar-foot">
         <div class="whoami">
@@ -1198,7 +1259,7 @@ async function afterLogin(){
   state.currentUser = me ? me.name : session.user.email;
   state.currentUserId = session.user.id;
   await loadAll();
-  state.view = 'dashboard';
+  state.view = firstAccessibleView();
   state.authError=''; state.authNotice='';
   render();
 }
@@ -1312,17 +1373,17 @@ function viewDashboard(){
 
     <div class="cards">
       <div class="card"><div class="label">Faktur ve výběru</div><div class="value">${filtered.length}</div></div>
-      <div class="card"><div class="label">Fakturováno celkem</div><div class="value accent num">${fmt(revenue)} Kč</div></div>
-      <div class="card"><div class="label">Nezaplaceno</div><div class="value amber num">${fmt(unpaidSum)} Kč</div></div>
+      <div class="card"><div class="label">Fakturováno celkem</div><div class="value accent num">${money(fmt(revenue)+' Kč')}</div></div>
+      <div class="card"><div class="label">Nezaplaceno</div><div class="value amber num">${money(fmt(unpaidSum)+' Kč')}</div></div>
       <div class="card"><div class="label">Po splatnosti</div><div class="value red num">${overdueCount}</div></div>
     </div>
 
     <div class="chart-card">
       <div class="chart-head">
         <div class="display">Výnos podle měsíce</div>
-        <div class="chart-total">${fmt(revenue)} Kč</div>
+        <div class="chart-total">${money(fmt(revenue)+' Kč')}</div>
       </div>
-      ${buildRevenueChart(filtered)}
+      ${pricesHiddenForMe() ? `<p style="color:var(--ink-soft);font-size:13px;">Graf výnosů je pro tebe skrytý.</p>` : buildRevenueChart(filtered)}
     </div>
 
     <div class="section-title">Faktury ve výběru (${filtered.length})</div>
@@ -1420,7 +1481,7 @@ function renderInvoiceTable(list, tbodyId, selectable){
           <td>${c ? escapeHtml(c.name) : '—'}</td>
           <td class="num">${inv.issueDate||''}</td>
           <td class="num">${inv.dueDate||''}</td>
-          <td class="num">${fmt(t.total)} Kč</td>
+          <td class="num">${money(fmt(t.total)+' Kč')}</td>
           <td><span class="pill ${s}">${statusLabel(s)}</span></td>
           <td>${escapeHtml(inv.createdBy||'—')}</td>
           <td class="actions-cell no-print">
@@ -1753,7 +1814,7 @@ function viewInvoicePreview(){
             <tbody>
               ${(inv.items||[]).map(it=>{
                 const lineBase=(it.qty||0)*(it.price||0);
-                return `<tr><td>${escapeHtml(it.desc)}</td><td class="num">${it.qty} ${escapeHtml(it.unit||'')}</td><td class="num">${fmt(it.price)}</td><td class="num">0%</td><td class="num">${fmt(lineBase)}</td><td class="num">${fmt(lineBase)}</td></tr>`;
+                return `<tr><td>${escapeHtml(it.desc)}</td><td class="num">${it.qty} ${escapeHtml(it.unit||'')}</td><td class="num">${money(fmt(it.price))}</td><td class="num">0%</td><td class="num">${money(fmt(lineBase))}</td><td class="num">${money(fmt(lineBase))}</td></tr>`;
               }).join('')}
             </tbody>
           </table>
@@ -1763,7 +1824,7 @@ function viewInvoicePreview(){
             <tbody>
               ${(inv.items||[]).map(it=>{
                 const lt=(it.qty||0)*(it.price||0)*(1+(it.vat||0)/100);
-                return `<tr><td>${escapeHtml(it.desc)}</td><td class="num">${it.qty} ${escapeHtml(it.unit||'')}</td><td class="num">${fmt(it.price)} ${currencyLabel(cur)}</td><td class="num">${it.vat}%</td><td class="num">${fmt(lt)} ${currencyLabel(cur)}</td></tr>`;
+                return `<tr><td>${escapeHtml(it.desc)}</td><td class="num">${it.qty} ${escapeHtml(it.unit||'')}</td><td class="num">${money(fmt(it.price)+" "+currencyLabel(cur))}</td><td class="num">${it.vat}%</td><td class="num">${money(fmt(lt)+" "+currencyLabel(cur))}</td></tr>`;
               }).join('')}
             </tbody>
           </table>
@@ -1777,16 +1838,16 @@ function viewInvoicePreview(){
             </div>` : ''}
             <div class="totals">
               ${co.vatPayer===false ? `
-              <div class="trow"><span>Součet položek</span><span>${fmt(t.base)} ${currencyLabel(cur)}</span></div>
-              ${discountAmount!==0?`<div class="trow"><span>Sleva</span><span>-${fmt(discountAmount)} ${currencyLabel(cur)}</span></div>`:''}
-              <div class="trow"><span>Zaokrouhlení</span><span>${roundingAmount>=0?'+':''}${fmt(roundingAmount)} ${currencyLabel(cur)}</span></div>
-              <div class="trow grand"><span>CELKEM K ÚHRADĚ</span><span>${fmt(roundedTotal)} ${currencyLabel(cur)}</span></div>
+              <div class="trow"><span>Součet položek</span><span>${money(fmt(t.base)+' '+currencyLabel(cur))}</span></div>
+              ${discountAmount!==0?`<div class="trow"><span>Sleva</span><span>${money('-'+fmt(discountAmount)+' '+currencyLabel(cur))}</span></div>`:''}
+              <div class="trow"><span>Zaokrouhlení</span><span>${money((roundingAmount>=0?'+':'')+fmt(roundingAmount)+' '+currencyLabel(cur))}</span></div>
+              <div class="trow grand"><span>CELKEM K ÚHRADĚ</span><span>${money(fmt(roundedTotal)+' '+currencyLabel(cur))}</span></div>
               ` : `
-              <div class="trow"><span>Základ daně</span><span>${fmt(t.base)} ${currencyLabel(cur)}</span></div>
-              <div class="trow"><span>DPH</span><span>${fmt(t.vat)} ${currencyLabel(cur)}</span></div>
-              ${discountAmount!==0?`<div class="trow"><span>Sleva</span><span>-${fmt(discountAmount)} ${currencyLabel(cur)}</span></div>`:''}
-              ${roundingAmount!==0?`<div class="trow"><span>Zaokrouhlení</span><span>${roundingAmount>0?'+':''}${fmt(roundingAmount)} ${currencyLabel(cur)}</span></div>`:''}
-              <div class="trow grand"><span>K úhradě</span><span>${fmt(roundedTotal)} ${currencyLabel(cur)}</span></div>
+              <div class="trow"><span>Základ daně</span><span>${money(fmt(t.base)+' '+currencyLabel(cur))}</span></div>
+              <div class="trow"><span>DPH</span><span>${money(fmt(t.vat)+' '+currencyLabel(cur))}</span></div>
+              ${discountAmount!==0?`<div class="trow"><span>Sleva</span><span>${money('-'+fmt(discountAmount)+' '+currencyLabel(cur))}</span></div>`:''}
+              ${roundingAmount!==0?`<div class="trow"><span>Zaokrouhlení</span><span>${money((roundingAmount>0?'+':'')+fmt(roundingAmount)+' '+currencyLabel(cur))}</span></div>`:''}
+              <div class="trow grand"><span>K úhradě</span><span>${money(fmt(roundedTotal)+' '+currencyLabel(cur))}</span></div>
               `}
             </div>
           </div>
@@ -1901,7 +1962,7 @@ function buildInvoiceSheetBlock(inv, idx){
             <tbody>
               ${(inv.items||[]).map(it=>{
                 const lineBase=(it.qty||0)*(it.price||0);
-                return `<tr><td>${escapeHtml(it.desc)}</td><td class="num">${it.qty} ${escapeHtml(it.unit||'')}</td><td class="num">${fmt(it.price)}</td><td class="num">0%</td><td class="num">${fmt(lineBase)}</td><td class="num">${fmt(lineBase)}</td></tr>`;
+                return `<tr><td>${escapeHtml(it.desc)}</td><td class="num">${it.qty} ${escapeHtml(it.unit||'')}</td><td class="num">${money(fmt(it.price))}</td><td class="num">0%</td><td class="num">${money(fmt(lineBase))}</td><td class="num">${money(fmt(lineBase))}</td></tr>`;
               }).join('')}
             </tbody>
           </table>
@@ -1911,7 +1972,7 @@ function buildInvoiceSheetBlock(inv, idx){
             <tbody>
               ${(inv.items||[]).map(it=>{
                 const lt=(it.qty||0)*(it.price||0)*(1+(it.vat||0)/100);
-                return `<tr><td>${escapeHtml(it.desc)}</td><td class="num">${it.qty} ${escapeHtml(it.unit||'')}</td><td class="num">${fmt(it.price)} ${currencyLabel(cur)}</td><td class="num">${it.vat}%</td><td class="num">${fmt(lt)} ${currencyLabel(cur)}</td></tr>`;
+                return `<tr><td>${escapeHtml(it.desc)}</td><td class="num">${it.qty} ${escapeHtml(it.unit||'')}</td><td class="num">${money(fmt(it.price)+" "+currencyLabel(cur))}</td><td class="num">${it.vat}%</td><td class="num">${money(fmt(lt)+" "+currencyLabel(cur))}</td></tr>`;
               }).join('')}
             </tbody>
           </table>
@@ -1925,16 +1986,16 @@ function buildInvoiceSheetBlock(inv, idx){
             </div>` : ''}
             <div class="totals">
               ${co.vatPayer===false ? `
-              <div class="trow"><span>Součet položek</span><span>${fmt(t.base)} ${currencyLabel(cur)}</span></div>
-              ${discountAmount!==0?`<div class="trow"><span>Sleva</span><span>-${fmt(discountAmount)} ${currencyLabel(cur)}</span></div>`:''}
-              <div class="trow"><span>Zaokrouhlení</span><span>${roundingAmount>=0?'+':''}${fmt(roundingAmount)} ${currencyLabel(cur)}</span></div>
-              <div class="trow grand"><span>CELKEM K ÚHRADĚ</span><span>${fmt(roundedTotal)} ${currencyLabel(cur)}</span></div>
+              <div class="trow"><span>Součet položek</span><span>${money(fmt(t.base)+' '+currencyLabel(cur))}</span></div>
+              ${discountAmount!==0?`<div class="trow"><span>Sleva</span><span>${money('-'+fmt(discountAmount)+' '+currencyLabel(cur))}</span></div>`:''}
+              <div class="trow"><span>Zaokrouhlení</span><span>${money((roundingAmount>=0?'+':'')+fmt(roundingAmount)+' '+currencyLabel(cur))}</span></div>
+              <div class="trow grand"><span>CELKEM K ÚHRADĚ</span><span>${money(fmt(roundedTotal)+' '+currencyLabel(cur))}</span></div>
               ` : `
-              <div class="trow"><span>Základ daně</span><span>${fmt(t.base)} ${currencyLabel(cur)}</span></div>
-              <div class="trow"><span>DPH</span><span>${fmt(t.vat)} ${currencyLabel(cur)}</span></div>
-              ${discountAmount!==0?`<div class="trow"><span>Sleva</span><span>-${fmt(discountAmount)} ${currencyLabel(cur)}</span></div>`:''}
-              ${roundingAmount!==0?`<div class="trow"><span>Zaokrouhlení</span><span>${roundingAmount>0?'+':''}${fmt(roundingAmount)} ${currencyLabel(cur)}</span></div>`:''}
-              <div class="trow grand"><span>K úhradě</span><span>${fmt(roundedTotal)} ${currencyLabel(cur)}</span></div>
+              <div class="trow"><span>Základ daně</span><span>${money(fmt(t.base)+' '+currencyLabel(cur))}</span></div>
+              <div class="trow"><span>DPH</span><span>${money(fmt(t.vat)+' '+currencyLabel(cur))}</span></div>
+              ${discountAmount!==0?`<div class="trow"><span>Sleva</span><span>${money('-'+fmt(discountAmount)+' '+currencyLabel(cur))}</span></div>`:''}
+              ${roundingAmount!==0?`<div class="trow"><span>Zaokrouhlení</span><span>${money((roundingAmount>0?'+':'')+fmt(roundingAmount)+' '+currencyLabel(cur))}</span></div>`:''}
+              <div class="trow grand"><span>K úhradě</span><span>${money(fmt(roundedTotal)+' '+currencyLabel(cur))}</span></div>
               `}
             </div>
           </div>
@@ -2409,6 +2470,25 @@ function viewAccountForm(){
   `;
 }
 
+function renderPermissionEditor(u){
+  const perm = getUserPermissions(u.id);
+  return `
+    <div class="permission-editor" style="padding:0 0 14px 0;border-bottom:1px solid var(--line);margin-bottom:2px;">
+      <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.5px;color:var(--ink-soft);margin:2px 0 8px 0;">Přístup pro ${escapeHtml(u.name)}</div>
+      <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:10px;">
+        ${TAB_DEFS.map(t=>`
+          <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--ink);">
+            <input type="checkbox" data-perm-tab="${t.key}" ${perm.tabs[t.key]?'checked':''}> ${t.label}
+          </label>
+        `).join('')}
+      </div>
+      <label style="display:flex;align-items:center;gap:6px;font-size:13px;margin-bottom:10px;color:var(--ink);">
+        <input type="checkbox" data-perm-hide-prices ${perm.hidePrices?'checked':''}> Skrýt ceny a částky
+      </label>
+      <button type="button" class="btn secondary small" data-action="save-permissions" data-userid="${u.id}">Uložit oprávnění</button>
+    </div>
+  `;
+}
 function viewSettings(){
   const primary = state.companies[0];
   return `
@@ -2445,7 +2525,7 @@ function viewSettings(){
         const isMe = u.id===state.currentUserId;
         const amAdmin = isCurrentUserAdmin();
         return `
-        <div class="user-row">
+        <div class="user-row" style="${(amAdmin && !isMe && u.role!=='admin')?'border-bottom:none;padding-bottom:0;':''}">
           <span>
             <span style="font-weight:600;">${escapeHtml(u.name)}</span>${isMe?' (ty)':''}
             ${u.role==='admin'?' <span class="badge">admin</span>':''}
@@ -2459,6 +2539,7 @@ function viewSettings(){
             ${(amAdmin && !isMe) ? `<button class="btn danger small" data-action="delete-user-account" data-id="${u.id}" data-name="${escapeAttr(u.name)}">Smazat účet natrvalo</button>` : ''}
           </span>
         </div>
+        ${(amAdmin && !isMe && u.role!=='admin') ? renderPermissionEditor(u) : ''}
       `;}).join('')}
       <div class="formfoot" style="margin-top:10px;">
         <button type="button" class="btn secondary" data-action="edit-own-account">Můj e-mail a heslo</button>
@@ -3501,9 +3582,9 @@ function productCellContent(p, key){
     case 'category': return escapeHtml(p.category||'—');
     case 'manufacturer': return escapeHtml(p.manufacturer||'—');
     case 'supplier': return escapeHtml((supplierById(p.supplierId)||{}).name||'—');
-    case 'purchasePrice': return `<span class="num">${fmt(p.purchasePrice||0)} Kč</span>`;
-    case 'salePrice': return `<span class="num">${fmt(p.salePrice||0)} Kč</span>`;
-    case 'margin': { const m=productMargin(p); return `<span class="num">${m.marginPct.toFixed(0)}%</span>`; }
+    case 'purchasePrice': return `<span class="num">${money(fmt(p.purchasePrice||0)+' Kč')}</span>`;
+    case 'salePrice': return `<span class="num">${money(fmt(p.salePrice||0)+' Kč')}</span>`;
+    case 'margin': { const m=productMargin(p); return `<span class="num">${money(m.marginPct.toFixed(0)+'%')}</span>`; }
     case 'stock': { const s=stockStatus(p); return `<span class="pill ${stockPillClass(s)}">${stockAvailable(p)} ${escapeHtml(p.unit||'ks')}</span>`; }
     case 'location': return escapeHtml(formatLocation(p.location)) || '—';
     case 'expiry': return expiryBadge(p) || '—';
@@ -3572,9 +3653,9 @@ function viewProducts(){
 
     <div class="cards">
       <div class="card"><div class="label">Produktů celkem</div><div class="value">${all.length}</div></div>
-      <div class="card"><div class="label">Hodnota skladu (nákupní)</div><div class="value accent num">${fmt(stockValue)} Kč</div></div>
-      <div class="card"><div class="label">Obrat (${statsPresets.find(p=>p[0]===sf.preset)[1].toLowerCase()})</div><div class="value num">${fmt(revenue)} Kč</div></div>
-      <div class="card"><div class="label">Čistý zisk (${statsPresets.find(p=>p[0]===sf.preset)[1].toLowerCase()})</div><div class="value accent num">${fmt(profit)} Kč</div></div>
+      <div class="card"><div class="label">Hodnota skladu (nákupní)</div><div class="value accent num">${money(fmt(stockValue)+' Kč')}</div></div>
+      <div class="card"><div class="label">Obrat (${statsPresets.find(p=>p[0]===sf.preset)[1].toLowerCase()})</div><div class="value num">${money(fmt(revenue)+' Kč')}</div></div>
+      <div class="card"><div class="label">Čistý zisk (${statsPresets.find(p=>p[0]===sf.preset)[1].toLowerCase()})</div><div class="value accent num">${money(fmt(profit)+' Kč')}</div></div>
     </div>
 
     ${renderBulkBar(state.selectedProductIds.size, 'produktů', `
@@ -5581,6 +5662,23 @@ document.addEventListener('click', async (e)=>{
       if(u.id===state.currentUserId) state.currentUser = trimmed;
       render();
     }catch(err){ alert('Úprava se nepovedla, zkus to prosím znovu.'); }
+  }
+  else if(action==='save-permissions'){
+    if(!isCurrentUserAdmin()){ alert('Oprávnění smí měnit jen admin.'); return; }
+    const userId = el.getAttribute('data-userid');
+    const container = el.closest('.permission-editor');
+    if(!container || !userId) return;
+    const tabs = {};
+    container.querySelectorAll('[data-perm-tab]').forEach(cb=>{
+      tabs[cb.getAttribute('data-perm-tab')] = cb.checked;
+    });
+    const hidePrices = container.querySelector('[data-perm-hide-prices]').checked;
+    state.userPermissions[userId] = { tabs, hidePrices };
+    try{
+      await saveUserPermissions();
+      el.textContent = 'Uloženo ✓';
+      setTimeout(()=>{ el.textContent = 'Uložit oprávnění'; }, 1500);
+    }catch(err){ alert('Uložení oprávnění se nepovedlo, zkus to prosím znovu.'); }
   }
   else if(action==='toggle-admin'){
     if(!isCurrentUserAdmin()){ alert('Roli smí měnit jen admin.'); return; }
