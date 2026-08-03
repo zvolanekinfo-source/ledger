@@ -601,19 +601,19 @@ const VAT_RATES = [21, 12, 0];
 
 function uid(){ return Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
 function fmt(n){ return (Math.round((n+Number.EPSILON)*100)/100).toLocaleString('cs-CZ',{minimumFractionDigits:2,maximumFractionDigits:2}); }
-function renderQrCode(container, text){
-  // Vykreslí QR kód jako čisté SVG (vektorové čtverečky) přímo z interní
-  // matice knihovny — ne jako obrázek s data: URL. html2canvas (používá se
-  // při stažení PDF) nedokáže na Safari spolehlivě zachytit dynamicky
-  // vytvořený <img>, ale SVG je běžný DOM obsah a zachytí se spolehlivě
-  // na všech prohlížečích, stejně jako text nebo divy.
-  if(!container || !text || !window.QRCode) return;
-  container.innerHTML = '';
+function buildQrSvgMarkup(text, size){
+  // Vrátí hotový SVG markup (string) pro QR kód — místo aby se QR do stránky
+  // dolepoval až dodatečně přes DOM manipulaci. Safari totiž při zachytávání
+  // stránky pro PDF (html2canvas) nespolehlivě zachycuje obsah vložený do
+  // DOM až PO prvotním vykreslení stránky (na rozdíl od obsahu, který je
+  // součástí HTML od začátku — jako třeba logo firmy). Vykreslením QR jako
+  // SVG přímo do šablony faktury se tomuto problému úplně vyhneme.
+  size = size || 110;
+  if(!text || !window.QRCode) return '';
   const temp = document.createElement('div');
   temp.style.cssText = 'position:absolute;left:-9999px;top:-9999px;';
   document.body.appendChild(temp);
   try{
-    const size = 110;
     const qr = new QRCode(temp, { text, width:size, height:size, correctLevel: QRCode.CorrectLevel.M });
     const model = qr && qr._oQRCode;
     if(model && typeof model.getModuleCount==='function' && typeof model.isDark==='function'){
@@ -629,17 +629,14 @@ function renderQrCode(container, text){
           }
         }
       }
-      container.innerHTML = `<svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" style="display:block;background:#fff;">${rects}</svg>`;
-    } else {
-      // Záložní cesta, kdyby se interní API knihovny změnilo
-      const canvas = temp.querySelector('canvas');
-      let dataUrl = '';
-      if(canvas){ try{ dataUrl = canvas.toDataURL('image/png'); }catch(e){} }
-      if(dataUrl){
-        container.innerHTML = `<img src="${dataUrl}" width="${size}" height="${size}" style="display:block;width:${size}px;height:${size}px;">`;
-      }
+      return `<svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" style="display:block;background:#fff;">${rects}</svg>`;
     }
-  }catch(e){ console.error('QR render failed', e); }
+    // Záložní cesta, kdyby se interní API knihovny změnilo
+    const canvas = temp.querySelector('canvas');
+    let dataUrl = '';
+    if(canvas){ try{ dataUrl = canvas.toDataURL('image/png'); }catch(e){} }
+    return dataUrl ? `<img src="${dataUrl}" width="${size}" height="${size}" style="display:block;width:${size}px;height:${size}px;">` : '';
+  }catch(e){ console.error('QR render failed', e); return ''; }
   finally{ temp.remove(); }
 }
 function waitForImageReady(container){
@@ -1677,6 +1674,7 @@ function viewInvoicePreview(){
   const showSignature = co.showSignature!==false && inv.includeSignature!==false && !!co.signature;
   const showLogo = co.showLogo!==false && !!co.logo;
   const spayd = showQr ? buildSpayd(co, inv, roundedTotal) : null;
+  const qrSvgMarkup = spayd ? buildQrSvgMarkup(spayd) : '';
 
   const accent = co.invoiceAccent || '#1F5C4D';
   const sheetStyle = `--inv-accent:${accent};--inv-accent-soft:${hexToRgba(accent,0.12)};--inv-accent-tint:${hexToRgba(accent,0.05)};`;
@@ -1773,7 +1771,7 @@ function viewInvoicePreview(){
           <div class="bottom">
             ${showQr ? `
             <div class="qrbox">
-              <div class="qrimg" id="qr-holder"></div>
+              <div class="qrimg" id="qr-holder">${qrSvgMarkup}</div>
               <div>QR platba</div>
             </div>` : ''}
             <div class="totals">
@@ -1817,7 +1815,6 @@ function viewInvoicePreview(){
         <div class="card"><div class="label">Stav</div><span class="pill ${status}">${statusLabel(status)}</span></div>
       </div>
     </div>
-    <div data-spayd="${spayd?escapeAttr(spayd):''}"></div>
   `;
 }
 
@@ -1837,6 +1834,7 @@ function buildInvoiceSheetBlock(inv, idx){
   const showSignature = co.showSignature!==false && inv.includeSignature!==false && !!co.signature;
   const showLogo = co.showLogo!==false && !!co.logo;
   const spayd = showQr ? buildSpayd(co, inv, roundedTotal) : null;
+  const qrSvgMarkup = spayd ? buildQrSvgMarkup(spayd) : '';
   const accent = co.invoiceAccent || '#1F5C4D';
   const sheetStyle = `--inv-accent:${accent};--inv-accent-soft:${hexToRgba(accent,0.12)};--inv-accent-tint:${hexToRgba(accent,0.05)};`;
   const html = `<div class="print-invoice-block">
@@ -1921,7 +1919,7 @@ function buildInvoiceSheetBlock(inv, idx){
           <div class="bottom">
             ${showQr ? `
             <div class="qrbox">
-              <div class="qrimg" id="qr-holder-${idx}"></div>
+              <div class="qrimg" id="qr-holder-${idx}">${qrSvgMarkup}</div>
               <div>QR platba</div>
             </div>` : ''}
             <div class="totals">
@@ -1974,10 +1972,6 @@ async function downloadSelectedInvoicesPdf(ids){
     wrap.style.cssText = 'background:#fff;width:760px;';
     wrap.innerHTML = block.html;
     document.body.appendChild(wrap);
-    if(block.spayd){
-      renderQrCode(wrap.querySelector('#qr-holder-0'), block.spayd);
-      await waitForImageReady(wrap.querySelector('#qr-holder-0'));
-    }
     const sheetEl = wrap.querySelector('.invoice-sheet');
     if(sheetEl) sheetEl.classList.add('pdf-compact');
     try{
@@ -2004,11 +1998,6 @@ function printSelectedInvoices(ids){
   }
   const blocks = invoices.map((inv,idx)=> buildInvoiceSheetBlock(inv, idx));
   sheet.innerHTML = blocks.map(b=>b.html).join('');
-  blocks.forEach(b=>{
-    if(b.spayd){
-      renderQrCode(document.getElementById('qr-holder-'+b.idx), b.spayd);
-    }
-  });
   sheet.classList.add('printing');
   document.body.classList.add('printing-barcodes');
   const cleanup = ()=>{
@@ -4704,14 +4693,6 @@ function nl2br(s){ return escapeHtml(s).replace(/\n/g,'<br>'); }
 
 /* ---------- EVENTS ---------- */
 function afterRender(){
-  // QR code render
-  const spaydHolder = document.querySelector('[data-spayd]');
-  if(spaydHolder){
-    const val = spaydHolder.getAttribute('data-spayd');
-    const target = document.getElementById('qr-holder');
-    if(val && target) renderQrCode(target, val);
-  }
-
   const invoiceForm = document.getElementById('invoice-form');
   if(invoiceForm){
     invoiceForm.addEventListener('submit', onSubmitInvoice);
@@ -5961,18 +5942,6 @@ async function downloadInvoicePdf(id, triggerEl){
   if(!inv || !sheet || !window.html2pdf){ window.print(); return; }
   const originalLabel = triggerEl ? triggerEl.textContent : '';
   if(triggerEl){ triggerEl.textContent='Generuji…'; triggerEl.disabled = true; }
-  // Znovu vykreslit QR platbu jako hotový <img> těsně před generováním PDF —
-  // html2canvas nedokáže spolehlivě zachytit živý canvas z QR knihovny,
-  // takže se spoléhat na starší vykreslení z afterRender() není bezpečné.
-  const spaydHolder = document.querySelector('[data-spayd]');
-  const qrTarget = document.getElementById('qr-holder');
-  if(spaydHolder && qrTarget){
-    const spaydVal = spaydHolder.getAttribute('data-spayd');
-    if(spaydVal){
-      renderQrCode(qrTarget, spaydVal);
-      await waitForImageReady(qrTarget);
-    }
-  }
   sheet.classList.add('pdf-compact');
   try{
     await html2pdf().set({
