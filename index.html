@@ -5921,6 +5921,15 @@ async function downloadInvoicePdf(id, triggerEl){
   if(!inv || !sheet || !window.html2pdf){ window.print(); return; }
   const originalLabel = triggerEl ? triggerEl.textContent : '';
   if(triggerEl){ triggerEl.textContent='Generuji…'; triggerEl.disabled = true; }
+  // Znovu vykreslit QR platbu jako hotový <img> těsně před generováním PDF —
+  // html2canvas nedokáže spolehlivě zachytit živý canvas z QR knihovny,
+  // takže se spoléhat na starší vykreslení z afterRender() není bezpečné.
+  const spaydHolder = document.querySelector('[data-spayd]');
+  const qrTarget = document.getElementById('qr-holder');
+  if(spaydHolder && qrTarget){
+    const spaydVal = spaydHolder.getAttribute('data-spayd');
+    if(spaydVal) renderQrCode(qrTarget, spaydVal);
+  }
   sheet.classList.add('pdf-compact');
   try{
     await html2pdf().set({
