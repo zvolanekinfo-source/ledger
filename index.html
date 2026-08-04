@@ -313,6 +313,45 @@
 
   .invoice-sheet .inv-footer{margin-top:28px;padding-top:16px;border-top:1px solid var(--line);display:flex;justify-content:space-between;font-size:10.5px;color:var(--ink-soft);}
 
+  /* WIDGETY PŘEHLEDU */
+  .widget-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:20px;}
+  .widget-full{grid-column:1 / -1;}
+  .widget-half{grid-column:span 1;}
+  @media (max-width: 900px){ .widget-half{grid-column:1 / -1;} }
+  .widget-card{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:20px 22px;min-width:0;}
+  .widget-card[draggable="true"]{cursor:grab;}
+  .widget-card.drag-over{outline:2px dashed var(--accent);outline-offset:3px;}
+  .widget-card.dragging{opacity:0.4;}
+  .widget-head{display:flex;align-items:center;gap:10px;margin-bottom:14px;}
+  .widget-title-wrap{flex:1;min-width:0;}
+  .widget-title{font-weight:700;font-size:14.5px;}
+  .widget-subtitle{font-size:13px;color:var(--ink-soft);margin-top:2px;}
+  .widget-drag-handle{cursor:grab;color:var(--ink-soft);font-size:16px;user-select:none;line-height:1;}
+  .widget-add-bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:14px;padding:14px 16px;background:var(--paper);border:1px dashed var(--line);border-radius:10px;}
+  .widget-table{width:100%;border-collapse:collapse;font-size:13.5px;}
+  .widget-table th{text-align:left;font-size:10.5px;text-transform:uppercase;letter-spacing:0.4px;color:var(--ink-soft);padding:6px 8px;border-bottom:1px solid var(--line);font-weight:600;}
+  .widget-table td{padding:7px 8px;border-bottom:1px solid var(--line);}
+  .widget-table td.num, .widget-table th.num{text-align:right;font-family:'IBM Plex Mono',monospace;}
+  .widget-table tr:last-child td{border-bottom:none;}
+
+  /* REPORT BUILDER (modal) */
+  .modal-overlay{position:fixed;inset:0;background:rgba(24,36,32,0.45);display:flex;align-items:center;justify-content:center;z-index:200;padding:20px;}
+  .modal-card{background:var(--surface);border-radius:14px;max-width:520px;width:100%;max-height:86vh;overflow-y:auto;padding:26px 28px;box-shadow:0 20px 60px rgba(24,36,32,0.25);}
+  .modal-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;}
+  .modal-head h2{margin:0;font-size:19px;}
+
+  /* REPORT SHEET (tisk / PDF) */
+  #report-print-sheet{display:none;}
+  .report-sheet{background:#fff;width:760px;padding:48px 52px;}
+  .report-sheet .report-header{display:flex;justify-content:space-between;align-items:flex-end;border-bottom:2px solid var(--ink);padding-bottom:16px;margin-bottom:26px;}
+  .report-sheet .report-title{font-family:'Fraunces',serif;font-size:26px;font-weight:600;}
+  .report-sheet .report-meta{font-size:12px;color:var(--ink-soft);text-align:right;}
+  .report-sheet .report-widget{margin-bottom:26px;page-break-inside:avoid;}
+  .report-sheet .report-widget-title{font-weight:700;font-size:15px;margin-bottom:10px;border-bottom:1px solid var(--line);padding-bottom:6px;}
+  @media print{
+    #report-print-sheet.printing{display:block !important;background:#fff;padding:0;margin:0;}
+  }
+
   .preview-side{width:220px;display:flex;flex-direction:column;gap:8px;}
   #multi-invoice-print-sheet{display:none;}
   .print-invoice-block{page-break-after:always;}
@@ -567,6 +606,10 @@ let state = {
   preselectClientId: null,
   backupDates: [],
   dashboardFilter: { preset:'all', from:'', to:'', clientId:'', status:'' },
+  dashboardWidgets: null,
+  dashboardEditMode: false,
+  reportBuilderOpen: false,
+  reportSelection: {},
   invoiceFilter: { search:'', from:'', to:'', clientId:'', status:'' },
   invoiceSort: 'date-desc',
   lastLoginEmail: '',
@@ -935,6 +978,7 @@ function money(formattedText){
   return pricesHiddenForMe() ? '•••' : formattedText;
 }
 async function saveUserPermissions(){ await window.storage.set('user-permissions', JSON.stringify(state.userPermissions), true); }
+async function saveDashboardWidgets(){ await window.storage.set('dashboard-widgets:'+state.currentUserId, JSON.stringify(state.dashboardWidgets), true); }
 
 async function sbRequest(path, options = {}){
   await ensureFreshSession();
@@ -1037,6 +1081,7 @@ async function loadAll(){
   try{ const r = await window.storage.get('product-columns', true); state.productColumns = r ? JSON.parse(r.value) : null; }catch(e){ state.productColumns = null; }
   try{ const r = await window.storage.get('expiry-settings', true); state.expirySettings = r ? JSON.parse(r.value) : { value:90, unit:'days' }; }catch(e){ state.expirySettings = { value:90, unit:'days' }; }
   try{ const r = await window.storage.get('user-permissions', true); state.userPermissions = r ? JSON.parse(r.value) : {}; }catch(e){ state.userPermissions = {}; }
+  try{ const r = await window.storage.get('dashboard-widgets:'+state.currentUserId, true); state.dashboardWidgets = r ? JSON.parse(r.value) : null; }catch(e){ state.dashboardWidgets = null; }
   if(!state.productColumns) state.productColumns = DEFAULT_PRODUCT_COLUMNS.map(c=>({...c}));
   else {
     const existingKeys = new Set(state.productColumns.map(c=>c.key));
@@ -1168,12 +1213,28 @@ function applyDateRangeFromPreset(preset){
   if(preset==='month'){
     return { from: today.slice(0,7)+'-01', to: today };
   }
+  if(preset==='quarter'){
+    const d = new Date(today);
+    const qStartMonth = Math.floor(d.getMonth()/3)*3;
+    const start = new Date(d.getFullYear(), qStartMonth, 1);
+    return { from: start.toISOString().slice(0,10), to: today };
+  }
+  if(preset==='year'){
+    return { from: today.slice(0,4)+'-01-01', to: today };
+  }
   if(preset==='12m'){
     const d = new Date(today); d.setMonth(d.getMonth()-11); d.setDate(1);
     return { from: d.toISOString().slice(0,10), to: today };
   }
   return { from:'', to:'' }; // 'all' or 'custom'
 }
+function inDateRange(dateStr, range){
+  if(!dateStr) return false;
+  if(range.from && dateStr < range.from) return false;
+  if(range.to && dateStr > range.to) return false;
+  return true;
+}
+function emptyWidgetMsg(){ return `<p style="color:var(--ink-soft);font-size:13px;margin:0;">Pro vybrané období nejsou žádná data.</p>`; }
 
 function applyInvoiceFilters(list, f){
   return list.filter(inv=>{
@@ -1221,6 +1282,307 @@ function buildRevenueChart(list){
     bars += `<text x="${x+barW/2}" y="${h-padB+16}" text-anchor="middle" font-size="10.5" style="fill:var(--ink-soft);font-family:Inter,sans-serif;">${label}</text>`;
   });
   return `<svg viewBox="0 0 ${w} ${h}" style="width:100%;height:220px;display:block;">${grid}${bars}</svg>`;
+}
+
+/* ---------- WIDGETY PŘEHLEDU ---------- */
+function renderWidgetRevenueSummary(range){
+  const filtered = state.invoices.filter(inv=>inDateRange(inv.issueDate, range)).map(i=>({...i, status:invoiceStatus(i), t:invoiceTotals(i)}));
+  const revenue = filtered.reduce((s,i)=>s+i.t.total,0);
+  const unpaidSum = filtered.filter(i=>i.status!=='paid').reduce((s,i)=>s+i.t.total,0);
+  const overdueCount = filtered.filter(i=>i.status==='overdue').length;
+  return {
+    title: 'Souhrn tržeb',
+    bodyHtml: `<div class="cards" style="margin:0;">
+      <div class="card"><div class="label">Faktur</div><div class="value">${filtered.length}</div></div>
+      <div class="card"><div class="label">Fakturováno</div><div class="value accent num">${money(fmt(revenue)+' Kč')}</div></div>
+      <div class="card"><div class="label">Nezaplaceno</div><div class="value amber num">${money(fmt(unpaidSum)+' Kč')}</div></div>
+      <div class="card"><div class="label">Po splatnosti</div><div class="value red num">${overdueCount}</div></div>
+    </div>`
+  };
+}
+function renderWidgetRevenueChart(range){
+  const filtered = state.invoices.filter(inv=>inDateRange(inv.issueDate, range));
+  const revenue = filtered.reduce((s,i)=>s+invoiceTotals(i).total,0);
+  return {
+    title:'Výnos podle měsíce',
+    subtitle: money(fmt(revenue)+' Kč'),
+    bodyHtml: pricesHiddenForMe() ? `<p style="color:var(--ink-soft);font-size:13px;margin:0;">Graf výnosů je pro tebe skrytý.</p>` : buildRevenueChart(filtered)
+  };
+}
+function renderWidgetTopClients(range){
+  const filtered = state.invoices.filter(inv=>inDateRange(inv.issueDate, range));
+  const map = new Map();
+  filtered.forEach(inv=>{
+    const key = inv.clientId || '—';
+    const t = invoiceTotals(inv).total;
+    const cur = map.get(key) || { name:(clientById(inv.clientId)||{}).name || 'Neznámý odběratel', revenue:0, count:0 };
+    cur.revenue += t; cur.count += 1;
+    map.set(key, cur);
+  });
+  const rows = [...map.values()].sort((a,b)=>b.revenue-a.revenue).slice(0,10);
+  if(!rows.length) return { title:'Nejlepší odběratelé', bodyHtml: emptyWidgetMsg() };
+  return {
+    title:'Nejlepší odběratelé',
+    bodyHtml: `<table class="widget-table"><thead><tr><th>Odběratel</th><th class="num">Faktur</th><th class="num">Tržba</th></tr></thead><tbody>
+      ${rows.map(r=>`<tr><td>${escapeHtml(r.name)}</td><td class="num">${r.count}</td><td class="num">${money(fmt(r.revenue)+' Kč')}</td></tr>`).join('')}
+    </tbody></table>`
+  };
+}
+function renderWidgetTopProducts(range){
+  const filtered = state.invoices.filter(inv=>inDateRange(inv.issueDate, range));
+  const map = new Map();
+  filtered.forEach(inv=>{
+    (inv.items||[]).forEach(it=>{
+      const key = it.productId || ('desc:'+String(it.desc||'').trim().toLowerCase());
+      if(!key || key==='desc:') return;
+      const qty = parseFloat(it.qty)||0;
+      const name = it.productId ? ((productById(it.productId)||{}).name || it.desc || 'Smazaný produkt') : (it.desc || '—');
+      const cur = map.get(key) || { name, qty:0, revenue:0 };
+      cur.qty += qty;
+      cur.revenue += qty*(it.price||0);
+      map.set(key, cur);
+    });
+  });
+  const rows = [...map.values()].sort((a,b)=>b.revenue-a.revenue).slice(0,10);
+  if(!rows.length) return { title:'Nejprodávanější produkty', bodyHtml: emptyWidgetMsg() };
+  return {
+    title:'Nejprodávanější produkty',
+    bodyHtml: `<table class="widget-table"><thead><tr><th>Produkt</th><th class="num">Ks</th><th class="num">Tržba</th></tr></thead><tbody>
+      ${rows.map(r=>`<tr><td>${escapeHtml(r.name)}</td><td class="num">${fmt(r.qty)}</td><td class="num">${money(fmt(r.revenue)+' Kč')}</td></tr>`).join('')}
+    </tbody></table>`
+  };
+}
+function renderWidgetStockOverview(){
+  const all = state.products;
+  const stockValue = all.reduce((s,p)=>s+computeProductStockValue(p),0);
+  const lowCount = all.filter(p=>stockStatus(p)==='low').length;
+  const outCount = all.filter(p=>stockStatus(p)==='out').length;
+  return {
+    title:'Přehled skladu',
+    subtitle:'aktuální stav',
+    bodyHtml: `<div class="cards" style="margin:0;">
+      <div class="card"><div class="label">Produktů</div><div class="value">${all.length}</div></div>
+      <div class="card"><div class="label">Hodnota skladu</div><div class="value accent num">${money(fmt(stockValue)+' Kč')}</div></div>
+      <div class="card"><div class="label">Nízký stav</div><div class="value amber num">${lowCount}</div></div>
+      <div class="card"><div class="label">Není skladem</div><div class="value red num">${outCount}</div></div>
+    </div>`
+  };
+}
+function renderWidgetLowStock(){
+  const rows = state.products.filter(p=>!p.archived && stockStatus(p)!=='ok').sort((a,b)=>stockAvailable(a)-stockAvailable(b)).slice(0,15);
+  if(!rows.length) return { title:'Nízký stav skladu', subtitle:'aktuální stav', bodyHtml: `<p style="color:var(--ink-soft);font-size:13px;margin:0;">Všechno je dostatečně skladem. 🎉</p>` };
+  return {
+    title:'Nízký stav skladu',
+    subtitle:'aktuální stav',
+    bodyHtml: `<table class="widget-table"><thead><tr><th>Produkt</th><th class="num">Skladem</th><th class="num">Minimum</th><th>Stav</th></tr></thead><tbody>
+      ${rows.map(p=>`<tr><td>${escapeHtml(p.name)}</td><td class="num">${fmt(stockAvailable(p))}</td><td class="num">${fmt(p.stockMin||0)}</td><td><span class="pill ${stockPillClass(stockStatus(p))}">${stockLabel(stockStatus(p))}</span></td></tr>`).join('')}
+    </tbody></table>`
+  };
+}
+function renderWidgetTopSuppliers(range){
+  const map = new Map();
+  state.products.forEach(p=>{
+    if(!p.supplierId) return;
+    (p.movements||[]).forEach(m=>{
+      if(!(m.qty>0)) return;
+      if(m.type!=='příjem' && m.type!=='počáteční stav') return;
+      if(!inDateRange(String(m.date||'').slice(0,10), range)) return;
+      const cost = (m.qty||0)*(m.unitCost||0);
+      const cur = map.get(p.supplierId) || { name:(supplierById(p.supplierId)||{}).name||'—', total:0, count:0 };
+      cur.total += cost; cur.count += 1;
+      map.set(p.supplierId, cur);
+    });
+  });
+  const rows = [...map.values()].sort((a,b)=>b.total-a.total).slice(0,10);
+  if(!rows.length) return { title:'Nákupy od dodavatelů', bodyHtml: emptyWidgetMsg() };
+  return {
+    title:'Nákupy od dodavatelů',
+    bodyHtml: `<table class="widget-table"><thead><tr><th>Dodavatel</th><th class="num">Příjmů</th><th class="num">Nákup celkem</th></tr></thead><tbody>
+      ${rows.map(r=>`<tr><td>${escapeHtml(r.name)}</td><td class="num">${r.count}</td><td class="num">${money(fmt(r.total)+' Kč')}</td></tr>`).join('')}
+    </tbody></table>`
+  };
+}
+function renderWidgetInvoiceList(range){
+  const filtered = state.invoices.filter(inv=>inDateRange(inv.issueDate, range));
+  const sorted = [...filtered].sort((a,b)=>(b.issueDate||'').localeCompare(a.issueDate||''));
+  return {
+    title: `Faktury v období (${filtered.length})`,
+    bodyHtml: sorted.length ? renderInvoiceTableCompact(sorted) : emptyWidgetMsg()
+  };
+}
+function renderInvoiceTableCompact(list){
+  return `
+  <table class="widget-table">
+    <thead><tr><th>Číslo</th><th>Odběratel</th><th>Vystaveno</th><th class="num">Částka</th><th>Stav</th></tr></thead>
+    <tbody>
+      ${list.slice(0,25).map(inv=>{
+        const c = clientById(inv.clientId);
+        const t = invoiceTotals(inv);
+        const s = invoiceStatus(inv);
+        return `<tr>
+          <td>${escapeHtml(inv.number||'')}</td>
+          <td>${c ? escapeHtml(c.name) : '—'}</td>
+          <td>${inv.issueDate||''}</td>
+          <td class="num">${money(fmt(t.total)+' Kč')}</td>
+          <td><span class="pill ${s}">${statusLabel(s)}</span></td>
+        </tr>`;
+      }).join('')}
+    </tbody>
+  </table>
+  ${list.length>25?`<p style="font-size:12px;color:var(--ink-soft);margin:10px 0 0 0;">…a dalších ${list.length-25} faktur.</p>`:''}
+  `;
+}
+const WIDGET_DEFS = {
+  'revenue-summary': { label:'Souhrn tržeb', render: renderWidgetRevenueSummary, size:'full', tab:'dashboard' },
+  'revenue-chart':   { label:'Graf výnosů podle měsíce', render: renderWidgetRevenueChart, size:'full', tab:'dashboard' },
+  'top-clients':     { label:'Nejlepší odběratelé', render: renderWidgetTopClients, size:'half', tab:'clients' },
+  'top-products':    { label:'Nejprodávanější produkty', render: renderWidgetTopProducts, size:'half', tab:'products' },
+  'stock-overview':  { label:'Přehled skladu', render: renderWidgetStockOverview, size:'full', tab:'stock' },
+  'low-stock':       { label:'Nízký stav skladu', render: renderWidgetLowStock, size:'half', tab:'stock' },
+  'top-suppliers':   { label:'Nákupy od dodavatelů', render: renderWidgetTopSuppliers, size:'half', tab:'suppliers' },
+  'invoice-list':    { label:'Seznam faktur', render: renderWidgetInvoiceList, size:'full', tab:'invoices' }
+};
+const DEFAULT_DASHBOARD_WIDGETS = ['revenue-summary','revenue-chart','top-clients','top-products','stock-overview','low-stock','top-suppliers','invoice-list'];
+function visibleWidgetDefs(){
+  // Zaměstnanec s omezeným přístupem do záložek nevidí ani widget, který na
+  // tu záložku odkazuje (např. bez přístupu do Skladu nemá smysl mu ukazovat
+  // widget Nízký stav skladu na Přehledu).
+  return Object.keys(WIDGET_DEFS).filter(k => canAccessTab(WIDGET_DEFS[k].tab));
+}
+function activeDashboardWidgets(){
+  const allowed = new Set(visibleWidgetDefs());
+  const saved = (state.dashboardWidgets && state.dashboardWidgets.length) ? state.dashboardWidgets : DEFAULT_DASHBOARD_WIDGETS;
+  return saved.filter(k=>allowed.has(k));
+}
+function renderDashboardWidget(type, range, index, editMode){
+  const def = WIDGET_DEFS[type];
+  if(!def) return '';
+  const { title, subtitle, bodyHtml } = def.render(range);
+  return `
+    <div class="widget-card ${def.size==='half'?'widget-half':'widget-full'}" data-widget-index="${index}" ${editMode?'draggable="true"':''}>
+      <div class="widget-head">
+        ${editMode?'<span class="widget-drag-handle" title="Přetáhnout a přeuspořádat">⠿</span>':''}
+        <div class="widget-title-wrap">
+          <div class="widget-title">${escapeHtml(title)}</div>
+          ${subtitle?`<div class="widget-subtitle num">${subtitle}</div>`:''}
+        </div>
+        ${editMode?`<button type="button" class="iconbtn" data-action="remove-widget" data-index="${index}" title="Odebrat widget">✕</button>`:''}
+      </div>
+      <div class="widget-body">${bodyHtml}</div>
+    </div>
+  `;
+}
+
+function renderReportBuilder(range){
+  const keys = visibleWidgetDefs();
+  const co = state.companies[0] || {};
+  return `
+    <div class="modal-overlay no-print" data-action="close-report-builder-overlay">
+      <div class="modal-card" onclick="event.stopPropagation()">
+        <div class="modal-head">
+          <h2>Sestavit report</h2>
+          <button type="button" class="iconbtn" data-action="close-report-builder">✕</button>
+        </div>
+        <p style="font-size:13px;color:var(--ink-soft);margin-top:6px;">Vyber, co má report obsahovat. Použije se aktuálně vybrané období na Přehledu (${range.from||'začátek'} – ${range.to||'dnes'}).</p>
+        <div style="display:flex;flex-direction:column;gap:9px;margin:16px 0;">
+          ${keys.map(k=>`
+            <label style="display:flex;align-items:center;gap:8px;font-size:14px;">
+              <input type="checkbox" data-report-key="${k}" ${state.reportSelection[k]!==false?'checked':''}> ${escapeHtml(WIDGET_DEFS[k].label)}
+            </label>
+          `).join('')}
+        </div>
+        <div class="formfoot" style="justify-content:flex-end;gap:10px;">
+          <button type="button" class="btn secondary" data-action="print-report">🖨 Tisk</button>
+          <button type="button" class="btn" data-action="download-report-pdf">⬇ Stáhnout PDF</button>
+        </div>
+      </div>
+    </div>
+  `;
+}
+function readReportSelectionFromDom(){
+  document.querySelectorAll('[data-report-key]').forEach(cb=>{
+    state.reportSelection[cb.getAttribute('data-report-key')] = cb.checked;
+  });
+}
+function buildReportSheetHtml(range){
+  const co = state.companies[0] || {};
+  const keys = visibleWidgetDefs().filter(k=> state.reportSelection[k]!==false);
+  const periodLabel = (range.from||range.to) ? `${range.from||'začátek'} – ${range.to||'dnes'}` : 'Celé období';
+  const widgetsHtml = keys.map(k=>{
+    const def = WIDGET_DEFS[k];
+    if(!def) return '';
+    const { title, subtitle, bodyHtml } = def.render(range);
+    return `
+      <div class="report-widget">
+        <div class="report-widget-title">${escapeHtml(title)}${subtitle?` <span style="font-weight:400;color:var(--ink-soft);">— ${subtitle}</span>`:''}</div>
+        ${bodyHtml}
+      </div>
+    `;
+  }).join('');
+  return `
+    <div class="report-sheet">
+      <div class="report-header">
+        <div>
+          <div class="report-title">${escapeHtml(co.name||'Report')}</div>
+          <div style="font-size:13px;color:var(--ink-soft);margin-top:4px;">Souhrnný report</div>
+        </div>
+        <div class="report-meta">
+          <div>Období: ${escapeHtml(periodLabel)}</div>
+          <div>Vygenerováno: ${todayISO()}</div>
+        </div>
+      </div>
+      ${widgetsHtml || '<p style="color:var(--ink-soft);">Nevybral/a jsi žádnou sekci pro report.</p>'}
+    </div>
+  `;
+}
+function currentDashboardRange(){
+  const f = state.dashboardFilter;
+  return f.preset==='custom' ? { from:f.from, to:f.to } : applyDateRangeFromPreset(f.preset);
+}
+function printReport(){
+  readReportSelectionFromDom();
+  const range = currentDashboardRange();
+  let sheet = document.getElementById('report-print-sheet');
+  if(!sheet){
+    sheet = document.createElement('div');
+    sheet.id = 'report-print-sheet';
+    document.body.appendChild(sheet);
+  }
+  sheet.innerHTML = buildReportSheetHtml(range);
+  sheet.classList.add('printing');
+  document.body.classList.add('printing-barcodes');
+  const cleanup = ()=>{
+    sheet.classList.remove('printing');
+    document.body.classList.remove('printing-barcodes');
+    window.removeEventListener('afterprint', cleanup);
+  };
+  window.addEventListener('afterprint', cleanup);
+  setTimeout(()=> window.print(), 120);
+}
+async function downloadReportPdf(triggerEl){
+  if(!window.html2pdf) return;
+  readReportSelectionFromDom();
+  const range = currentDashboardRange();
+  const originalLabel = triggerEl ? triggerEl.textContent : '';
+  if(triggerEl){ triggerEl.textContent = 'Generuji…'; triggerEl.disabled = true; }
+  const wrap = document.createElement('div');
+  wrap.style.cssText = 'position:absolute;left:-9999px;top:0;background:#fff;width:760px;';
+  wrap.innerHTML = buildReportSheetHtml(range);
+  document.body.appendChild(wrap);
+  try{
+    await html2pdf().set({
+      margin: 0,
+      filename: `Report-${todayISO()}.pdf`,
+      image: { type:'jpeg', quality:0.98 },
+      html2canvas: { scale:2, useCORS:true, allowTaint:true, backgroundColor:'#ffffff' },
+      jsPDF: { unit:'pt', format:'a4', orientation:'portrait' },
+      pagebreak: { mode:['css','legacy'] }
+    }).from(wrap.firstElementChild).save();
+  }catch(err){ console.error(err); alert('Stažení reportu se nepovedlo, zkus to prosím znovu.'); }
+  finally{
+    wrap.remove();
+    if(triggerEl){ triggerEl.textContent = originalLabel || '⬇ Stáhnout PDF'; triggerEl.disabled = false; }
+  }
 }
 
 function clientOptions(selectedId){
@@ -1475,17 +1837,19 @@ function renderView(){
 /* ---------- DASHBOARD ---------- */
 function viewDashboard(){
   const f = state.dashboardFilter;
-  const filtered = applyInvoiceFilters(state.invoices, f).map(i=>({...i, status: invoiceStatus(i), t: invoiceTotals(i)}));
-  const revenue = filtered.reduce((s,i)=>s+i.t.total,0);
-  const unpaidSum = filtered.filter(i=>i.status!=='paid').reduce((s,i)=>s+i.t.total,0);
-  const overdueCount = filtered.filter(i=>i.status==='overdue').length;
-  const sorted = [...filtered].sort((a,b)=> (b.issueDate||'').localeCompare(a.issueDate||''));
-
-  const presets = [['month','Tento měsíc'],['12m','Posledních 12 měsíců'],['all','Vše'],['custom','Vlastní']];
+  const range = f.preset==='custom' ? { from:f.from, to:f.to } : applyDateRangeFromPreset(f.preset);
+  const presets = [['month','Tento měsíc'],['quarter','Toto čtvrtletí'],['year','Tento rok'],['12m','Posledních 12 měsíců'],['all','Vše'],['custom','Vlastní']];
+  const widgets = activeDashboardWidgets();
+  const editMode = !!state.dashboardEditMode;
+  const availableToAdd = visibleWidgetDefs().filter(k=>!widgets.includes(k));
 
   return `
     <div class="pagehead">
-      <div><h1>Přehled</h1><p class="desc">Stav fakturace za vybrané období.</p></div>
+      <div><h1>Přehled</h1><p class="desc">Statistiky za vybrané období — uprav si, co chceš vidět.</p></div>
+      <div style="display:flex;gap:10px;">
+        <button class="btn secondary no-print" data-action="toggle-dashboard-edit">${editMode?'✓ Hotovo':'⚙ Upravit widgety'}</button>
+        <button class="btn secondary no-print" data-action="open-report-builder">🖨 Sestavit report</button>
+      </div>
     </div>
 
     <div class="filter-bar no-print">
@@ -1496,29 +1860,23 @@ function viewDashboard(){
       <div class="filter-row">
         <div class="field"><label>Od</label><input type="date" id="dash-from" value="${f.from||''}"></div>
         <div class="field"><label>Do</label><input type="date" id="dash-to" value="${f.to||''}"></div>
-        <div class="field"><label>Odběratel</label><select id="dash-client">${clientOptions(f.clientId)}</select></div>
-        <div class="field"><label>Stav</label><select id="dash-status">${statusOptions(f.status)}</select></div>
       </div>
       ` : ''}
     </div>
 
-    <div class="cards">
-      <div class="card"><div class="label">Faktur ve výběru</div><div class="value">${filtered.length}</div></div>
-      <div class="card"><div class="label">Fakturováno celkem</div><div class="value accent num">${money(fmt(revenue)+' Kč')}</div></div>
-      <div class="card"><div class="label">Nezaplaceno</div><div class="value amber num">${money(fmt(unpaidSum)+' Kč')}</div></div>
-      <div class="card"><div class="label">Po splatnosti</div><div class="value red num">${overdueCount}</div></div>
+    ${editMode ? `
+    <div class="widget-add-bar no-print">
+      <span style="font-size:12px;text-transform:uppercase;letter-spacing:0.4px;color:var(--ink-soft);margin-right:4px;">Přidat widget:</span>
+      ${availableToAdd.length ? availableToAdd.map(k=>`<button type="button" class="chip" data-action="add-widget" data-type="${k}">+ ${escapeHtml(WIDGET_DEFS[k].label)}</button>`).join('') : '<span style="font-size:13px;color:var(--ink-soft);">Všechny dostupné widgety jsou už přidané.</span>'}
+      <p style="width:100%;font-size:12px;color:var(--ink-soft);margin:8px 0 0 0;">Přetáhni widgety za ⠿ a přeuspořádej si je podle sebe.</p>
+    </div>
+    ` : ''}
+
+    <div class="widget-grid" id="dashboard-widget-grid">
+      ${widgets.length ? widgets.map((type,i)=>renderDashboardWidget(type, range, i, editMode)).join('') : emptyState('Žádné widgety','Klikni na „Upravit widgety“ a přidej si, co chceš vidět.')}
     </div>
 
-    <div class="chart-card">
-      <div class="chart-head">
-        <div class="display">Výnos podle měsíce</div>
-        <div class="chart-total">${money(fmt(revenue)+' Kč')}</div>
-      </div>
-      ${pricesHiddenForMe() ? `<p style="color:var(--ink-soft);font-size:13px;">Graf výnosů je pro tebe skrytý.</p>` : buildRevenueChart(filtered)}
-    </div>
-
-    <div class="section-title">Faktury ve výběru (${filtered.length})</div>
-    ${sorted.length ? renderInvoiceTable(sorted) : emptyState('Žádné faktury pro tento filtr','Zkus zmenšit rozsah filtru nebo zvolit „Vše“.')}
+    ${state.reportBuilderOpen ? renderReportBuilder(range) : ''}
   `;
 }
 
@@ -4974,19 +5332,51 @@ function afterRender(){
   }
   setupClientCombo();
 
-  // dashboard filter controls
-  ['dash-from','dash-to','dash-client','dash-status'].forEach(id=>{
+  // dashboard filter controls (vlastní období)
+  ['dash-from','dash-to'].forEach(id=>{
     const el = document.getElementById(id);
     if(!el) return;
     el.addEventListener('change', ()=>{
       const from = document.getElementById('dash-from').value;
       const to = document.getElementById('dash-to').value;
-      const clientId = document.getElementById('dash-client').value;
-      const status = document.getElementById('dash-status').value;
-      state.dashboardFilter = { preset:'custom', from, to, clientId, status };
+      state.dashboardFilter = { ...state.dashboardFilter, preset:'custom', from, to };
       render();
     });
   });
+  // drag & drop přeuspořádání widgetů na Přehledu
+  const widgetGrid = document.getElementById('dashboard-widget-grid');
+  if(widgetGrid){
+    let dragSrcIndex = null;
+    widgetGrid.querySelectorAll('.widget-card[draggable="true"]').forEach(card=>{
+      card.addEventListener('dragstart', (e)=>{
+        dragSrcIndex = parseInt(card.getAttribute('data-widget-index'),10);
+        card.classList.add('dragging');
+        e.dataTransfer.effectAllowed = 'move';
+      });
+      card.addEventListener('dragend', ()=>{
+        card.classList.remove('dragging');
+        widgetGrid.querySelectorAll('.widget-card').forEach(c=>c.classList.remove('drag-over'));
+      });
+      card.addEventListener('dragover', (e)=>{
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+        card.classList.add('drag-over');
+      });
+      card.addEventListener('dragleave', ()=>{ card.classList.remove('drag-over'); });
+      card.addEventListener('drop', (e)=>{
+        e.preventDefault();
+        card.classList.remove('drag-over');
+        const targetIndex = parseInt(card.getAttribute('data-widget-index'),10);
+        if(dragSrcIndex===null || targetIndex===dragSrcIndex) return;
+        const widgets = activeDashboardWidgets();
+        const moved = widgets.splice(dragSrcIndex,1)[0];
+        widgets.splice(targetIndex,0,moved);
+        state.dashboardWidgets = widgets;
+        saveDashboardWidgets().catch(()=>{});
+        render();
+      });
+    });
+  }
   ['pstats-from','pstats-to'].forEach(id=>{
     const el = document.getElementById(id);
     if(!el) return;
@@ -5920,6 +6310,41 @@ document.addEventListener('click', async (e)=>{
     state.dashboardFilter = { ...state.dashboardFilter, preset, from: range.from, to: range.to };
     render();
   }
+  else if(action==='toggle-dashboard-edit'){
+    state.dashboardEditMode = !state.dashboardEditMode;
+    render();
+  }
+  else if(action==='add-widget'){
+    const type = el.getAttribute('data-type');
+    if(!WIDGET_DEFS[type]) return;
+    if(!state.dashboardWidgets || !state.dashboardWidgets.length) state.dashboardWidgets = [...DEFAULT_DASHBOARD_WIDGETS];
+    if(!state.dashboardWidgets.includes(type)) state.dashboardWidgets.push(type);
+    saveDashboardWidgets().catch(()=>{});
+    render();
+  }
+  else if(action==='remove-widget'){
+    const idx = parseInt(el.getAttribute('data-index'),10);
+    const widgets = activeDashboardWidgets();
+    const type = widgets[idx];
+    if(!state.dashboardWidgets || !state.dashboardWidgets.length) state.dashboardWidgets = [...DEFAULT_DASHBOARD_WIDGETS];
+    state.dashboardWidgets = state.dashboardWidgets.filter(k=>k!==type);
+    saveDashboardWidgets().catch(()=>{});
+    render();
+  }
+  else if(action==='open-report-builder'){
+    if(!state.reportSelection || !Object.keys(state.reportSelection).length){
+      state.reportSelection = {};
+      visibleWidgetDefs().forEach(k=> state.reportSelection[k] = true);
+    }
+    state.reportBuilderOpen = true;
+    render();
+  }
+  else if(action==='close-report-builder' || action==='close-report-builder-overlay'){
+    state.reportBuilderOpen = false;
+    render();
+  }
+  else if(action==='print-report'){ printReport(); }
+  else if(action==='download-report-pdf'){ downloadReportPdf(el); }
   else if(action==='products-stats-preset'){
     const preset = el.getAttribute('data-preset');
     const range = applyDateRangeFromPreset(preset);
