@@ -2624,7 +2624,7 @@ async function downloadSelectedInvoicesPdf(ids){
     if(sheetEl) sheetEl.classList.add('pdf-compact');
     try{
       await html2pdf().set({
-        margin: [14, 16],
+        margin: [24, 16, 10, 16],
         filename: `Faktura-${(inv.number||'doklad').replace(/[^\w.-]+/g,'_')}.pdf`,
         image: { type:'jpeg', quality:0.98 },
         html2canvas: { scale:2, useCORS:true, allowTaint:true, backgroundColor:'#ffffff' },
@@ -6738,7 +6738,7 @@ async function downloadInvoicePdf(id, triggerEl){
   sheet.classList.add('pdf-compact');
   try{
     await html2pdf().set({
-      margin: [14, 16],
+      margin: [24, 16, 10, 16],
       filename: `Faktura-${(inv.number||'doklad').replace(/[^\w.-]+/g,'_')}.pdf`,
       image: { type:'jpeg', quality:0.98 },
       html2canvas: { scale:2, useCORS:true, allowTaint:true, backgroundColor:'#ffffff' },
