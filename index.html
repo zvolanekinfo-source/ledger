@@ -342,12 +342,12 @@
 
   /* REPORT SHEET (tisk / PDF) */
   #report-print-sheet{display:none;}
-  .report-sheet{background:#fff;width:760px;padding:48px 52px;}
-  .report-sheet .report-header{display:flex;justify-content:space-between;align-items:flex-end;border-bottom:2px solid var(--ink);padding-bottom:16px;margin-bottom:26px;}
-  .report-sheet .report-title{font-family:'Fraunces',serif;font-size:26px;font-weight:600;}
+  .report-sheet{background:#fff;width:760px;padding:32px 40px;}
+  .report-sheet .report-header{display:flex;justify-content:space-between;align-items:flex-end;border-bottom:2px solid var(--ink);padding-bottom:12px;margin-bottom:18px;}
+  .report-sheet .report-title{font-family:'Fraunces',serif;font-size:24px;font-weight:600;}
   .report-sheet .report-meta{font-size:12px;color:var(--ink-soft);text-align:right;}
-  .report-sheet .report-widget{margin-bottom:26px;page-break-inside:avoid;}
-  .report-sheet .report-widget-title{font-weight:700;font-size:15px;margin-bottom:10px;border-bottom:1px solid var(--line);padding-bottom:6px;}
+  .report-sheet .report-widget{margin-bottom:16px;}
+  .report-sheet .report-widget-title{font-weight:700;font-size:14px;margin-bottom:8px;border-bottom:1px solid var(--line);padding-bottom:5px;}
   @media print{
     #report-print-sheet.printing{display:block !important;background:#fff;padding:0;margin:0;}
   }
@@ -1334,9 +1334,9 @@ function renderWidgetTopClients(range){
   });
   const rows = [...map.values()].sort((a,b)=>b.revenue-a.revenue).slice(0,10);
   const sheetRows = [['Odběratel','Faktur','Tržba (Kč)'], ...rows.map(r=>[r.name, r.count, r.revenue])];
-  if(!rows.length) return { title:'Nejlepší odběratelé', bodyHtml: emptyWidgetMsg(), sheetRows:[['Odběratel','Faktur','Tržba (Kč)']] };
+  if(!rows.length) return { title:'Nejvýkonnější odběratelé', bodyHtml: emptyWidgetMsg(), sheetRows:[['Odběratel','Faktur','Tržba (Kč)']] };
   return {
-    title:'Nejlepší odběratelé',
+    title:'Nejvýkonnější odběratelé',
     bodyHtml: `<table class="widget-table"><thead><tr><th>Odběratel</th><th class="num">Faktur</th><th class="num">Tržba</th></tr></thead><tbody>
       ${rows.map(r=>`<tr><td>${escapeHtml(r.name)}</td><td class="num">${r.count}</td><td class="num">${money(fmt(r.revenue)+' Kč')}</td></tr>`).join('')}
     </tbody></table>`,
@@ -1461,7 +1461,7 @@ function renderInvoiceTableCompact(list){
 const WIDGET_DEFS = {
   'revenue-summary': { label:'Souhrn tržeb', render: renderWidgetRevenueSummary, size:'full', tab:'dashboard' },
   'revenue-chart':   { label:'Graf výnosů podle měsíce', render: renderWidgetRevenueChart, size:'full', tab:'dashboard' },
-  'top-clients':     { label:'Nejlepší odběratelé', render: renderWidgetTopClients, size:'half', tab:'clients' },
+  'top-clients':     { label:'Nejvýkonnější odběratelé', render: renderWidgetTopClients, size:'half', tab:'clients' },
   'top-products':    { label:'Nejprodávanější produkty', render: renderWidgetTopProducts, size:'half', tab:'products' },
   'stock-overview':  { label:'Přehled skladu', render: renderWidgetStockOverview, size:'full', tab:'stock' },
   'low-stock':       { label:'Nízký stav skladu', render: renderWidgetLowStock, size:'half', tab:'stock' },
