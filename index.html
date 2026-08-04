@@ -610,6 +610,8 @@ let state = {
   dashboardEditMode: false,
   reportBuilderOpen: false,
   reportSelection: {},
+  reportPeriod: null,
+  reportFormat: 'pdf',
   invoiceFilter: { search:'', from:'', to:'', clientId:'', status:'' },
   invoiceSort: 'date-desc',
   lastLoginEmail: '',
@@ -1297,8 +1299,18 @@ function renderWidgetRevenueSummary(range){
       <div class="card"><div class="label">Fakturováno</div><div class="value accent num">${money(fmt(revenue)+' Kč')}</div></div>
       <div class="card"><div class="label">Nezaplaceno</div><div class="value amber num">${money(fmt(unpaidSum)+' Kč')}</div></div>
       <div class="card"><div class="label">Po splatnosti</div><div class="value red num">${overdueCount}</div></div>
-    </div>`
+    </div>`,
+    sheetRows: [['Ukazatel','Hodnota'], ['Faktur', filtered.length], ['Fakturováno (Kč)', revenue], ['Nezaplaceno (Kč)', unpaidSum], ['Po splatnosti (počet)', overdueCount]]
   };
+}
+function revenueByMonth(list){
+  const map = new Map();
+  list.forEach(inv=>{
+    const key = (inv.issueDate||'').slice(0,7);
+    if(!key || key.length!==7) return;
+    map.set(key, (map.get(key)||0) + invoiceTotals(inv).total);
+  });
+  return [...map.keys()].sort().map(m=>[m, map.get(m)]);
 }
 function renderWidgetRevenueChart(range){
   const filtered = state.invoices.filter(inv=>inDateRange(inv.issueDate, range));
@@ -1306,7 +1318,8 @@ function renderWidgetRevenueChart(range){
   return {
     title:'Výnos podle měsíce',
     subtitle: money(fmt(revenue)+' Kč'),
-    bodyHtml: pricesHiddenForMe() ? `<p style="color:var(--ink-soft);font-size:13px;margin:0;">Graf výnosů je pro tebe skrytý.</p>` : buildRevenueChart(filtered)
+    bodyHtml: pricesHiddenForMe() ? `<p style="color:var(--ink-soft);font-size:13px;margin:0;">Graf výnosů je pro tebe skrytý.</p>` : buildRevenueChart(filtered),
+    sheetRows: [['Měsíc','Výnos (Kč)'], ...revenueByMonth(filtered)]
   };
 }
 function renderWidgetTopClients(range){
@@ -1320,12 +1333,14 @@ function renderWidgetTopClients(range){
     map.set(key, cur);
   });
   const rows = [...map.values()].sort((a,b)=>b.revenue-a.revenue).slice(0,10);
-  if(!rows.length) return { title:'Nejlepší odběratelé', bodyHtml: emptyWidgetMsg() };
+  const sheetRows = [['Odběratel','Faktur','Tržba (Kč)'], ...rows.map(r=>[r.name, r.count, r.revenue])];
+  if(!rows.length) return { title:'Nejlepší odběratelé', bodyHtml: emptyWidgetMsg(), sheetRows:[['Odběratel','Faktur','Tržba (Kč)']] };
   return {
     title:'Nejlepší odběratelé',
     bodyHtml: `<table class="widget-table"><thead><tr><th>Odběratel</th><th class="num">Faktur</th><th class="num">Tržba</th></tr></thead><tbody>
       ${rows.map(r=>`<tr><td>${escapeHtml(r.name)}</td><td class="num">${r.count}</td><td class="num">${money(fmt(r.revenue)+' Kč')}</td></tr>`).join('')}
-    </tbody></table>`
+    </tbody></table>`,
+    sheetRows
   };
 }
 function renderWidgetTopProducts(range){
@@ -1344,12 +1359,14 @@ function renderWidgetTopProducts(range){
     });
   });
   const rows = [...map.values()].sort((a,b)=>b.revenue-a.revenue).slice(0,10);
-  if(!rows.length) return { title:'Nejprodávanější produkty', bodyHtml: emptyWidgetMsg() };
+  const sheetRows = [['Produkt','Ks','Tržba (Kč)'], ...rows.map(r=>[r.name, r.qty, r.revenue])];
+  if(!rows.length) return { title:'Nejprodávanější produkty', bodyHtml: emptyWidgetMsg(), sheetRows:[['Produkt','Ks','Tržba (Kč)']] };
   return {
     title:'Nejprodávanější produkty',
     bodyHtml: `<table class="widget-table"><thead><tr><th>Produkt</th><th class="num">Ks</th><th class="num">Tržba</th></tr></thead><tbody>
       ${rows.map(r=>`<tr><td>${escapeHtml(r.name)}</td><td class="num">${fmt(r.qty)}</td><td class="num">${money(fmt(r.revenue)+' Kč')}</td></tr>`).join('')}
-    </tbody></table>`
+    </tbody></table>`,
+    sheetRows
   };
 }
 function renderWidgetStockOverview(){
@@ -1365,18 +1382,21 @@ function renderWidgetStockOverview(){
       <div class="card"><div class="label">Hodnota skladu</div><div class="value accent num">${money(fmt(stockValue)+' Kč')}</div></div>
       <div class="card"><div class="label">Nízký stav</div><div class="value amber num">${lowCount}</div></div>
       <div class="card"><div class="label">Není skladem</div><div class="value red num">${outCount}</div></div>
-    </div>`
+    </div>`,
+    sheetRows: [['Ukazatel','Hodnota'], ['Produktů', all.length], ['Hodnota skladu (Kč)', stockValue], ['Nízký stav (počet)', lowCount], ['Není skladem (počet)', outCount]]
   };
 }
 function renderWidgetLowStock(){
   const rows = state.products.filter(p=>!p.archived && stockStatus(p)!=='ok').sort((a,b)=>stockAvailable(a)-stockAvailable(b)).slice(0,15);
-  if(!rows.length) return { title:'Nízký stav skladu', subtitle:'aktuální stav', bodyHtml: `<p style="color:var(--ink-soft);font-size:13px;margin:0;">Všechno je dostatečně skladem. 🎉</p>` };
+  const sheetRows = [['Produkt','Skladem','Minimum','Stav'], ...rows.map(p=>[p.name, stockAvailable(p), p.stockMin||0, stockLabel(stockStatus(p))])];
+  if(!rows.length) return { title:'Nízký stav skladu', subtitle:'aktuální stav', bodyHtml: `<p style="color:var(--ink-soft);font-size:13px;margin:0;">Všechno je dostatečně skladem.</p>`, sheetRows:[['Produkt','Skladem','Minimum','Stav']] };
   return {
     title:'Nízký stav skladu',
     subtitle:'aktuální stav',
     bodyHtml: `<table class="widget-table"><thead><tr><th>Produkt</th><th class="num">Skladem</th><th class="num">Minimum</th><th>Stav</th></tr></thead><tbody>
       ${rows.map(p=>`<tr><td>${escapeHtml(p.name)}</td><td class="num">${fmt(stockAvailable(p))}</td><td class="num">${fmt(p.stockMin||0)}</td><td><span class="pill ${stockPillClass(stockStatus(p))}">${stockLabel(stockStatus(p))}</span></td></tr>`).join('')}
-    </tbody></table>`
+    </tbody></table>`,
+    sheetRows
   };
 }
 function renderWidgetTopSuppliers(range){
@@ -1394,20 +1414,26 @@ function renderWidgetTopSuppliers(range){
     });
   });
   const rows = [...map.values()].sort((a,b)=>b.total-a.total).slice(0,10);
-  if(!rows.length) return { title:'Nákupy od dodavatelů', bodyHtml: emptyWidgetMsg() };
+  const sheetRows = [['Dodavatel','Příjmů','Nákup celkem (Kč)'], ...rows.map(r=>[r.name, r.count, r.total])];
+  if(!rows.length) return { title:'Nákupy od dodavatelů', bodyHtml: emptyWidgetMsg(), sheetRows:[['Dodavatel','Příjmů','Nákup celkem (Kč)']] };
   return {
     title:'Nákupy od dodavatelů',
     bodyHtml: `<table class="widget-table"><thead><tr><th>Dodavatel</th><th class="num">Příjmů</th><th class="num">Nákup celkem</th></tr></thead><tbody>
       ${rows.map(r=>`<tr><td>${escapeHtml(r.name)}</td><td class="num">${r.count}</td><td class="num">${money(fmt(r.total)+' Kč')}</td></tr>`).join('')}
-    </tbody></table>`
+    </tbody></table>`,
+    sheetRows
   };
 }
 function renderWidgetInvoiceList(range){
   const filtered = state.invoices.filter(inv=>inDateRange(inv.issueDate, range));
   const sorted = [...filtered].sort((a,b)=>(b.issueDate||'').localeCompare(a.issueDate||''));
+  const sheetRows = [['Číslo','Odběratel','Vystaveno','Splatnost','Částka (Kč)','Stav'], ...sorted.map(inv=>[
+    inv.number||'', (clientById(inv.clientId)||{}).name||'', inv.issueDate||'', inv.dueDate||'', invoiceTotals(inv).total, statusLabel(invoiceStatus(inv))
+  ])];
   return {
     title: `Faktury v období (${filtered.length})`,
-    bodyHtml: sorted.length ? renderInvoiceTableCompact(sorted) : emptyWidgetMsg()
+    bodyHtml: sorted.length ? renderInvoiceTableCompact(sorted) : emptyWidgetMsg(),
+    sheetRows
   };
 }
 function renderInvoiceTableCompact(list){
@@ -1473,31 +1499,62 @@ function renderDashboardWidget(type, range, index, editMode){
   `;
 }
 
-function renderReportBuilder(range){
+function renderReportBuilder(dashboardRange){
   const keys = visibleWidgetDefs();
-  const co = state.companies[0] || {};
+  const rp = state.reportPeriod || { preset: state.dashboardFilter.preset, from: dashboardRange.from, to: dashboardRange.to };
+  const presets = [['month','Tento měsíc'],['quarter','Toto čtvrtletí'],['year','Tento rok'],['12m','Posledních 12 měsíců'],['all','Vše'],['custom','Vlastní']];
   return `
     <div class="modal-overlay no-print" data-action="close-report-builder-overlay">
-      <div class="modal-card" onclick="event.stopPropagation()">
+      <div class="modal-card" data-action="noop">
         <div class="modal-head">
           <h2>Sestavit report</h2>
           <button type="button" class="iconbtn" data-action="close-report-builder">✕</button>
         </div>
-        <p style="font-size:13px;color:var(--ink-soft);margin-top:6px;">Vyber, co má report obsahovat. Použije se aktuálně vybrané období na Přehledu (${range.from||'začátek'} – ${range.to||'dnes'}).</p>
-        <div style="display:flex;flex-direction:column;gap:9px;margin:16px 0;">
-          ${keys.map(k=>`
-            <label style="display:flex;align-items:center;gap:8px;font-size:14px;">
-              <input type="checkbox" data-report-key="${k}" ${state.reportSelection[k]!==false?'checked':''}> ${escapeHtml(WIDGET_DEFS[k].label)}
-            </label>
-          `).join('')}
+
+        <div style="margin:16px 0;">
+          <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.4px;color:var(--ink-soft);margin-bottom:8px;">Období reportu</div>
+          <div class="filter-presets" style="margin-bottom:${rp.preset==='custom'?'10px':'0'};">
+            ${presets.map(([v,l])=>`<button type="button" class="chip ${rp.preset===v?'active':''}" data-action="report-period-preset" data-preset="${v}">${l}</button>`).join('')}
+          </div>
+          ${rp.preset==='custom' ? `
+          <div class="filter-row" style="margin-top:10px;">
+            <div class="field"><label>Od</label><input type="date" id="report-from" value="${rp.from||''}"></div>
+            <div class="field"><label>Do</label><input type="date" id="report-to" value="${rp.to||''}"></div>
+          </div>
+          ` : ''}
         </div>
+
+        <div style="margin:16px 0;">
+          <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.4px;color:var(--ink-soft);margin-bottom:8px;">Co má report obsahovat</div>
+          <div style="display:flex;flex-direction:column;gap:9px;">
+            ${keys.map(k=>`
+              <label style="display:flex;align-items:center;gap:8px;font-size:14px;">
+                <input type="checkbox" data-report-key="${k}" ${state.reportSelection[k]!==false?'checked':''}> ${escapeHtml(WIDGET_DEFS[k].label)}
+              </label>
+            `).join('')}
+          </div>
+        </div>
+
+        <div style="margin:16px 0;">
+          <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.4px;color:var(--ink-soft);margin-bottom:8px;">Formát ke stažení</div>
+          <div class="filter-presets">
+            <button type="button" class="chip ${state.reportFormat==='pdf'?'active':''}" data-action="report-format" data-format="pdf">PDF</button>
+            <button type="button" class="chip ${state.reportFormat==='xlsx'?'active':''}" data-action="report-format" data-format="xlsx">Excel (.xlsx)</button>
+          </div>
+        </div>
+
         <div class="formfoot" style="justify-content:flex-end;gap:10px;">
-          <button type="button" class="btn secondary" data-action="print-report">🖨 Tisk</button>
-          <button type="button" class="btn" data-action="download-report-pdf">⬇ Stáhnout PDF</button>
+          <button type="button" class="btn secondary" data-action="print-report">Tisk</button>
+          <button type="button" class="btn" data-action="download-report">Stáhnout</button>
         </div>
       </div>
     </div>
   `;
+}
+function reportRange(){
+  const rp = state.reportPeriod;
+  if(!rp) return currentDashboardRange();
+  return rp.preset==='custom' ? { from:rp.from, to:rp.to } : applyDateRangeFromPreset(rp.preset);
 }
 function readReportSelectionFromDom(){
   document.querySelectorAll('[data-report-key]').forEach(cb=>{
@@ -1541,7 +1598,7 @@ function currentDashboardRange(){
 }
 function printReport(){
   readReportSelectionFromDom();
-  const range = currentDashboardRange();
+  const range = reportRange();
   let sheet = document.getElementById('report-print-sheet');
   if(!sheet){
     sheet = document.createElement('div');
@@ -1559,10 +1616,14 @@ function printReport(){
   window.addEventListener('afterprint', cleanup);
   setTimeout(()=> window.print(), 120);
 }
+async function downloadReport(triggerEl){
+  if(state.reportFormat==='xlsx') downloadReportXlsx(triggerEl);
+  else await downloadReportPdf(triggerEl);
+}
 async function downloadReportPdf(triggerEl){
   if(!window.html2pdf) return;
   readReportSelectionFromDom();
-  const range = currentDashboardRange();
+  const range = reportRange();
   const originalLabel = triggerEl ? triggerEl.textContent : '';
   if(triggerEl){ triggerEl.textContent = 'Generuji…'; triggerEl.disabled = true; }
   const wrap = document.createElement('div');
@@ -1581,7 +1642,36 @@ async function downloadReportPdf(triggerEl){
   }catch(err){ console.error(err); alert('Stažení reportu se nepovedlo, zkus to prosím znovu.'); }
   finally{
     wrap.remove();
-    if(triggerEl){ triggerEl.textContent = originalLabel || '⬇ Stáhnout PDF'; triggerEl.disabled = false; }
+    if(triggerEl){ triggerEl.textContent = originalLabel || 'Stáhnout'; triggerEl.disabled = false; }
+  }
+}
+function downloadReportXlsx(triggerEl){
+  if(!window.XLSX){ alert('Export do Excelu není dostupný.'); return; }
+  readReportSelectionFromDom();
+  const range = reportRange();
+  const keys = visibleWidgetDefs().filter(k=> state.reportSelection[k]!==false);
+  if(!keys.length){ alert('Vyber aspoň jednu sekci pro report.'); return; }
+  const originalLabel = triggerEl ? triggerEl.textContent : '';
+  if(triggerEl){ triggerEl.textContent = 'Generuji…'; triggerEl.disabled = true; }
+  try{
+    const wb = XLSX.utils.book_new();
+    const usedNames = new Set();
+    keys.forEach(k=>{
+      const def = WIDGET_DEFS[k];
+      if(!def) return;
+      const { sheetRows } = def.render(range);
+      if(!sheetRows || !sheetRows.length) return;
+      let sheetName = def.label.replace(/[\\/?*[\]:]/g,' ').slice(0,31) || k;
+      let n = 1;
+      while(usedNames.has(sheetName)){ sheetName = (def.label.slice(0,28)+' '+(++n)); }
+      usedNames.add(sheetName);
+      const ws = XLSX.utils.aoa_to_sheet(sheetRows);
+      XLSX.utils.book_append_sheet(wb, ws, sheetName);
+    });
+    XLSX.writeFile(wb, `Report-${todayISO()}.xlsx`, { bookType:'xlsx' });
+  }catch(err){ console.error(err); alert('Stažení reportu se nepovedlo, zkus to prosím znovu.'); }
+  finally{
+    if(triggerEl){ triggerEl.textContent = originalLabel || 'Stáhnout'; triggerEl.disabled = false; }
   }
 }
 
@@ -1847,8 +1937,8 @@ function viewDashboard(){
     <div class="pagehead">
       <div><h1>Přehled</h1><p class="desc">Statistiky za vybrané období — uprav si, co chceš vidět.</p></div>
       <div style="display:flex;gap:10px;">
-        <button class="btn secondary no-print" data-action="toggle-dashboard-edit">${editMode?'✓ Hotovo':'⚙ Upravit widgety'}</button>
-        <button class="btn secondary no-print" data-action="open-report-builder">🖨 Sestavit report</button>
+        <button class="btn secondary no-print" data-action="toggle-dashboard-edit">${editMode?'Hotovo':'Upravit widgety'}</button>
+        <button class="btn secondary no-print" data-action="open-report-builder">Sestavit report</button>
       </div>
     </div>
 
@@ -5343,6 +5433,17 @@ function afterRender(){
       render();
     });
   });
+  ['report-from','report-to'].forEach(id=>{
+    const el = document.getElementById(id);
+    if(!el) return;
+    el.addEventListener('change', ()=>{
+      readReportSelectionFromDom();
+      const from = document.getElementById('report-from').value;
+      const to = document.getElementById('report-to').value;
+      state.reportPeriod = { preset:'custom', from, to };
+      render();
+    });
+  });
   // drag & drop přeuspořádání widgetů na Přehledu
   const widgetGrid = document.getElementById('dashboard-widget-grid');
   if(widgetGrid){
@@ -6336,15 +6437,33 @@ document.addEventListener('click', async (e)=>{
       state.reportSelection = {};
       visibleWidgetDefs().forEach(k=> state.reportSelection[k] = true);
     }
+    if(!state.reportPeriod){
+      const dr = currentDashboardRange();
+      state.reportPeriod = { preset: state.dashboardFilter.preset, from: dr.from, to: dr.to };
+    }
     state.reportBuilderOpen = true;
     render();
   }
   else if(action==='close-report-builder' || action==='close-report-builder-overlay'){
+    readReportSelectionFromDom();
     state.reportBuilderOpen = false;
     render();
   }
+  else if(action==='noop'){ /* absorbuje klik uvnitř modálního okna, aby ho nezavřel overlay */ }
+  else if(action==='report-period-preset'){
+    readReportSelectionFromDom();
+    const preset = el.getAttribute('data-preset');
+    const range = applyDateRangeFromPreset(preset);
+    state.reportPeriod = { preset, from: range.from, to: range.to };
+    render();
+  }
+  else if(action==='report-format'){
+    readReportSelectionFromDom();
+    state.reportFormat = el.getAttribute('data-format');
+    render();
+  }
   else if(action==='print-report'){ printReport(); }
-  else if(action==='download-report-pdf'){ downloadReportPdf(el); }
+  else if(action==='download-report'){ downloadReport(el); }
   else if(action==='products-stats-preset'){
     const preset = el.getAttribute('data-preset');
     const range = applyDateRangeFromPreset(preset);
