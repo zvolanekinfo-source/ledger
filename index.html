@@ -534,14 +534,20 @@
     body.printing-barcodes > #app{display:none !important;}
   }
 
-  .invoice-sheet.pdf-compact .inv-body{padding:22px 34px !important;}
-  .invoice-sheet.pdf-compact .inv-header{padding-bottom:14px !important;margin-bottom:14px !important;}
-  .invoice-sheet.pdf-compact .info-grid{margin-bottom:16px !important;}
-  .invoice-sheet.pdf-compact .info-card{padding:12px 14px !important;font-size:12px !important;line-height:1.45 !important;}
-  .invoice-sheet.pdf-compact table.lines td{padding:8px 10px !important;}
-  .invoice-sheet.pdf-compact .signoff{margin-top:16px !important;}
-  .invoice-sheet.pdf-compact .note{margin-top:12px !important;padding-top:10px !important;}
-  .invoice-sheet.pdf-compact .inv-footer{margin-top:12px !important;padding-top:8px !important;}
+  .invoice-sheet.pdf-compact .inv-body{padding:18px 30px !important;}
+  .invoice-sheet.pdf-compact .inv-header{padding-bottom:10px !important;margin-bottom:10px !important;}
+  .invoice-sheet.pdf-compact .info-grid{margin-bottom:12px !important;}
+  .invoice-sheet.pdf-compact .info-card{padding:10px 12px !important;font-size:11.5px !important;line-height:1.4 !important;}
+  .invoice-sheet.pdf-compact table.lines{margin-bottom:10px !important;}
+  .invoice-sheet.pdf-compact table.lines td{padding:6px 8px !important;font-size:12.5px !important;}
+  .invoice-sheet.pdf-compact table.lines thead th{padding:6px 8px !important;}
+  .invoice-sheet.pdf-compact .totals .trow{padding:3px 0 !important;}
+  .invoice-sheet.pdf-compact .signoff{margin-top:10px !important;}
+  .invoice-sheet.pdf-compact .note{margin-top:8px !important;padding-top:8px !important;}
+  .invoice-sheet.pdf-compact .inv-footer{margin-top:8px !important;padding-top:6px !important;}
+  .invoice-sheet.pdf-compact{border:none !important;box-shadow:none !important;border-radius:0 !important;}
+  .invoice-sheet table.lines tr{page-break-inside:avoid;break-inside:avoid;}
+  .invoice-sheet .info-grid,.invoice-sheet .totals,.invoice-sheet .qrbox,.invoice-sheet .signoff{page-break-inside:avoid;break-inside:avoid;}
 
   @media print{
     .sidebar,.pagehead,.preview-side,.no-print{display:none !important;}
@@ -2618,12 +2624,12 @@ async function downloadSelectedInvoicesPdf(ids){
     if(sheetEl) sheetEl.classList.add('pdf-compact');
     try{
       await html2pdf().set({
-        margin: 0,
+        margin: [14, 16],
         filename: `Faktura-${(inv.number||'doklad').replace(/[^\w.-]+/g,'_')}.pdf`,
         image: { type:'jpeg', quality:0.98 },
         html2canvas: { scale:2, useCORS:true, allowTaint:true, backgroundColor:'#ffffff' },
         jsPDF: { unit:'pt', format:'a4', orientation:'portrait' },
-        pagebreak: { mode:['avoid-all'] }
+        pagebreak: { mode:['css','legacy'] }
       }).from(sheetEl || wrap).save();
     }catch(err){ console.error(err); }
     finally{ wrap.remove(); }
@@ -6732,12 +6738,12 @@ async function downloadInvoicePdf(id, triggerEl){
   sheet.classList.add('pdf-compact');
   try{
     await html2pdf().set({
-      margin: 0,
+      margin: [14, 16],
       filename: `Faktura-${(inv.number||'doklad').replace(/[^\w.-]+/g,'_')}.pdf`,
       image: { type:'jpeg', quality:0.98 },
       html2canvas: { scale:2, useCORS:true, allowTaint:true, backgroundColor:'#ffffff' },
       jsPDF: { unit:'pt', format:'a4', orientation:'portrait' },
-      pagebreak: { mode:['avoid-all'] }
+      pagebreak: { mode:['css','legacy'] }
     }).from(sheet).save();
   } catch(err){
     console.error(err);
