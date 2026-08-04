@@ -552,6 +552,7 @@ let state = {
   companyNotice: '',
   colleagueError: '',
   editingUserCredsId: null,
+  editingUserNameId: null,
   userCredsError: '',
   userCredsNotice: '',
   viewingClientId: null,
@@ -1917,7 +1918,7 @@ function viewInvoicePreview(){
                 <div class="meta-row"><span>Forma úhrady</span><span>${escapeHtml(inv.paymentMethod||'Bankovním převodem')}</span></div>
                 <div class="meta-row"><span>Datum vystavení</span><span>${inv.issueDate||''}</span></div>
                 <div class="meta-row"><span>Datum splatnosti</span><span>${inv.dueDate||''}</span></div>
-                <div class="meta-row"><span>Zd. plnění</span><span>${inv.taxDate||''}</span></div>
+                ${co.vatPayer!==false?`<div class="meta-row"><span>Zd. plnění</span><span>${inv.taxDate||''}</span></div>`:''}
                 ${inv.variableSymbol?`<div class="meta-row"><span>Variabilní symbol</span><span>${escapeHtml(inv.variableSymbol)}</span></div>`:''}
                 ${inv.constantSymbol?`<div class="meta-row"><span>Konstantní symbol</span><span>${escapeHtml(inv.constantSymbol)}</span></div>`:''}
                 ${inv.orderNumber?`<div class="meta-row"><span>Číslo objednávky</span><span>${escapeHtml(inv.orderNumber)}</span></div>`:''}
@@ -2065,7 +2066,7 @@ function buildInvoiceSheetBlock(inv, idx){
                 <div class="meta-row"><span>Forma úhrady</span><span>${escapeHtml(inv.paymentMethod||'Bankovním převodem')}</span></div>
                 <div class="meta-row"><span>Datum vystavení</span><span>${inv.issueDate||''}</span></div>
                 <div class="meta-row"><span>Datum splatnosti</span><span>${inv.dueDate||''}</span></div>
-                <div class="meta-row"><span>Zd. plnění</span><span>${inv.taxDate||''}</span></div>
+                ${co.vatPayer!==false?`<div class="meta-row"><span>Zd. plnění</span><span>${inv.taxDate||''}</span></div>`:''}
                 ${inv.variableSymbol?`<div class="meta-row"><span>Variabilní symbol</span><span>${escapeHtml(inv.variableSymbol)}</span></div>`:''}
                 ${inv.constantSymbol?`<div class="meta-row"><span>Konstantní symbol</span><span>${escapeHtml(inv.constantSymbol)}</span></div>`:''}
                 ${inv.orderNumber?`<div class="meta-row"><span>Číslo objednávky</span><span>${escapeHtml(inv.orderNumber)}</span></div>`:''}
@@ -2615,7 +2616,11 @@ function renderPermissionEditor(u){
       <label style="display:flex;align-items:center;gap:6px;font-size:13px;margin-bottom:10px;color:var(--ink);">
         <input type="checkbox" data-perm-hide-prices ${perm.hidePrices?'checked':''}> Skrýt ceny a částky
       </label>
-      <button type="button" class="btn secondary small" data-action="save-permissions" data-userid="${u.id}">Uložit oprávnění</button>
+      <div style="display:flex;align-items:center;gap:10px;">
+        <button type="button" class="btn secondary small" data-action="save-permissions" data-userid="${u.id}">Uložit oprávnění</button>
+        <span class="perm-save-status" style="font-size:12.5px;color:var(--accent);"></span>
+      </div>
+      <p style="font-size:11.5px;color:var(--ink-soft);margin:10px 0 0 0;">Projeví se, až se „${escapeHtml(u.name)}“ příště přihlásí (nebo appku obnoví). Jako admin u sebe žádné omezení nikdy neuvidíš — admin má vždy přístup ke všemu.</p>
     </div>
   `;
 }
@@ -2654,8 +2659,16 @@ function viewSettings(){
       ${state.users.map(u=>{
         const isMe = u.id===state.currentUserId;
         const amAdmin = isCurrentUserAdmin();
+        const isEditingName = state.editingUserNameId===u.id;
         return `
         <div class="user-row" style="${(amAdmin && !isMe && u.role!=='admin')?'border-bottom:none;padding-bottom:0;':''}">
+          ${isEditingName ? `
+          <form data-action="submit-user-name" id="user-name-form" data-userid="${u.id}" style="display:flex;gap:8px;align-items:center;flex:1;">
+            <input type="text" name="name" value="${escapeAttr(u.name)}" autofocus style="flex:1;max-width:260px;padding:7px 9px;border:1px solid var(--line);border-radius:4px;font-size:14px;">
+            <button type="submit" class="btn secondary small">Uložit</button>
+            <button type="button" class="btn-link" data-action="cancel-edit-user-name">Zrušit</button>
+          </form>
+          ` : `
           <span>
             <span style="font-weight:600;">${escapeHtml(u.name)}</span>${isMe?' (ty)':''}
             ${u.role==='admin'?' <span class="badge">admin</span>':''}
@@ -2668,6 +2681,7 @@ function viewSettings(){
             ${(amAdmin && !isMe) ? `<button class="btn danger small" data-action="remove-user" data-userid="${escapeAttr(u.id)}" data-name="${escapeAttr(u.name)}">Odebrat přístup</button>` : ''}
             ${(amAdmin && !isMe) ? `<button class="btn danger small" data-action="delete-user-account" data-id="${u.id}" data-name="${escapeAttr(u.name)}">Smazat účet natrvalo</button>` : ''}
           </span>
+          `}
         </div>
         ${(amAdmin && !isMe && u.role!=='admin') ? renderPermissionEditor(u) : ''}
       `;}).join('')}
@@ -4919,6 +4933,8 @@ function afterRender(){
   if(colleagueForm){ colleagueForm.addEventListener('submit', onSubmitColleague); }
   const userCredsForm = document.getElementById('user-creds-form');
   if(userCredsForm){ userCredsForm.addEventListener('submit', onSubmitUserCreds); }
+  const userNameForm = document.getElementById('user-name-form');
+  if(userNameForm){ userNameForm.addEventListener('submit', onSubmitUserName); }
   const clientForm = document.getElementById('client-form');
   if(clientForm){ clientForm.addEventListener('submit', onSubmitClient); }
   const supplierForm = document.getElementById('supplier-form');
@@ -5779,19 +5795,13 @@ document.addEventListener('click', async (e)=>{
     }
   }
   else if(action==='edit-user-name'){
-    const u = state.users.find(x=>x.id===id);
-    if(!u) return;
     if(!isCurrentUserAdmin()){ alert('Upravit jméno smí jen admin.'); return; }
-    const newName = prompt('Jméno:', u.name);
-    if(newName===null) return;
-    const trimmed = newName.trim();
-    if(!trimmed){ alert('Jméno nesmí být prázdné.'); return; }
-    try{
-      await updateTeamMember(u.id, { display_name: trimmed });
-      await loadTeam();
-      if(u.id===state.currentUserId) state.currentUser = trimmed;
-      render();
-    }catch(err){ alert('Úprava se nepovedla, zkus to prosím znovu.'); }
+    state.editingUserNameId = id;
+    render();
+  }
+  else if(action==='cancel-edit-user-name'){
+    state.editingUserNameId = null;
+    render();
   }
   else if(action==='save-permissions'){
     if(!isCurrentUserAdmin()){ alert('Oprávnění smí měnit jen admin.'); return; }
@@ -5804,11 +5814,14 @@ document.addEventListener('click', async (e)=>{
     });
     const hidePrices = container.querySelector('[data-perm-hide-prices]').checked;
     state.userPermissions[userId] = { tabs, hidePrices };
+    const statusEl = container.querySelector('.perm-save-status');
     try{
       await saveUserPermissions();
-      el.textContent = 'Uloženo ✓';
-      setTimeout(()=>{ el.textContent = 'Uložit oprávnění'; }, 1500);
-    }catch(err){ alert('Uložení oprávnění se nepovedlo, zkus to prosím znovu.'); }
+      if(statusEl) statusEl.textContent = 'Uloženo ✓';
+    }catch(err){
+      if(statusEl){ statusEl.textContent = 'Uložení se nepovedlo.'; statusEl.style.color = 'var(--red)'; }
+      else alert('Uložení oprávnění se nepovedlo, zkus to prosím znovu.');
+    }
   }
   else if(action==='toggle-admin'){
     if(!isCurrentUserAdmin()){ alert('Roli smí měnit jen admin.'); return; }
@@ -6376,6 +6389,28 @@ async function onSubmitUserCreds(e){
   }catch(err){
     state.userCredsError = err.message || 'Změna se nepovedla.';
     render();
+  }
+}
+
+async function onSubmitUserName(e){
+  e.preventDefault();
+  const fd = new FormData(e.target);
+  const userId = e.target.getAttribute('data-userid');
+  const u = state.users.find(x=>x.id===userId);
+  if(!u) return;
+  const trimmed = (fd.get('name')||'').trim();
+  if(!trimmed){ alert('Jméno nesmí být prázdné.'); return; }
+  const btn = e.target.querySelector('button[type="submit"]');
+  if(btn) btn.disabled = true;
+  try{
+    await updateTeamMember(u.id, { display_name: trimmed });
+    await loadTeam();
+    if(u.id===state.currentUserId) state.currentUser = trimmed;
+    state.editingUserNameId = null;
+    render();
+  }catch(err){
+    alert('Úprava se nepovedla, zkus to prosím znovu.');
+    if(btn) btn.disabled = false;
   }
 }
 
