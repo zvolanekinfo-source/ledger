@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>ledgers — fakturační kniha</title>
+<title>ledgers — podnikový systém</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
@@ -1709,7 +1709,7 @@ function render(){
     <div class="sidebar">
       <div class="brand">
         <div class="display">ledgers</div>
-        <div class="sub">Fakturační kniha</div>
+        <div class="sub">Podnikový systém</div>
       </div>
       ${canAccessTab('dashboard')?`<div class="navitem ${state.view==='dashboard'?'active':''}" data-action="nav" data-view="dashboard">Přehled</div>`:''}
       ${canAccessTab('invoices')?`<div class="navitem ${state.view==='invoices'||state.view==='invoice-form'||state.view==='invoice-preview'?'active':''}" data-action="nav" data-view="invoices">Faktury</div>`:''}
@@ -1741,7 +1741,7 @@ function renderAuth(){
         <div class="side-top">
           <div class="side-mark">L</div>
           <div class="side-brand">ledgers</div>
-          <div class="side-sub">Sdílená fakturační kniha pro tebe a tvůj tým — jedno místo pro faktury, odběratele a přehledy.</div>
+          <div class="side-sub">Komplexní systém pro fakturaci, sklad a řízení firmy.</div>
         </div>
         <div class="side-foot">© ${new Date().getFullYear()} · ledgers</div>
       </div>
@@ -1749,7 +1749,7 @@ function renderAuth(){
         <div class="login-card">
           <div class="brand-head">
             <div class="display">${titles[view] || 'Vítej zpět'}</div>
-            <div class="sub">${subs[view] !== undefined ? subs[view] : 'Přihlas se ke sdílené fakturaci.'}</div>
+            <div class="sub">${subs[view] !== undefined ? subs[view] : 'Přihlas se do systému.'}</div>
           </div>
           ${(view==='login'||view==='register') ? `
           <div class="auth-tabs">
@@ -1812,7 +1812,7 @@ function renderResetPasswordForm(){
 
 function renderRegisterForm(){
   return `
-    <div class="auth-subtitle">Vytvoř si účet pro sdílenou fakturaci. Přihlašovací údaje spravuje a hashuje Supabase Auth, ledgers je nikdy neuvidí v čitelné podobě.</div>
+    <div class="auth-subtitle">Založ si firemní účet. Přihlašovací údaje spravuje a hashuje Supabase Auth, ledgers je nikdy neuvidí v čitelné podobě.</div>
     <form id="register-form">
       <div class="field"><label>Jméno (zobrazí se kolegům)</label><input name="displayName" required autofocus></div>
       <div class="field"><label>E-mail</label><input name="email" type="email" autocomplete="username" required></div>
