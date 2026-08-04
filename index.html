@@ -1639,7 +1639,7 @@ async function downloadReportPdf(triggerEl){
   document.body.appendChild(wrap);
   try{
     await html2pdf().set({
-      margin: 0,
+      margin: [20, 16, 10, 16],
       filename: `Report-${todayISO()}.pdf`,
       image: { type:'jpeg', quality:0.98 },
       html2canvas: { scale:2, useCORS:true, allowTaint:true, backgroundColor:'#ffffff' },
