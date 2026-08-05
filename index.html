@@ -12,20 +12,20 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jsbarcode/3.11.5/JsBarcode.all.min.js"></script>
 <style>
   :root{
-    --ink:#182420;
-    --ink-soft:#5C6B66;
-    --paper:#EEF0EA;
+    --ink:#1A2233;
+    --ink-soft:#64748B;
+    --paper:#F4F6F9;
     --surface:#FFFFFF;
-    --line:#D7D9CF;
-    --accent:#1F5C4D;
-    --accent-soft:#DCE8E2;
+    --line:#E3E8EF;
+    --accent:#3B6FE0;
+    --accent-soft:#E8EFFD;
     --amber:#B8802B;
     --amber-soft:#F3E6CD;
-    --red:#AE4530;
-    --red-soft:#F3DCD4;
-    --inv-accent:#1F5C4D;
-    --inv-accent-soft:#DCE8E2;
-    --inv-accent-tint:rgba(31,92,77,0.06);
+    --red:#C0392B;
+    --red-soft:#F8E2DE;
+    --inv-accent:#3B6FE0;
+    --inv-accent-soft:#E8EFFD;
+    --inv-accent-tint:rgba(59,111,224,0.06);
   }
   *{box-sizing:border-box;}
   html,body{margin:0;padding:0;}
@@ -47,7 +47,7 @@
     width:220px;
     flex-shrink:0;
     background:var(--ink);
-    color:#EDEFEA;
+    color:#EEF2FA;
     display:flex;
     flex-direction:column;
     padding:24px 0;
@@ -58,12 +58,12 @@
     margin-bottom:16px;
   }
   .brand .display{font-size:22px;font-weight:600;letter-spacing:0.3px;color:#fff;}
-  .brand .sub{font-size:11px;color:#9BAAA3;text-transform:uppercase;letter-spacing:1.5px;margin-top:2px;}
+  .brand .sub{font-size:11px;color:#93A0BE;text-transform:uppercase;letter-spacing:1.5px;margin-top:2px;}
   .navitem{
     display:flex;align-items:center;gap:10px;
     padding:11px 22px;
     font-size:14px;
-    color:#C9D2CC;
+    color:#C4CEE0;
     border-left:3px solid transparent;
     transition:background .15s;
   }
@@ -73,8 +73,8 @@
     color:#fff;
     border-left:3px solid var(--accent-soft);
   }
-  .navitem .n{font-family:'IBM Plex Mono',monospace;font-size:11px;color:#7C8B84;width:18px;}
-  .sidebar-foot{margin-top:auto;padding:16px 22px 20px 22px;font-size:11px;color:#647069;border-top:1px solid rgba(255,255,255,0.1);}
+  .navitem .n{font-family:'IBM Plex Mono',monospace;font-size:11px;color:#7C89A0;width:18px;}
+  .sidebar-foot{margin-top:auto;padding:16px 22px 20px 22px;font-size:11px;color:#5C6B8A;border-top:1px solid rgba(255,255,255,0.1);}
 
   /* MAIN */
   .main{flex:1;padding:36px 44px;max-width:1900px;}
@@ -90,7 +90,7 @@
     font-size:14px;
     font-weight:500;
   }
-  .btn:hover{background:#0f1815;}
+  .btn:hover{background:#10192E;}
   .btn.secondary{background:transparent;color:var(--ink);border:1px solid var(--line);}
   .btn.secondary:hover{background:#fff;}
   .btn.danger{background:transparent;color:var(--red);border:1px solid var(--red-soft);}
@@ -393,10 +393,10 @@
     display:flex;flex-direction:column;justify-content:space-between;
     padding:56px 56px;
     background:
-      radial-gradient(560px 420px at 15% 12%, rgba(220,232,226,0.16), transparent 60%),
-      radial-gradient(680px 520px at 88% 90%, rgba(184,128,43,0.14), transparent 55%),
-      linear-gradient(155deg, #14201c 0%, var(--ink) 55%, #0f1815 100%);
-    color:#EDEFEA;
+      radial-gradient(560px 420px at 15% 12%, rgba(203,222,255,0.18), transparent 60%),
+      radial-gradient(680px 520px at 88% 90%, rgba(99,152,255,0.16), transparent 55%),
+      linear-gradient(155deg, #101929 0%, var(--ink) 55%, #0B1220 100%);
+    color:#EEF2FA;
   }
   .login-side::before{
     content:'';position:absolute;inset:0;
@@ -410,13 +410,13 @@
   .login-side .side-mark{
     display:inline-flex;align-items:center;justify-content:center;
     width:44px;height:44px;border-radius:11px;
-    background:rgba(220,232,226,0.12);border:1px solid rgba(220,232,226,0.22);
+    background:rgba(203,222,255,0.14);border:1px solid rgba(203,222,255,0.24);
     font-family:'Fraunces',serif;font-weight:600;font-size:19px;color:#fff;
     margin-bottom:22px;
   }
   .login-side .side-brand{font-family:'Fraunces',serif;font-size:30px;font-weight:600;color:#fff;margin-bottom:8px;}
-  .login-side .side-sub{font-size:14.5px;color:#AEBBB4;max-width:320px;line-height:1.55;}
-  .login-side .side-foot{position:relative;z-index:1;font-size:12px;color:#7C8B84;letter-spacing:0.3px;}
+  .login-side .side-sub{font-size:14.5px;color:#9FB0CC;max-width:320px;line-height:1.55;}
+  .login-side .side-foot{position:relative;z-index:1;font-size:12px;color:#7C89A0;letter-spacing:0.3px;}
   .login-form-side{
     flex:1 1 54%;
     display:flex;align-items:center;justify-content:center;
@@ -436,8 +436,8 @@
   .auth-tab.disabled{opacity:.35;cursor:not-allowed;}
   .auth-subtitle{font-size:13px;color:var(--ink-soft);margin:-6px 0 18px 0;}
   .whoami{display:flex;flex-direction:column;align-items:flex-start;gap:6px;min-width:0;}
-  .whoami .name{font-size:13px;color:#EDEFEA;font-weight:600;max-width:100%;overflow-wrap:break-word;word-break:break-word;line-height:1.35;}
-  .whoami button{background:none;border:none;color:#9BAAA3;font-size:12px;text-decoration:underline;padding:0;flex-shrink:0;}
+  .whoami .name{font-size:13px;color:#EEF2FA;font-weight:600;max-width:100%;overflow-wrap:break-word;word-break:break-word;line-height:1.35;}
+  .whoami button{background:none;border:none;color:#93A0BE;font-size:12px;text-decoration:underline;padding:0;flex-shrink:0;}
   .user-row{display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-bottom:1px solid var(--line);font-size:14px;}
   .user-row:last-child{border-bottom:none;}
 
@@ -748,7 +748,7 @@ function todayISO(){ return new Date().toISOString().slice(0,10); }
 function addDays(dateStr, days){ const d = new Date(dateStr); d.setDate(d.getDate()+days); return d.toISOString().slice(0,10); }
 function stripDiacritics(s){ return (s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,''); }
 function hexToRgba(hex, alpha){
-  const h = (hex||'#1F5C4D').replace('#','');
+  const h = (hex||'#3B6FE0').replace('#','');
   const full = h.length===3 ? h.split('').map(c=>c+c).join('') : h;
   const r = parseInt(full.substring(0,2),16)||0, g = parseInt(full.substring(2,4),16)||0, b = parseInt(full.substring(4,6),16)||0;
   return `rgba(${r},${g},${b},${alpha})`;
@@ -1199,7 +1199,7 @@ async function loadAll(){
     showRegistration:false, regDate:'', regCourt:'', regSection:'', regInsert:'',
     prefix:'', nextNumber:1, defaultDueDays:'', defaultNote:'',
     invoiceTerms:'',
-    defaultPaymentMethod:'', invoiceAccent:'#1F5C4D',
+    defaultPaymentMethod:'', invoiceAccent:'#3B6FE0',
     logo:'', signature:'', stamp:'', showLogo:true, showStamp:true, showSignature:true, showQr:true,
     inventoryValuationMethod:'average', logoScale:100, signatureScale:100, stampScale:100
   };
@@ -2558,7 +2558,7 @@ function viewInvoicePreview(){
   const spayd = showQr ? buildSpayd(co, inv, roundedTotal) : null;
   const qrSvgMarkup = spayd ? buildQrSvgMarkup(spayd) : '';
 
-  const accent = co.invoiceAccent || '#1F5C4D';
+  const accent = co.invoiceAccent || '#3B6FE0';
   const sheetStyle = `--inv-accent:${accent};--inv-accent-soft:${hexToRgba(accent,0.12)};--inv-accent-tint:${hexToRgba(accent,0.05)};`;
 
   return `
@@ -2717,7 +2717,7 @@ function buildInvoiceSheetBlock(inv, idx){
   const showLogo = co.showLogo!==false && !!co.logo;
   const spayd = showQr ? buildSpayd(co, inv, roundedTotal) : null;
   const qrSvgMarkup = spayd ? buildQrSvgMarkup(spayd) : '';
-  const accent = co.invoiceAccent || '#1F5C4D';
+  const accent = co.invoiceAccent || '#3B6FE0';
   const sheetStyle = `--inv-accent:${accent};--inv-accent-soft:${hexToRgba(accent,0.12)};--inv-accent-tint:${hexToRgba(accent,0.05)};`;
   const html = `<div class="print-invoice-block">
       <div class="invoice-sheet ${inv.colorMode==='bw'?'bw-mode':''}" id="invoice-sheet-${idx}" style="${sheetStyle}">
@@ -4186,7 +4186,7 @@ function renderBarcodeToSvg(svgEl, source, type){
   if(!barcodeLibReady()) return null;
   try{
     const { value, format } = buildBarcodeForType(source, type || 'EAN13');
-    JsBarcode(svgEl, value, { format, displayValue:true, fontSize:13, height:46, margin:6, background:'#ffffff', lineColor:'#182420' });
+    JsBarcode(svgEl, value, { format, displayValue:true, fontSize:13, height:46, margin:6, background:'#ffffff', lineColor:'#1A2233' });
     return value;
   }catch(e){ console.error('Barcode render failed', e); return null; }
 }
@@ -4198,11 +4198,11 @@ function renderAutoBarcodeToSvg(svgEl, rawValue){
   const v = String(rawValue||'');
   const format = /^\d{13}$/.test(v) ? 'EAN13' : /^\d{8}$/.test(v) ? 'EAN8' : 'CODE128';
   try{
-    JsBarcode(svgEl, v, { format, displayValue:true, fontSize:13, height:46, margin:6, background:'#ffffff', lineColor:'#182420' });
+    JsBarcode(svgEl, v, { format, displayValue:true, fontSize:13, height:46, margin:6, background:'#ffffff', lineColor:'#1A2233' });
     return true;
   }catch(e){
     try{
-      JsBarcode(svgEl, v, { format:'CODE128', displayValue:true, fontSize:13, height:46, margin:6, background:'#ffffff', lineColor:'#182420' });
+      JsBarcode(svgEl, v, { format:'CODE128', displayValue:true, fontSize:13, height:46, margin:6, background:'#ffffff', lineColor:'#1A2233' });
       return true;
     }catch(e2){
       console.error('Barcode render failed', e2);
@@ -4823,10 +4823,10 @@ function setupProductForm(){
     svg.innerHTML = '';
     let usedFallback = false;
     try{
-      JsBarcode(svg, value, { format:'EAN13', displayValue:true, fontSize:13, height:46, margin:6, background:'#ffffff', lineColor:'#182420' });
+      JsBarcode(svg, value, { format:'EAN13', displayValue:true, fontSize:13, height:46, margin:6, background:'#ffffff', lineColor:'#1A2233' });
     }catch(e){
       try{
-        JsBarcode(svg, value, { format:'CODE128', displayValue:true, fontSize:13, height:46, margin:6, background:'#ffffff', lineColor:'#182420' });
+        JsBarcode(svg, value, { format:'CODE128', displayValue:true, fontSize:13, height:46, margin:6, background:'#ffffff', lineColor:'#1A2233' });
         usedFallback = true;
       }catch(e2){ console.error('Barcode render failed', e2); }
     }
@@ -5213,8 +5213,8 @@ function printProductCodeOnly(productIds){
     if(!svg || !barcodeLibReady()) return;
     const v = String(p.number || p.ean || '');
     const format = /^\d{13}$/.test(v) ? 'EAN13' : /^\d{8}$/.test(v) ? 'EAN8' : 'CODE128';
-    try{ JsBarcode(svg, v, { format, displayValue:true, fontSize:14, margin:6, background:'#ffffff', lineColor:'#182420' }); }
-    catch(e){ try{ JsBarcode(svg, v, { format:'CODE128', displayValue:true, fontSize:14, margin:6, background:'#ffffff', lineColor:'#182420' }); }catch(e2){ console.error(e2); } }
+    try{ JsBarcode(svg, v, { format, displayValue:true, fontSize:14, margin:6, background:'#ffffff', lineColor:'#1A2233' }); }
+    catch(e){ try{ JsBarcode(svg, v, { format:'CODE128', displayValue:true, fontSize:14, margin:6, background:'#ffffff', lineColor:'#1A2233' }); }catch(e2){ console.error(e2); } }
   });
   sheet.classList.add('printing');
   document.body.classList.add('printing-barcodes');
@@ -7054,7 +7054,7 @@ async function onSubmitInvoice(e){
       tagline:'', bankName:'', swift:'', website:'', registration:'',
       prefix: new Date().getFullYear().toString(), nextNumber:1, defaultDueDays:14, defaultNote:'Děkujeme za spolupráci.',
       invoiceTerms:'Fakturovaná částka bude odečtena z uvedeného účtu. V případě prodlení s úhradou je odběratel povinen uhradit úrok z prodlení dle platné legislativy.',
-      defaultPaymentMethod:'Bankovním převodem', invoiceAccent:'#1F5C4D',
+      defaultPaymentMethod:'Bankovním převodem', invoiceAccent:'#3B6FE0',
       logo:'', signature:'', stamp:'', showLogo:true, showStamp:true, showSignature:true, showQr:true
     };
     state.companies.push(newCompany);
@@ -7358,7 +7358,7 @@ window.addEventListener('unhandledrejection', (e)=>{
 
 /* ---------- INIT ---------- */
 (async function(){
-  document.getElementById('app').innerHTML = '<div style="padding:60px;font-family:Inter,sans-serif;color:#5C6B66;">Načítám…</div>';
+  document.getElementById('app').innerHTML = '<div style="padding:60px;font-family:Inter,sans-serif;color:#64748B;">Načítám…</div>';
 
   // Návrat ze Stripe Checkout (po zaplacení / po zrušení) — jen vyčistíme
   // URL, samotné ověření platby řeší afterLogin() + billing-gate obrazovka.
