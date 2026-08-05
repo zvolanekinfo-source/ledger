@@ -364,6 +364,21 @@
 
   /* LOGIN */
   .login-wrap{min-height:100vh;display:flex;background:var(--surface);}
+
+  /* VÝBĚR PLÁNU / FAKTURAČNÍ ÚDAJE */
+  .plan-wrap{min-height:100vh;background:var(--paper);padding:60px 24px;}
+  .plan-head{text-align:center;margin-bottom:36px;}
+  .plan-grid{max-width:920px;margin:0 auto;display:grid;grid-template-columns:repeat(3,1fr);gap:20px;}
+  @media (max-width:840px){ .plan-grid{grid-template-columns:1fr;} }
+  .plan-card{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:26px 24px;text-align:center;display:flex;flex-direction:column;}
+  .plan-name{font-family:'Fraunces',serif;font-size:22px;font-weight:600;}
+  .plan-period{color:var(--ink-soft);font-size:12px;text-transform:uppercase;letter-spacing:0.5px;margin-top:2px;}
+  .plan-price{font-size:28px;font-weight:700;margin:16px 0 6px 0;font-family:'IBM Plex Mono',monospace;}
+  .plan-price span{font-size:13px;font-weight:400;color:var(--ink-soft);margin-left:4px;}
+  .plan-desc{font-size:13px;color:var(--ink-soft);flex:1;margin:8px 0 0 0;}
+  .billing-form{max-width:480px;margin:0 auto;background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:28px 30px;}
+  .billing-form .field-row{display:flex;gap:12px;}
+  .billing-form .field-row .field{flex:1;}
   .login-side{
     flex:1 1 46%;
     position:relative;
@@ -581,6 +596,12 @@ let state = {
   userPermissions: {},
   currentUser: null,
   currentUserId: null,
+  tenantId: null,
+  subscription: null, // { plan, billing_period, status, current_period_end }
+  selectedPlan: null, // 'basic-monthly' | 'basic-yearly' | 'pro-lifetime'
+  pendingDisplayName: '',
+  billingError: '',
+  checkoutCanceled: false,
   authView: 'login', // 'login' | 'register' | 'forgot' | 'reset-password'
   recoverySession: null,
   authError: '',
@@ -917,6 +938,100 @@ async function updateOwnAuthUser(fields){
    Vyžaduje nasazenou funkci "admin-users" (viz admin-users/index.ts) a
    volajícího s rolí "admin" v team_members — ledgers to jen volá, samotné
    ověření a service-role klíč zůstávají bezpečně na serveru. */
+async function callCreateCheckout(payload){
+  await ensureFreshSession();
+  const res = await fetch(`${SUPABASE_URL}/functions/v1/create-checkout`, {
+    method: 'POST',
+    headers: { 'apikey': SUPABASE_KEY, 'Authorization': 'Bearer ' + (session?session.access_token:''), 'Content-Type':'application/json' },
+    body: JSON.stringify(payload)
+  });
+  const data = await res.json().catch(()=>({}));
+  if(!res.ok) throw new Error(data.error || 'Nepovedlo se zahájit platbu.');
+  return data;
+}
+async function onSubmitBillingDetails(e){
+  e.preventDefault();
+  const fd = new FormData(e.target);
+  const tenantName = (fd.get('tenantName')||'').trim();
+  const billingDetails = {
+    name: (fd.get('name')||'').trim(),
+    email: (fd.get('email')||'').trim(),
+    ico: (fd.get('ico')||'').trim(),
+    dic: (fd.get('dic')||'').trim(),
+    address: (fd.get('address')||'').trim(),
+    city: (fd.get('city')||'').trim(),
+    zip: (fd.get('zip')||'').trim(),
+    country: (fd.get('country')||'CZ').trim().toUpperCase(),
+  };
+  if(!tenantName || !billingDetails.name || !billingDetails.email){
+    state.billingError = 'Vyplň prosím povinná pole.';
+    render();
+    return;
+  }
+  const btn = e.target.querySelector('button[type="submit"]');
+  if(btn){ btn.disabled = true; btn.textContent = 'Přesměrovávám na platbu…'; }
+  try{
+    const { url } = await callCreateCheckout({ planKey: state.selectedPlan, tenantName, billingDetails });
+    window.location.href = url;
+  }catch(err){
+    state.billingError = err.message || 'Nepovedlo se zahájit platbu, zkus to prosím znovu.';
+    if(btn){ btn.disabled = false; btn.textContent = 'Pokračovat k platbě'; }
+    render();
+  }
+}
+function renderBillingGate(){
+  const sub = state.subscription;
+  const status = sub ? sub.status : 'none';
+  if(state.checkoutCanceled && status === 'pending'){
+    return `
+      <div class="plan-wrap">
+        <div class="plan-head">
+          <div class="side-mark" style="margin:0 auto 14px auto;">L</div>
+          <div class="display" style="font-size:24px;">Platba byla zrušena</div>
+          <p class="sub" style="max-width:440px;margin:8px auto 0 auto;">Platbu jsi nedokončil/a. Klidně to zkus znovu, kdykoliv budeš připravený/á.</p>
+        </div>
+        <div style="text-align:center;display:flex;gap:10px;justify-content:center;">
+          <button type="button" class="btn" data-action="auth-switch" data-view="select-plan">Vybrat plán znovu</button>
+          <button type="button" class="btn-link" data-action="logout">Odhlásit se</button>
+        </div>
+      </div>
+    `;
+  }
+  const messages = {
+    pending: { title:'Čekáme na potvrzení platby', body:'Pokud jsi platbu právě dokončil/a, potvrzení může trvat pár vteřin — stránka se sama zkusí obnovit.' },
+    past_due: { title:'Platba se nezdařila', body:'Poslední platba za předplatné se nepovedla. Zkontroluj prosím platební metodu ve Stripe, nebo nás kontaktuj.' },
+    canceled: { title:'Předplatné bylo zrušeno', body:'Tvé předplatné už není aktivní. Pro obnovení přístupu nás prosím kontaktuj.' },
+    none: { title:'Předplatné nenalezeno', body:'K tvé firmě zatím není přiřazený žádný plán.' },
+  };
+  const m = messages[status] || messages.none;
+  return `
+    <div class="plan-wrap">
+      <div class="plan-head">
+        <div class="side-mark" style="margin:0 auto 14px auto;">L</div>
+        <div class="display" style="font-size:24px;">${m.title}</div>
+        <p class="sub" style="max-width:440px;margin:8px auto 0 auto;">${m.body}</p>
+      </div>
+      <div style="text-align:center;display:flex;gap:10px;justify-content:center;">
+        <button type="button" class="btn secondary" data-action="refresh-subscription">Zkontrolovat znovu</button>
+        <button type="button" class="btn-link" data-action="logout">Odhlásit se</button>
+      </div>
+    </div>
+  `;
+}
+function afterRenderBillingGate(){
+  if(state._pollTimer){ clearTimeout(state._pollTimer); state._pollTimer = null; }
+  if(state.subscription && state.subscription.status === 'pending'){
+    state._pollTimer = setTimeout(async ()=>{
+      await loadSubscriptionStatus();
+      if(state.subscription && state.subscription.status === 'active'){
+        await loadAll();
+        state.view = firstAccessibleView();
+      }
+      render();
+    }, 4000);
+  }
+}
+
 async function callAdminUsers(payload){
   await ensureFreshSession();
   const res = await fetch(`${SUPABASE_URL}/functions/v1/admin-users`, {
@@ -1007,25 +1122,29 @@ async function sbRequest(path, options = {}){
 
 window.storage = {
   async get(key){
-    const rows = await (await sbRequest(`/app_storage?key=eq.${encodeURIComponent(key)}&select=value`)).json();
+    if(!state.tenantId) throw new Error('Chybí přiřazení k firmě (tenant).');
+    const rows = await (await sbRequest(`/tenant_data?tenant_id=eq.${encodeURIComponent(state.tenantId)}&key=eq.${encodeURIComponent(key)}&select=value`)).json();
     if(!rows.length) return null;
     return { key, value: rows[0].value };
   },
   async set(key, value){
-    await sbRequest('/app_storage?on_conflict=key', {
+    if(!state.tenantId) throw new Error('Chybí přiřazení k firmě (tenant).');
+    await sbRequest('/tenant_data?on_conflict=tenant_id,key', {
       method: 'POST',
       headers: { 'Prefer': 'resolution=merge-duplicates,return=minimal' },
-      body: JSON.stringify({ key, value, updated_at: new Date().toISOString() })
+      body: JSON.stringify({ tenant_id: state.tenantId, key, value, updated_at: new Date().toISOString() })
     });
     return { key, value };
   },
   async delete(key){
-    await sbRequest(`/app_storage?key=eq.${encodeURIComponent(key)}`, { method: 'DELETE' });
+    if(!state.tenantId) throw new Error('Chybí přiřazení k firmě (tenant).');
+    await sbRequest(`/tenant_data?tenant_id=eq.${encodeURIComponent(state.tenantId)}&key=eq.${encodeURIComponent(key)}`, { method: 'DELETE' });
     return { key, deleted: true };
   },
   async list(prefix){
+    if(!state.tenantId) throw new Error('Chybí přiřazení k firmě (tenant).');
     const filter = prefix ? `&key=like.${encodeURIComponent(prefix)}*` : '';
-    const rows = await (await sbRequest(`/app_storage?select=key${filter}`)).json();
+    const rows = await (await sbRequest(`/tenant_data?tenant_id=eq.${encodeURIComponent(state.tenantId)}&select=key${filter}`)).json();
     return { keys: rows.map(r => r.key) };
   }
 };
@@ -1035,9 +1154,9 @@ window.storage = {
    ke sdíleným datům (viz RLS na app_storage v supabase-setup.sql). */
 async function loadTeam(){
   try{
-    const res = await sbRequest('/team_members?select=user_id,email,display_name,role&order=created_at.asc');
+    const res = await sbRequest('/team_members?select=user_id,email,display_name,role,tenant_id&order=created_at.asc');
     const rows = await res.json();
-    state.users = rows.map(r=>({ id:r.user_id, name:r.display_name, email:r.email, role:r.role||'member' }));
+    state.users = rows.map(r=>({ id:r.user_id, name:r.display_name, email:r.email, role:r.role||'member', tenantId:r.tenant_id }));
   }catch(e){ console.error(e); state.users = []; }
 }
 async function insertTeamMember(user_id, email, display_name){
@@ -1701,6 +1820,17 @@ function render(){
     afterRenderAuth();
     return;
   }
+  if(!state.tenantId){
+    // Přihlášený, ale ještě nevybral plán / nedokončil založení firmy.
+    app.innerHTML = renderAuth();
+    afterRenderAuth();
+    return;
+  }
+  if(!state.subscription || state.subscription.status !== 'active'){
+    app.innerHTML = renderBillingGate();
+    afterRenderBillingGate();
+    return;
+  }
   const neededTab = VIEW_TO_TAB[state.view];
   if(neededTab && !canAccessTab(neededTab)){
     state.view = firstAccessibleView();
@@ -1731,8 +1861,16 @@ function render(){
 }
 
 /* ---------- AUTH ---------- */
+const PLAN_DEFS = {
+  'basic-monthly': { plan:'basic', label:'Basic', period:'měsíčně', price:'499 Kč', priceNote:'/ měsíc', desc:'Předplatné, měsíční platba.' },
+  'basic-yearly':  { plan:'basic', label:'Basic', period:'ročně', price:'4 980 Kč', priceNote:'/ rok', desc:'Předplatné, roční platba (2 měsíce zdarma oproti měsíčnímu).' },
+  'pro-lifetime':  { plan:'pro', label:'Pro', period:'napořád', price:'19 499 Kč', priceNote:'jednorázově', desc:'Zaplatíš jednou, přístup máš navždy — žádné další platby.' },
+};
+
 function renderAuth(){
   const view = state.authView || 'login';
+  if(view==='select-plan') return renderSelectPlanScreen();
+  if(view==='billing-details') return renderBillingDetailsScreen();
   const titles = { register:'Vytvořit účet', forgot:'Obnovit heslo', 'reset-password':'Nastavit nové heslo' };
   const subs = { register:'', forgot:'Pošleme ti e-mail s odkazem pro nastavení nového hesla.', 'reset-password':'Zadej nové heslo ke svému účtu.' };
   return `
@@ -1765,6 +1903,68 @@ function renderAuth(){
             : renderLoginForm()}
         </div>
       </div>
+    </div>
+  `;
+}
+
+function renderSelectPlanScreen(){
+  return `
+    <div class="plan-wrap">
+      <div class="plan-head">
+        <div class="side-mark" style="margin:0 auto 14px auto;">L</div>
+        <div class="display" style="font-size:26px;">Vyber si plán</div>
+        <p class="sub" style="max-width:520px;margin:8px auto 0 auto;">Firemní účet je vytvořený, poslední krok je vybrat si plán a dokončit platbu.</p>
+      </div>
+      ${state.authError?`<div class="login-error" style="max-width:420px;margin:0 auto 18px auto;">${escapeHtml(state.authError)}</div>`:''}
+      <div class="plan-grid">
+        ${Object.entries(PLAN_DEFS).map(([key,p])=>`
+          <div class="plan-card">
+            <div class="plan-name">${p.label}</div>
+            <div class="plan-period">${p.period}</div>
+            <div class="plan-price">${p.price}<span>${p.priceNote}</span></div>
+            <p class="plan-desc">${p.desc}</p>
+            <button type="button" class="btn" style="width:100%;margin-top:10px;" data-action="choose-plan" data-plan="${key}">Vybrat ${p.label}</button>
+          </div>
+        `).join('')}
+      </div>
+      <div style="text-align:center;margin-top:24px;">
+        <button type="button" class="btn-link" data-action="logout">Odhlásit se</button>
+      </div>
+    </div>
+  `;
+}
+
+function renderBillingDetailsScreen(){
+  const plan = PLAN_DEFS[state.selectedPlan];
+  if(!plan){
+    state.authView = 'select-plan';
+    return renderSelectPlanScreen();
+  }
+  return `
+    <div class="plan-wrap">
+      <div class="plan-head">
+        <div class="side-mark" style="margin:0 auto 14px auto;">L</div>
+        <div class="display" style="font-size:26px;">Fakturační údaje</div>
+        <p class="sub" style="max-width:480px;margin:8px auto 0 auto;">Vybraný plán: <b>${plan.label} — ${plan.price} ${plan.priceNote}</b>. Po odeslání tě přesměrujeme na zabezpečenou platbu (Stripe).</p>
+      </div>
+      ${state.billingError?`<div class="login-error" style="max-width:480px;margin:0 auto 18px auto;">${escapeHtml(state.billingError)}</div>`:''}
+      <form id="billing-details-form" class="billing-form">
+        <div class="field"><label>Název firmy</label><input name="tenantName" required value="${escapeAttr(state.pendingDisplayName||'')}"></div>
+        <div class="field"><label>Fakturační jméno / kontaktní osoba</label><input name="name" required value="${escapeAttr(state.pendingDisplayName||'')}"></div>
+        <div class="field"><label>E-mail pro fakturu</label><input type="email" name="email" required value="${escapeAttr(session?session.user.email:'')}"></div>
+        <div class="field"><label>IČO</label><input name="ico"></div>
+        <div class="field"><label>DIČ</label><input name="dic"></div>
+        <div class="field"><label>Adresa</label><input name="address"></div>
+        <div class="field-row">
+          <div class="field"><label>Město</label><input name="city"></div>
+          <div class="field"><label>PSČ</label><input name="zip"></div>
+        </div>
+        <div class="field"><label>Země (kód, např. CZ, SK)</label><input name="country" value="CZ" maxlength="2" style="text-transform:uppercase;"></div>
+        <div class="formfoot" style="justify-content:space-between;margin-top:18px;">
+          <button type="button" class="btn-link" data-action="auth-switch" data-view="select-plan">← Zpět na výběr plánu</button>
+          <button type="submit" class="btn">Pokračovat k platbě</button>
+        </div>
+      </form>
     </div>
   `;
 }
@@ -1832,6 +2032,8 @@ function afterRenderAuth(){
   if(ff) ff.addEventListener('submit', onSubmitForgotPassword);
   const rpf = document.getElementById('reset-password-form');
   if(rpf) rpf.addEventListener('submit', onSubmitResetPassword);
+  const bdf = document.getElementById('billing-details-form');
+  if(bdf) bdf.addEventListener('submit', onSubmitBillingDetails);
 }
 
 async function afterLogin(){
@@ -1848,10 +2050,34 @@ async function afterLogin(){
   }
   state.currentUser = me ? me.name : session.user.email;
   state.currentUserId = session.user.id;
+  state.tenantId = me ? me.tenantId : null;
+
+  if(!state.tenantId){
+    // Účet zatím nemá založenou/zaplacenou firmu — pošleme na výběr plánu.
+    state.authView = 'select-plan';
+    state.authError=''; state.authNotice='';
+    render();
+    return;
+  }
+
+  await loadSubscriptionStatus();
+  if(!state.subscription || state.subscription.status !== 'active'){
+    state.view = 'billing-gate';
+    render();
+    return;
+  }
+
   await loadAll();
   state.view = firstAccessibleView();
   state.authError=''; state.authNotice='';
   render();
+}
+async function loadSubscriptionStatus(){
+  try{
+    const res = await sbRequest(`/subscriptions?tenant_id=eq.${encodeURIComponent(state.tenantId)}&select=plan,billing_period,status,current_period_end`);
+    const rows = await res.json();
+    state.subscription = rows[0] || null;
+  }catch(e){ console.error(e); state.subscription = null; }
 }
 
 async function onSubmitLogin(e){
@@ -1891,15 +2117,15 @@ async function onSubmitRegister(e){
     if(!s){
       // Instance vyžaduje potvrzení e-mailem, než je session vydaná
       state.authError = '';
-      state.authNotice = 'Účet je vytvořený. Zkontroluj e-mail a potvrď registraci, pak se přihlas.';
+      state.authNotice = 'Účet je vytvořený. Zkontroluj e-mail a potvrď registraci, pak se přihlas a vyber si plán.';
       state.authView = 'login';
       state.lastLoginEmail = email;
       render();
       return;
     }
     persistSession(s);
-    await insertTeamMember(s.user.id, email, displayName || email);
-    await afterLogin();
+    state.pendingDisplayName = displayName || email;
+    await afterLogin(); // nový účet nemá firmu -> afterLogin pošle na výběr plánu
   }catch(err){
     state.authError = err.message || 'Registrace se nepovedla.';
     render();
@@ -3079,10 +3305,30 @@ function renderPermissionEditor(u){
     </div>
   `;
 }
+function renderSubscriptionCard(){
+  const sub = state.subscription;
+  if(!sub) return '';
+  const planLabels = { basic:'Basic', pro:'Pro' };
+  const periodLabels = { monthly:'měsíční platba', yearly:'roční platba', lifetime:'jednorázová platba, napořád' };
+  const statusLabels = { active:'Aktivní', pending:'Čeká na potvrzení', past_due:'Platba se nezdařila', canceled:'Zrušeno' };
+  const statusClass = { active:'paid', pending:'pending', past_due:'overdue', canceled:'overdue' };
+  return `
+    <div class="section-title" style="margin-top:0;padding-top:0;border-top:none;">Předplatné</div>
+    <div class="form-card" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;">
+      <div>
+        <div style="font-weight:600;font-size:15px;">${planLabels[sub.plan]||sub.plan} <span class="pill ${statusClass[sub.status]||''}">${statusLabels[sub.status]||sub.status}</span></div>
+        <div style="font-size:12.5px;color:var(--ink-soft);margin-top:3px;">${periodLabels[sub.billing_period]||sub.billing_period}${sub.current_period_end?` · obnovení ${String(sub.current_period_end).slice(0,10)}`:''}</div>
+      </div>
+    </div>
+  `;
+}
+
 function viewSettings(){
   const primary = state.companies[0];
   return `
     <div class="pagehead"><div><h1>Nastavení</h1><p class="desc">Firmy, kolegové a zálohy — všechno na jednom místě.</p></div></div>
+
+    ${isCurrentUserAdmin() ? renderSubscriptionCard() : ''}
 
     <div class="section-title" style="margin-top:0;padding-top:0;border-top:none;">Hlavní firma <span class="badge">výchozí ve fakturách</span></div>
     ${companyFormMarkup(primary, { showCancel:false, submitLabel:'Uložit hlavní firmu', notice: state.companyNotice })}
@@ -6147,6 +6393,21 @@ document.addEventListener('click', async (e)=>{
   const id = el.getAttribute('data-id');
 
   if(action==='auth-switch'){ state.authView = el.getAttribute('data-view'); state.authError=''; state.authNotice=''; render(); }
+  else if(action==='choose-plan'){
+    state.selectedPlan = el.getAttribute('data-plan');
+    state.authView = 'billing-details';
+    state.billingError = '';
+    render();
+  }
+  else if(action==='refresh-subscription'){
+    el.disabled = true; el.textContent = 'Kontroluji…';
+    await loadSubscriptionStatus();
+    if(state.subscription && state.subscription.status === 'active'){
+      await loadAll();
+      state.view = firstAccessibleView();
+    }
+    render();
+  }
   else if(action==='logout'){
     await signOutRemote();
     persistSession(null);
@@ -7090,6 +7351,15 @@ window.addEventListener('unhandledrejection', (e)=>{
 /* ---------- INIT ---------- */
 (async function(){
   document.getElementById('app').innerHTML = '<div style="padding:60px;font-family:Inter,sans-serif;color:#5C6B66;">Načítám…</div>';
+
+  // Návrat ze Stripe Checkout (po zaplacení / po zrušení) — jen vyčistíme
+  // URL, samotné ověření platby řeší afterLogin() + billing-gate obrazovka.
+  const checkoutParam = new URLSearchParams(window.location.search).get('checkout');
+  if(checkoutParam){
+    history.replaceState(null, '', window.location.pathname);
+    if(checkoutParam === 'cancel') state.checkoutCanceled = true;
+  }
+
   const recovery = parseRecoveryHash();
   if(recovery){
     // Uživatel přišel z odkazu v e-mailu ("zapomenuté heslo") — samotné
