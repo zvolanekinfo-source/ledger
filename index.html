@@ -656,9 +656,6 @@ let state = {
   suppliers: [],
   receivedInvoices: [],
   editingReceivedInvoiceId: null,
-  receivedInvoiceAiStatus: '', // '', 'analyzuji', 'hotovo', 'chyba'
-  receivedInvoiceAiDraft: null,
-  receivedInvoiceAiError: '',
   products: [],
   productSettings: { prefix:'PRD-', nextNumber:1, padding:6 },
   inventorySettings: { valuationMethod: 'average' },
@@ -4297,8 +4294,6 @@ function viewReceivedInvoices(){
       <div><h1>Přijaté faktury</h1><p class="desc">${state.receivedInvoices.length} přijatých faktur v evidenci · nezaplaceno ${money(fmt(totalUnpaid)+' Kč')}.</p></div>
       <div style="display:flex;gap:10px;">
         <button class="btn secondary" data-action="new-received-invoice">+ Zadat ručně</button>
-        <button class="btn" data-action="upload-received-invoice-pdf">⇪ Nahrát PDF (AI vyplní)</button>
-        <input type="file" id="received-invoice-file-input" accept="application/pdf" style="display:none;">
       </div>
     </div>
     ${list.length ? `
@@ -4324,7 +4319,7 @@ function viewReceivedInvoices(){
         }).join('')}
       </tbody>
     </table>
-    </div>` : emptyState('Žádné přijaté faktury', 'Nahraj PDF fakturu od dodavatele — AI ji sama přečte a vyplní, nebo ji zadej ručně.')}
+    </div>` : emptyState('Žádné přijaté faktury', 'Zadej fakturu od dodavatele ručně.')}
   `;
 }
 function supplierOptionsForReceived(selectedId){
@@ -4334,15 +4329,11 @@ function supplierOptionsForReceived(selectedId){
 }
 function viewReceivedInvoiceForm(){
   const editing = state.editingReceivedInvoiceId ? state.receivedInvoices.find(i=>i.id===state.editingReceivedInvoiceId) : null;
-  const draft = state.receivedInvoiceAiDraft || {};
-  const inv = editing || draft;
-  const aiStatus = state.receivedInvoiceAiStatus;
+  const inv = editing || {};
   return `
     <div class="pagehead">
-      <div><h1>${editing ? 'Upravit přijatou fakturu' : 'Nová přijatá faktura'}</h1><p class="desc">${aiStatus==='hotovo' ? 'AI fakturu přečetla — zkontroluj prosím údaje a ulož.' : 'Doplň údaje o faktuře od dodavatele.'}</p></div>
+      <div><h1>${editing ? 'Upravit přijatou fakturu' : 'Nová přijatá faktura'}</h1><p class="desc">Doplň údaje o faktuře od dodavatele.</p></div>
     </div>
-    ${aiStatus==='analyzuji' ? `<div class="form-card" style="text-align:center;padding:40px;"><p>🔎 Analyzuji fakturu pomocí AI…</p></div>` : ''}
-    ${aiStatus==='chyba' ? `<div class="login-error" style="max-width:640px;">${escapeHtml(state.receivedInvoiceAiError||'Analýza se nepovedla, zkus to prosím znovu nebo vyplň ručně.')}</div>` : ''}
     <form id="received-invoice-form" class="form-card" style="max-width:640px;">
       <div class="field"><label>Dodavatel (volitelné propojení)</label><select name="supplierId">${supplierOptionsForReceived(inv.supplierId)}</select></div>
       <div class="field"><label>Název dodavatele (na faktuře)</label><input name="supplierName" value="${escapeAttr(inv.supplierName||'')}" required></div>
@@ -5737,8 +5728,6 @@ function afterRender(){
   if(accountForm){ accountForm.addEventListener('submit', onSubmitAccount); }
   const receivedInvoiceForm = document.getElementById('received-invoice-form');
   if(receivedInvoiceForm) receivedInvoiceForm.addEventListener('submit', onSubmitReceivedInvoice);
-  const receivedInvoiceFileInput = document.getElementById('received-invoice-file-input');
-  if(receivedInvoiceFileInput) receivedInvoiceFileInput.addEventListener('change', onReceivedInvoiceFileSelected);
   const colleagueForm = document.getElementById('colleague-form');
   if(colleagueForm){ colleagueForm.addEventListener('submit', onSubmitColleague); }
   const userCredsForm = document.getElementById('user-creds-form');
@@ -6299,27 +6288,8 @@ async function signAttachmentUrl(path){
   return SUPABASE_URL + '/storage/v1' + data.signedURL;
 }
 
-/* ---------- PŘIJATÉ FAKTURY — PDF příloha + AI čtení (bucket "received-invoices") ---------- */
+/* ---------- PŘIJATÉ FAKTURY — PDF příloha (bucket "received-invoices") ---------- */
 const RECEIVED_INVOICES_BUCKET = 'received-invoices';
-async function uploadReceivedInvoiceFile(file){
-  await ensureFreshSession();
-  const safeName = file.name.replace(/[^\w.\-]+/g,'_');
-  const path = `${state.tenantId}/${uid()}_${safeName}`;
-  const res = await fetch(`${SUPABASE_URL}/storage/v1/object/${RECEIVED_INVOICES_BUCKET}/${path}`, {
-    method: 'POST',
-    headers: {
-      'apikey': SUPABASE_KEY,
-      'Authorization': 'Bearer ' + (session ? session.access_token : SUPABASE_KEY),
-      'Content-Type': file.type || 'application/pdf'
-    },
-    body: file
-  });
-  if(!res.ok){
-    const text = await res.text().catch(()=>'');
-    throw new Error(`Nahrání PDF se nepovedlo: ${text}`);
-  }
-  return { name: file.name, path, uploaded_at: new Date().toISOString() };
-}
 async function deleteReceivedInvoiceFile(path){
   await ensureFreshSession();
   await fetch(`${SUPABASE_URL}/storage/v1/object/${RECEIVED_INVOICES_BUCKET}`, {
@@ -6343,75 +6313,6 @@ async function signReceivedInvoiceUrl(path){
   const data = await res.json();
   return SUPABASE_URL + '/storage/v1' + data.signedURL;
 }
-function fileToBase64(file){
-  return new Promise((resolve, reject)=>{
-    const reader = new FileReader();
-    reader.onload = ()=> resolve(String(reader.result).split(',')[1]);
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
-  });
-}
-async function extractReceivedInvoiceWithAI(base64Pdf){
-  const prompt = `Toto je faktura od dodavatele (přijatá faktura). Přečti ji a vrať POUZE JSON objekt (žádný markdown, žádné vysvětlení, žádné uvozovky kolem) s těmito klíči:
-{"supplierName":"název dodavatele/vystavovatele faktury","number":"číslo faktury","amount":CELKOVA_CASTKA_K_UHRADE_JAKO_CISLO_BEZ_MENY,"issueDate":"YYYY-MM-DD nebo prázdný řetězec","dueDate":"YYYY-MM-DD nebo prázdný řetězec","note":"stručně co je předmětem fakturace, pokud je zřejmé, jinak prázdný řetězec"}
-Pokud hodnotu nenajdeš, použij prázdný řetězec (0 pro amount). Vrať jen samotný JSON.`;
-  const response = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      model: 'claude-sonnet-4-6',
-      max_tokens: 1000,
-      messages: [{
-        role: 'user',
-        content: [
-          { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: base64Pdf } },
-          { type: 'text', text: prompt }
-        ]
-      }]
-    })
-  });
-  if(!response.ok) throw new Error('AI analýza se nepovedla (chyba serveru).');
-  const data = await response.json();
-  const textBlock = (data.content||[]).find(b=>b.type==='text');
-  if(!textBlock) throw new Error('AI nevrátila žádný výsledek.');
-  let jsonText = textBlock.text.trim().replace(/^```json\s*/i,'').replace(/^```\s*/,'').replace(/```\s*$/,'');
-  try{ return JSON.parse(jsonText); }
-  catch(e){ throw new Error('AI vrátila neplatná data, zkus to prosím znovu nebo vyplň ručně.'); }
-}
-async function onReceivedInvoiceFileSelected(e){
-  const file = e.target.files[0];
-  if(!file) return;
-  e.target.value = '';
-  state.editingReceivedInvoiceId = null;
-  state.receivedInvoiceAiDraft = { supplierName:'', number:'', amount:0, issueDate:'', dueDate:'', note:'' };
-  state.receivedInvoiceAiStatus = 'analyzuji';
-  state.receivedInvoiceAiError = '';
-  state.view = 'received-invoice-form';
-  render();
-  try{
-    const [attachment, base64] = await Promise.all([
-      uploadReceivedInvoiceFile(file),
-      fileToBase64(file)
-    ]);
-    state.receivedInvoiceAiDraft.attachment = attachment;
-    const extracted = await extractReceivedInvoiceWithAI(base64);
-    state.receivedInvoiceAiDraft = {
-      ...state.receivedInvoiceAiDraft,
-      supplierName: extracted.supplierName || '',
-      number: extracted.number || '',
-      amount: extracted.amount || 0,
-      issueDate: extracted.issueDate || '',
-      dueDate: extracted.dueDate || '',
-      note: extracted.note || '',
-    };
-    state.receivedInvoiceAiStatus = 'hotovo';
-  }catch(err){
-    console.error(err);
-    state.receivedInvoiceAiStatus = 'chyba';
-    state.receivedInvoiceAiError = err.message || 'Analýza se nepovedla.';
-  }
-  render();
-}
 async function onSubmitReceivedInvoice(e){
   e.preventDefault();
   const fd = new FormData(e.target);
@@ -6424,7 +6325,7 @@ async function onSubmitReceivedInvoice(e){
   const note = (fd.get('note')||'').trim();
   const paid = fd.get('paid') === 'on';
   const existing = state.editingReceivedInvoiceId ? state.receivedInvoices.find(i=>i.id===state.editingReceivedInvoiceId) : null;
-  const attachment = (state.receivedInvoiceAiDraft && state.receivedInvoiceAiDraft.attachment) || (existing ? existing.attachment : null) || null;
+  const attachment = existing ? existing.attachment : null;
 
   if(existing){
     const idx = state.receivedInvoices.findIndex(i=>i.id===existing.id);
@@ -6440,8 +6341,6 @@ async function onSubmitReceivedInvoice(e){
   try{
     await saveReceivedInvoices();
     state.editingReceivedInvoiceId = null;
-    state.receivedInvoiceAiDraft = null;
-    state.receivedInvoiceAiStatus = '';
     state.view = 'received-invoices';
     render();
   }catch(err){
@@ -7017,21 +6916,11 @@ document.addEventListener('click', async (e)=>{
   /* --- Dodavatelé --- */
   else if(action==='new-received-invoice'){
     state.editingReceivedInvoiceId = null;
-    state.receivedInvoiceAiDraft = null;
-    state.receivedInvoiceAiStatus = '';
-    state.receivedInvoiceAiError = '';
     state.view = 'received-invoice-form';
     render();
   }
-  else if(action==='upload-received-invoice-pdf'){
-    const input = document.getElementById('received-invoice-file-input');
-    if(input) input.click();
-  }
   else if(action==='edit-received-invoice'){
     state.editingReceivedInvoiceId = el.getAttribute('data-id');
-    state.receivedInvoiceAiDraft = null;
-    state.receivedInvoiceAiStatus = '';
-    state.receivedInvoiceAiError = '';
     state.view = 'received-invoice-form';
     render();
   }
