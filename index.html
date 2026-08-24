@@ -1122,8 +1122,20 @@ function money(formattedText){
   // Použít na hotový naformátovaný text částky (např. "1 234,00 Kč").
   return pricesHiddenForMe() ? '•••' : formattedText;
 }
-async function saveUserPermissions(){ await window.storage.set('user-permissions', JSON.stringify(state.userPermissions), true); }
-async function saveDashboardWidgets(){ await window.storage.set('dashboard-widgets:'+state.currentUserId, JSON.stringify(state.dashboardWidgets), true); }
+async function storageSet(key, value, shared){
+  // window.storage.set může při chybě vrátit null místo vyhození výjimky (viz dokumentace
+  // persistentního úložiště) — bez kontroly návratové hodnoty by uložení tiše selhalo
+  // a data by po refreshi "zmizela". Zkusíme to jednou znovu, pak nahlásíme chybu.
+  let result = null;
+  try{ result = await window.storage.set(key, value, shared); }catch(e){ result = null; }
+  if(!result){
+    try{ result = await window.storage.set(key, value, shared); }catch(e){ result = null; }
+  }
+  if(!result) throw new Error('Uložení se nepovedlo — zkontroluj připojení a zkus to prosím znovu.');
+  return result;
+}
+async function saveUserPermissions(){ await storageSet('user-permissions', JSON.stringify(state.userPermissions), true); }
+async function saveDashboardWidgets(){ await storageSet('dashboard-widgets:'+state.currentUserId, JSON.stringify(state.dashboardWidgets), true); }
 
 async function sbRequest(path, options = {}){
   await ensureFreshSession();
@@ -1258,16 +1270,16 @@ async function loadAll(){
   state.loaded = true;
 }
 function companyById(id){ return state.companies.find(co=>co.id===id); }
-async function saveCompanies(){ await window.storage.set('companies', JSON.stringify(state.companies), true); saveSnapshotBackup(); }
-async function saveClients(){ await window.storage.set('clients', JSON.stringify(state.clients), true); saveSnapshotBackup(); }
-async function saveInvoices(){ await window.storage.set('invoices', JSON.stringify(state.invoices), true); saveSnapshotBackup(); }
-async function saveSuppliers(){ await window.storage.set('suppliers', JSON.stringify(state.suppliers), true); saveSnapshotBackup(); }
-async function saveReceivedInvoices(){ await window.storage.set('received-invoices', JSON.stringify(state.receivedInvoices), true); saveSnapshotBackup(); }
-async function saveProducts(){ await window.storage.set('products', JSON.stringify(state.products), true); saveSnapshotBackup(); }
-async function saveProductSettings(){ await window.storage.set('product-settings', JSON.stringify(state.productSettings), true); }
-async function saveInventorySettings(){ await window.storage.set('inventory-settings', JSON.stringify(state.inventorySettings), true); }
-async function saveProductColumns(){ await window.storage.set('product-columns', JSON.stringify(state.productColumns), true); }
-async function saveExpirySettings(){ await window.storage.set('expiry-settings', JSON.stringify(state.expirySettings), true); }
+async function saveCompanies(){ await storageSet('companies', JSON.stringify(state.companies), true); saveSnapshotBackup(); }
+async function saveClients(){ await storageSet('clients', JSON.stringify(state.clients), true); saveSnapshotBackup(); }
+async function saveInvoices(){ await storageSet('invoices', JSON.stringify(state.invoices), true); saveSnapshotBackup(); }
+async function saveSuppliers(){ await storageSet('suppliers', JSON.stringify(state.suppliers), true); saveSnapshotBackup(); }
+async function saveReceivedInvoices(){ await storageSet('received-invoices', JSON.stringify(state.receivedInvoices), true); saveSnapshotBackup(); }
+async function saveProducts(){ await storageSet('products', JSON.stringify(state.products), true); saveSnapshotBackup(); }
+async function saveProductSettings(){ await storageSet('product-settings', JSON.stringify(state.productSettings), true); }
+async function saveInventorySettings(){ await storageSet('inventory-settings', JSON.stringify(state.inventorySettings), true); }
+async function saveProductColumns(){ await storageSet('product-columns', JSON.stringify(state.productColumns), true); }
+async function saveExpirySettings(){ await storageSet('expiry-settings', JSON.stringify(state.expirySettings), true); }
 
 /* ---------- BACKUP / SNAPSHOTS ---------- */
 async function loadBackupIndex(){
@@ -3217,11 +3229,13 @@ function renderAttachmentsBox(entity, entityType){
               ${f.note?`<br><span class="att-note">${escapeHtml(f.note)}</span>`:''}
             </span>
             <span class="att-actions">
+              <button type="button" class="btn-link" data-action="toggle-attachment-preview" data-path="${escapeAttr(f.path)}">Náhled</button>
               <button type="button" class="btn-link" data-action="open-attachment" data-path="${escapeAttr(f.path)}">Otevřít</button>
               <button type="button" class="btn-link" data-action="note-attachment" data-path="${escapeAttr(f.path)}" data-note="${escapeAttr(f.note||'')}">${f.note?'Upravit poznámku':'Přidat poznámku'}</button>
               <button type="button" class="btn-link" data-action="delete-attachment" data-path="${escapeAttr(f.path)}" data-name="${escapeAttr(f.name)}" style="color:var(--red);">Smazat</button>
             </span>
           </div>
+          <div class="attachment-preview-box" style="display:none;margin:8px 0 14px 0;"></div>
         `).join('') : `<p style="font-size:13px;color:var(--ink-soft);margin:0 0 10px 0;">Zatím žádné soubory (faktury, smlouvy, objednávky…).</p>`}
       </div>
       <div style="margin-top:10px;display:flex;align-items:center;gap:10px;">
@@ -4508,7 +4522,10 @@ function viewReceivedInvoiceDetail(){
         ${inv.note?`<div class="section-title">Poznámka</div><p style="font-size:13.5px;white-space:pre-line;">${escapeHtml(inv.note)}</p>`:''}
       `}
       <div class="section-title">Přiložený soubor</div>
-      ${inv.attachment ? `<p style="font-size:13.5px;">📎 <button type="button" class="btn-link" data-action="view-received-invoice-file" data-path="${escapeAttr(inv.attachment.path)}">${escapeHtml(inv.attachment.name)}</button></p>` : `<p style="font-size:13.5px;color:var(--ink-soft);">Žádný soubor nepřiložen.</p>`}
+      ${inv.attachment ? `
+        <p style="font-size:13.5px;">📎 ${escapeHtml(inv.attachment.name)} <button type="button" class="btn-link" data-action="view-received-invoice-file" data-path="${escapeAttr(inv.attachment.path)}">otevřít v novém okně</button></p>
+        <div id="received-invoice-preview-box" data-path="${escapeAttr(inv.attachment.path)}" style="border:1px solid var(--line);border-radius:6px;background:var(--paper);min-height:70vh;display:flex;align-items:center;justify-content:center;color:var(--ink-soft);font-size:13px;">Načítám náhled…</div>
+      ` : `<p style="font-size:13.5px;color:var(--ink-soft);">Žádný soubor nepřiložen.</p>`}
       <div class="formfoot">
         <button type="button" class="btn secondary" data-action="nav" data-view="received-invoices">← Zpět na seznam</button>
         <button type="button" class="btn danger" data-action="delete-received-invoice" data-id="${inv.id}">Smazat</button>
@@ -6115,6 +6132,20 @@ function setupReceivedInvoicesView(){
   }
 }
 
+function setupReceivedInvoiceDetail(){
+  const box = document.getElementById('received-invoice-preview-box');
+  if(!box) return;
+  const path = box.getAttribute('data-path');
+  if(!path) return;
+  signReceivedInvoiceUrl(path).then(url=>{
+    box.style.minHeight = '';
+    box.style.display = '';
+    box.innerHTML = `<iframe src="${escapeAttr(url)}" title="Náhled faktury" style="width:100%;height:75vh;border:none;border-radius:6px;"></iframe>`;
+  }).catch(()=>{
+    box.innerHTML = `<p style="padding:20px;">Náhled se nepovedlo načíst. Zkus soubor otevřít v novém okně tlačítkem výše.</p>`;
+  });
+}
+
 function productsKeyHandler(e){
   if(state.view!=='products') return;
   const tag = (document.activeElement && document.activeElement.tagName || '').toLowerCase();
@@ -6168,6 +6199,7 @@ function afterRender(){
   setupProductForm();
   if(state.view==='products') setupProductsView();
   if(state.view==='received-invoices') setupReceivedInvoicesView();
+  if(state.view==='received-invoice-detail') setupReceivedInvoiceDetail();
   if(state.view==='stock') setupStockScan();
   if(state.view==='stock'){
     const valEl = document.getElementById('expiry-threshold-value');
@@ -6855,24 +6887,36 @@ function setupAttachmentUpload(){
   const { type, entityId } = attachmentEntityContext();
   input.addEventListener('change', async ()=>{
     const file = input.files[0];
+    input.value = '';
     if(!file) return;
     if(status) status.textContent = 'Nahrávám…';
+    let meta = null;
+    let pushedInto = null;
     try{
-      const meta = await uploadClientFile(entityId, file);
+      meta = await uploadClientFile(entityId, file);
       const entity = type==='supplier' ? supplierById(entityId) : clientById(entityId);
       if(entity){
         entity.attachments = entity.attachments || [];
         entity.attachments.push(meta);
+        pushedInto = entity.attachments;
         if(type==='supplier') await saveSuppliers(); else await saveClients();
       } else if(type==='client' && entityId === state.newClientDraftId){
         state.newClientDraftAttachments.push(meta);
+        pushedInto = state.newClientDraftAttachments;
       } else if(type==='supplier' && entityId === state.newSupplierDraftId){
         state.newSupplierDraftAttachments.push(meta);
+        pushedInto = state.newSupplierDraftAttachments;
       }
-      if(status) status.textContent = '';
+      if(status) status.textContent = 'Soubor uložen.';
       render();
     }catch(err){
-      if(status) status.textContent = 'Nahrání se nepovedlo, zkus to prosím znovu.';
+      console.error(err);
+      // Uložení selhalo — vrátíme stav zpět, ať appka netváří, že se soubor přidal, když se ve skutečnosti neuložil.
+      if(pushedInto && meta){
+        const idx = pushedInto.indexOf(meta);
+        if(idx>-1) pushedInto.splice(idx,1);
+      }
+      if(status) status.textContent = (err && err.message) || 'Nahrání se nepovedlo, zkus to prosím znovu.';
     }
   });
 }
@@ -7276,22 +7320,40 @@ document.addEventListener('click', async (e)=>{
     }catch(err){ alert('Soubor se nepovedlo otevřít, zkus to prosím znovu.'); }
     finally{ el.textContent = 'Otevřít'; }
   }
+  else if(action==='toggle-attachment-preview'){
+    const path = el.getAttribute('data-path');
+    const row = el.closest('.attachment-row');
+    const previewBox = row ? row.nextElementSibling : null;
+    if(!previewBox || !previewBox.classList.contains('attachment-preview-box')) return;
+    const opening = previewBox.style.display==='none';
+    if(!opening){ previewBox.style.display='none'; return; }
+    previewBox.style.display='';
+    previewBox.innerHTML = `<p style="padding:10px;color:var(--ink-soft);font-size:13px;">Načítám náhled…</p>`;
+    try{
+      const url = await signAttachmentUrl(path);
+      previewBox.innerHTML = `<iframe src="${escapeAttr(url)}" title="Náhled souboru" style="width:100%;height:60vh;border:1px solid var(--line);border-radius:6px;"></iframe>`;
+    }catch(err){
+      previewBox.innerHTML = `<p style="padding:10px;color:var(--red);font-size:13px;">Náhled se nepovedlo načíst.</p>`;
+    }
+  }
   else if(action==='note-attachment'){
     const path = el.getAttribute('data-path');
     const current = el.getAttribute('data-note') || '';
     const newNote = prompt('Poznámka k souboru:', current);
     if(newNote===null) return;
     const { type, entityId, entity } = attachmentEntityContext();
-    if(entity){
-      const f = (entity.attachments||[]).find(x=>x.path===path);
-      if(f){ f.note = newNote.trim(); if(type==='supplier') await saveSuppliers(); else await saveClients(); }
-    } else if(type==='client' && entityId === state.newClientDraftId){
-      const f = state.newClientDraftAttachments.find(x=>x.path===path);
-      if(f) f.note = newNote.trim();
-    } else if(type==='supplier' && entityId === state.newSupplierDraftId){
-      const f = state.newSupplierDraftAttachments.find(x=>x.path===path);
-      if(f) f.note = newNote.trim();
-    }
+    try{
+      if(entity){
+        const f = (entity.attachments||[]).find(x=>x.path===path);
+        if(f){ f.note = newNote.trim(); if(type==='supplier') await saveSuppliers(); else await saveClients(); }
+      } else if(type==='client' && entityId === state.newClientDraftId){
+        const f = state.newClientDraftAttachments.find(x=>x.path===path);
+        if(f) f.note = newNote.trim();
+      } else if(type==='supplier' && entityId === state.newSupplierDraftId){
+        const f = state.newSupplierDraftAttachments.find(x=>x.path===path);
+        if(f) f.note = newNote.trim();
+      }
+    }catch(err){ alert('Uložení poznámky se nepovedlo, zkus to prosím znovu.'); }
     render();
   }
   else if(action==='delete-attachment'){
