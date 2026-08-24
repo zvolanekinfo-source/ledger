@@ -659,9 +659,11 @@ let state = {
   suppliers: [],
   receivedInvoices: [],
   editingReceivedInvoiceId: null,
+  viewingReceivedInvoiceId: null,
   receivedInvoiceSearch: '',
   receivedInvoiceSort: { key:'issueDate', dir:'desc' },
-  receivedInvoiceFilters: { status:'' },
+  receivedInvoiceFilters: { status:'', supplierId:'' },
+  newReceivedInvoiceForSupplierId: null,
   products: [],
   productSettings: { prefix:'PRD-', nextNumber:1, padding:6 },
   inventorySettings: { valuationMethod: 'average' },
@@ -1082,7 +1084,7 @@ const TAB_DEFS = [
 const VIEW_TO_TAB = {
   dashboard:'dashboard',
   invoices:'invoices', 'invoice-form':'invoices', 'invoice-preview':'invoices', 'bulk-import':'invoices',
-  'received-invoices':'received-invoices', 'received-invoice-form':'received-invoices',
+  'received-invoices':'received-invoices', 'received-invoice-form':'received-invoices', 'received-invoice-detail':'received-invoices',
   clients:'clients', 'client-form':'clients', 'client-detail':'clients',
   suppliers:'suppliers', 'supplier-form':'suppliers', 'supplier-detail':'suppliers',
   products:'products', 'product-form':'products',
@@ -1866,7 +1868,7 @@ function render(){
       </div>
       ${canAccessTab('dashboard')?`<div class="navitem ${state.view==='dashboard'?'active':''}" data-action="nav" data-view="dashboard">Přehled</div>`:''}
       ${canAccessTab('invoices')?`<div class="navitem ${state.view==='invoices'||state.view==='invoice-form'||state.view==='invoice-preview'?'active':''}" data-action="nav" data-view="invoices">Faktury</div>`:''}
-      ${canAccessTab('received-invoices')?`<div class="navitem ${state.view==='received-invoices'||state.view==='received-invoice-form'?'active':''}" data-action="nav" data-view="received-invoices">Přijaté faktury</div>`:''}
+      ${canAccessTab('received-invoices')?`<div class="navitem ${state.view==='received-invoices'||state.view==='received-invoice-form'||state.view==='received-invoice-detail'?'active':''}" data-action="nav" data-view="received-invoices">Přijaté faktury</div>`:''}
       ${canAccessTab('clients')?`<div class="navitem ${state.view==='clients'||state.view==='client-form'||state.view==='client-detail'?'active':''}" data-action="nav" data-view="clients">Odběratelé</div>`:''}
       ${canAccessTab('suppliers')?`<div class="navitem ${state.view==='suppliers'||state.view==='supplier-form'||state.view==='supplier-detail'?'active':''}" data-action="nav" data-view="suppliers">Dodavatelé</div>`:''}
       ${canAccessTab('products')?`<div class="navitem ${state.view==='products'||state.view==='product-form'?'active':''}" data-action="nav" data-view="products">Produkty</div>`:''}
@@ -2162,6 +2164,7 @@ function renderView(){
     case 'invoices': return viewInvoices();
     case 'received-invoices': return viewReceivedInvoices();
     case 'received-invoice-form': return viewReceivedInvoiceForm();
+    case 'received-invoice-detail': return viewReceivedInvoiceDetail();
     case 'invoice-form': return viewInvoiceForm();
     case 'invoice-preview': return viewInvoicePreview();
     case 'bulk-import': return viewBulkImport();
@@ -4303,12 +4306,14 @@ function receivedInvoiceStatus(inv){
 function filteredSortedReceivedInvoices(){
   const q = stripDiacritics(state.receivedInvoiceSearch||'').toLowerCase().trim();
   const statusFilter = state.receivedInvoiceFilters.status;
+  const supplierFilter = state.receivedInvoiceFilters.supplierId;
   let list = state.receivedInvoices.filter(inv=>{
     if(q){
       const hay = stripDiacritics(`${inv.supplierName||''} ${inv.number||''} ${inv.variableSymbol||''} ${inv.orderNumber||''} ${inv.note||''}`).toLowerCase();
       if(!hay.includes(q)) return false;
     }
     if(statusFilter && receivedInvoiceStatus(inv)!==statusFilter) return false;
+    if(supplierFilter && inv.supplierId!==supplierFilter) return false;
     return true;
   });
   const {key,dir} = state.receivedInvoiceSort;
@@ -4369,13 +4374,19 @@ function viewReceivedInvoices(){
     <div class="filter-bar no-print">
       <div class="search-row" style="margin-bottom:14px;display:flex;gap:10px;align-items:center;">
         <input type="text" id="received-invoice-search-input" class="search-input" placeholder="Hledat podle dodavatele, čísla faktury, VS, objednávky, poznámky…" value="${escapeAttr(state.receivedInvoiceSearch)}" style="flex:1;max-width:none;">
-        <select id="rif-status">
+      </div>
+      <div class="filter-row">
+        <div class="field"><label>Dodavatel</label><select id="rif-supplier">
+          <option value="">Všichni dodavatelé</option>
+          ${[...state.suppliers].sort((a,b)=>(a.name||'').localeCompare(b.name||'','cs')).map(s=>`<option value="${s.id}" ${state.receivedInvoiceFilters.supplierId===s.id?'selected':''}>${escapeHtml(s.name)}</option>`).join('')}
+        </select></div>
+        <div class="field"><label>Stav</label><select id="rif-status">
           <option value="">Všechny stavy</option>
           <option value="draft" ${state.receivedInvoiceFilters.status==='draft'?'selected':''}>Nezpracováno</option>
           <option value="unpaid" ${state.receivedInvoiceFilters.status==='unpaid'?'selected':''}>Čeká na platbu</option>
           <option value="overdue" ${state.receivedInvoiceFilters.status==='overdue'?'selected':''}>Po splatnosti</option>
           <option value="paid" ${state.receivedInvoiceFilters.status==='paid'?'selected':''}>Zaplaceno</option>
-        </select>
+        </select></div>
       </div>
     </div>
 
@@ -4395,12 +4406,25 @@ function viewReceivedInvoices(){
       <tbody>
         ${list.map(inv=>{
           const st = receivedInvoiceStatus(inv);
-          return `<tr class="rowlink" data-action="edit-received-invoice" data-id="${inv.id}">
+          if(st==='draft'){
+            return `<tr class="rowlink" data-action="view-received-invoice" data-id="${inv.id}">
+              <td>${escapeHtml(inv.supplierName||'—')}</td>
+              <td colspan="3" style="color:var(--ink-soft);font-style:italic;">📄 jen nahraný soubor — klikni pro doplnění údajů</td>
+              <td class="num">—</td>
+              <td><span class="pill ${receivedInvoiceStatusPill(st)}">${receivedInvoiceStatusLabel(st)}</span></td>
+              <td class="no-print">${inv.attachment ? `<button class="iconbtn" data-action="view-received-invoice-file" data-path="${escapeAttr(inv.attachment.path)}" title="Zobrazit PDF">📎</button>` : '—'}</td>
+              <td class="actions-cell no-print">
+                <button class="iconbtn" data-action="edit-received-invoice" data-id="${inv.id}" title="Doplnit údaje"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg></button>
+                <button class="iconbtn" data-action="delete-received-invoice" data-id="${inv.id}" title="Smazat"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+              </td>
+            </tr>`;
+          }
+          return `<tr class="rowlink" data-action="view-received-invoice" data-id="${inv.id}">
             <td>${escapeHtml(inv.supplierName||'—')}</td>
             <td>${escapeHtml(inv.number||'—')}</td>
             <td>${inv.issueDate||'—'}</td>
             <td>${inv.dueDate||'—'}</td>
-            <td class="num">${st==='draft' ? '—' : money(fmt(inv.amount||0)+' Kč')}</td>
+            <td class="num">${money(fmt(inv.amount||0)+' Kč')}</td>
             <td><span class="pill ${receivedInvoiceStatusPill(st)}">${receivedInvoiceStatusLabel(st)}</span></td>
             <td class="no-print">${inv.attachment ? `<button class="iconbtn" data-action="view-received-invoice-file" data-path="${escapeAttr(inv.attachment.path)}" title="Zobrazit PDF">📎</button>` : '—'}</td>
             <td class="actions-cell no-print">
@@ -4411,7 +4435,85 @@ function viewReceivedInvoices(){
         }).join('')}
       </tbody>
     </table>
-    </div>` : (all.length ? emptyState('Žádné odpovídající faktury', 'Zkus upravit vyhledávání nebo filtr stavu.') : emptyState('Žádné přijaté faktury', 'Zadej fakturu od dodavatele ručně, nebo rovnou nahraj PDF.'))}
+    </div>` : (all.length ? emptyState('Žádné odpovídající faktury', 'Zkus upravit vyhledávání nebo filtr.') : emptyState('Žádné přijaté faktury', 'Zadej fakturu od dodavatele ručně, nebo rovnou nahraj PDF.'))}
+  `;
+}
+function viewReceivedInvoiceDetail(){
+  const inv = state.receivedInvoices.find(i=>i.id===state.viewingReceivedInvoiceId);
+  if(!inv) return emptyState('Faktura nenalezena','') + `<div class="formfoot"><button class="btn secondary" data-action="nav" data-view="received-invoices">Zpět na seznam</button></div>`;
+  const supplier = supplierById(inv.supplierId);
+  const co = companyById(inv.companyId);
+  const st = receivedInvoiceStatus(inv);
+  const isDraft = st==='draft';
+  const t = receivedItemsTotals(inv.items||[]);
+  return `
+    <div class="pagehead">
+      <div>
+        <h1>${escapeHtml(inv.supplierName||'(bez dodavatele)')}</h1>
+        <p class="desc">${inv.number?('Faktura č. '+escapeHtml(inv.number)):'Přijatá faktura'}${inv.issueDate?(' · vystaveno '+inv.issueDate):''} <span class="pill ${receivedInvoiceStatusPill(st)}" style="margin-left:6px;">${receivedInvoiceStatusLabel(st)}</span></p>
+      </div>
+      <div style="display:flex;gap:10px;">
+        ${!isDraft ? `<button class="btn secondary" data-action="toggle-received-paid" data-id="${inv.id}">${st==='paid'?'Označit jako nezaplacené':'Označit jako zaplacené'}</button>` : ''}
+        <button class="btn" data-action="edit-received-invoice" data-id="${inv.id}">✎ ${isDraft?'Doplnit údaje':'Upravit'}</button>
+      </div>
+    </div>
+    <div class="form-card">
+      ${isDraft ? `
+        <p style="font-size:13.5px;color:var(--ink-soft);">Tahle faktura je zatím jen nahraný soubor bez doplněných údajů. Otevři si přiložené PDF níže, nebo klikni na „Doplnit údaje“.</p>
+      ` : `
+        <div class="section-title" style="margin-top:0;padding-top:0;border-top:none;">Dodavatel</div>
+        <div class="detail-grid">
+          ${detailRow('Dodavatel', inv.supplierName)}
+          ${supplier ? detailRow('IČO / DIČ', [supplier.ico, supplier.dic].filter(Boolean).join(' / ')) : ''}
+          ${supplier ? detailRow('Adresa', formatAddress(supplier.address), true) : ''}
+          ${supplier ? detailRow('Kontakt', [supplier.contactPerson, supplier.contactPhone, supplier.contactEmail].filter(Boolean).join(' · ')) : ''}
+        </div>
+        <div class="section-title">Faktura</div>
+        <div class="detail-grid">
+          ${detailRow('Číslo faktury', inv.number)}
+          ${detailRow('Naše číslo objednávky', inv.orderNumber)}
+          ${co ? detailRow('Firma (příjemce)', co.name) : ''}
+          ${detailRow('Datum vystavení', inv.issueDate)}
+          ${detailRow('Datum splatnosti', inv.dueDate)}
+          ${detailRow('Datum zdanitelného plnění', inv.taxDate)}
+          ${detailRow('Variabilní symbol', inv.variableSymbol)}
+          ${detailRow('Konstantní symbol', inv.constantSymbol)}
+          ${detailRow('Forma úhrady', inv.paymentMethod)}
+          ${detailRow('Měna', inv.currency)}
+        </div>
+        ${(inv.items&&inv.items.length) ? `
+        <div class="section-title">Položky</div>
+        <div class="table-scroll">
+        <table class="fixed-table">
+          <thead><tr><th>Popis</th><th style="width:90px;">Množství</th><th style="width:70px;">Jedn.</th><th style="width:110px;">Cena/ks</th><th style="width:70px;">DPH</th><th style="width:110px;" class="num">Celkem</th></tr></thead>
+          <tbody>
+            ${inv.items.map(it=>{
+              const lineTotal=(it.qty||0)*(it.price||0)*(1+(it.vat||0)/100);
+              return `<tr><td>${escapeHtml(it.desc||'')}</td><td>${it.qty}</td><td>${escapeHtml(it.unit||'ks')}</td><td class="num">${fmt(it.price)} Kč</td><td class="num">${it.vat}%</td><td class="num">${fmt(lineTotal)} Kč</td></tr>`;
+            }).join('')}
+          </tbody>
+        </table>
+        </div>
+        <div class="totals-box" style="max-width:320px;margin-top:14px;">
+          <div class="trow"><span>Základ daně</span><span class="num">${fmt(t.base)} Kč</span></div>
+          <div class="trow"><span>DPH</span><span class="num">${fmt(t.vat)} Kč</span></div>
+          <div class="trow grand"><span>Celkem (položky)</span><span>${fmt(t.total)} Kč</span></div>
+        </div>
+        ` : ''}
+        <div class="section-title">Částka a stav</div>
+        <div class="detail-grid">
+          ${detailRow('Celkem k úhradě', fmt(inv.amount||0)+' '+(inv.currency||'Kč'))}
+          ${detailRow('Stav', receivedInvoiceStatusLabel(st))}
+        </div>
+        ${inv.note?`<div class="section-title">Poznámka</div><p style="font-size:13.5px;white-space:pre-line;">${escapeHtml(inv.note)}</p>`:''}
+      `}
+      <div class="section-title">Přiložený soubor</div>
+      ${inv.attachment ? `<p style="font-size:13.5px;">📎 <button type="button" class="btn-link" data-action="view-received-invoice-file" data-path="${escapeAttr(inv.attachment.path)}">${escapeHtml(inv.attachment.name)}</button></p>` : `<p style="font-size:13.5px;color:var(--ink-soft);">Žádný soubor nepřiložen.</p>`}
+      <div class="formfoot">
+        <button type="button" class="btn secondary" data-action="nav" data-view="received-invoices">← Zpět na seznam</button>
+        <button type="button" class="btn danger" data-action="delete-received-invoice" data-id="${inv.id}">Smazat</button>
+      </div>
+    </div>
   `;
 }
 function supplierOptionsForReceived(selectedId){
@@ -4426,7 +4528,12 @@ function quickUploadSupplierOptions(){
 }
 function viewReceivedInvoiceForm(){
   const editing = state.editingReceivedInvoiceId ? state.receivedInvoices.find(i=>i.id===state.editingReceivedInvoiceId) : null;
-  const inv = editing || {};
+  const inv = editing ? { ...editing } : {};
+  if(!editing && state.newReceivedInvoiceForSupplierId){
+    const sup = supplierById(state.newReceivedInvoiceForSupplierId);
+    if(sup){ inv.supplierId = sup.id; inv.supplierName = sup.name; }
+    state.newReceivedInvoiceForSupplierId = null;
+  }
   if(!state.receivedFormItems.length){
     state.receivedFormItems = editing && editing.items && editing.items.length ? JSON.parse(JSON.stringify(editing.items)) : [{desc:'',qty:1,unit:'ks',price:0,vat:21}];
   }
@@ -4604,9 +4711,10 @@ function viewSupplierDetail(){
   const s = supplierById(state.viewingSupplierId);
   if(!s) return emptyState('Dodavatel nenalezen','') + `<div class="formfoot"><button class="btn secondary" data-action="nav" data-view="suppliers">Zpět</button></div>`;
   const products = state.products.filter(p=>p.supplierId===s.id);
+  const invoices = [...state.receivedInvoices].filter(inv=>inv.supplierId===s.id).sort((a,b)=>(b.issueDate||'').localeCompare(a.issueDate||''));
   return `
     <div class="pagehead">
-      <div><h1>${escapeHtml(s.name)}</h1><p class="desc">Detail dodavatele a jeho produkty.</p></div>
+      <div><h1>${escapeHtml(s.name)}</h1><p class="desc">Detail dodavatele, jeho produkty a přijaté faktury.</p></div>
       <div style="display:flex;gap:10px;">
         <button class="btn secondary" data-action="edit-supplier" data-id="${s.id}">✎ Upravit</button>
         <button class="btn" data-action="new-product-for-supplier" data-id="${s.id}">+ Nový produkt</button>
@@ -4626,6 +4734,38 @@ function viewSupplierDetail(){
     </div>
     <div class="section-title">Produkty tohoto dodavatele (${products.length})</div>
     ${products.length ? renderProductTable(products) : emptyState('Zatím žádné produkty', 'Přidej produkt a přiřaď mu tohoto dodavatele.')}
+
+    <div class="pagehead" style="margin-top:28px;">
+      <div><h2 style="margin:0;font-size:18px;">Přijaté faktury od tohoto dodavatele (${invoices.length})</h2></div>
+      <button class="btn secondary small" data-action="new-received-invoice-for-supplier" data-id="${s.id}">+ Zadat fakturu</button>
+    </div>
+    ${invoices.length ? `
+    <div class="table-scroll">
+    <table class="fixed-table">
+      <thead><tr><th>Číslo</th><th style="width:120px;">Vystaveno</th><th style="width:120px;">Splatnost</th><th style="width:130px;">Částka</th><th style="width:130px;">Stav</th><th style="width:70px;">Příloha</th></tr></thead>
+      <tbody>
+        ${invoices.map(inv=>{
+          const st = receivedInvoiceStatus(inv);
+          if(st==='draft'){
+            return `<tr class="rowlink" data-action="view-received-invoice" data-id="${inv.id}">
+              <td colspan="3" style="color:var(--ink-soft);font-style:italic;">📄 jen nahraný soubor — klikni pro doplnění údajů</td>
+              <td class="num">—</td>
+              <td><span class="pill ${receivedInvoiceStatusPill(st)}">${receivedInvoiceStatusLabel(st)}</span></td>
+              <td class="no-print">${inv.attachment ? `<button class="iconbtn" data-action="view-received-invoice-file" data-path="${escapeAttr(inv.attachment.path)}" title="Zobrazit PDF">📎</button>` : '—'}</td>
+            </tr>`;
+          }
+          return `<tr class="rowlink" data-action="view-received-invoice" data-id="${inv.id}">
+            <td>${escapeHtml(inv.number||'—')}</td>
+            <td>${inv.issueDate||'—'}</td>
+            <td>${inv.dueDate||'—'}</td>
+            <td class="num">${money(fmt(inv.amount||0)+' Kč')}</td>
+            <td><span class="pill ${receivedInvoiceStatusPill(st)}">${receivedInvoiceStatusLabel(st)}</span></td>
+            <td class="no-print">${inv.attachment ? `<button class="iconbtn" data-action="view-received-invoice-file" data-path="${escapeAttr(inv.attachment.path)}" title="Zobrazit PDF">📎</button>` : '—'}</td>
+          </tr>`;
+        }).join('')}
+      </tbody>
+    </table>
+    </div>` : emptyState('Zatím žádné přijaté faktury', 'Faktury od tohoto dodavatele se tu objeví po zadání nebo nahrání.')}
   `;
 }
 function viewSupplierForm(){
@@ -5966,6 +6106,13 @@ function setupReceivedInvoicesView(){
       render();
     });
   }
+  const supplierSelect = document.getElementById('rif-supplier');
+  if(supplierSelect){
+    supplierSelect.addEventListener('change', ()=>{
+      state.receivedInvoiceFilters.supplierId = supplierSelect.value;
+      render();
+    });
+  }
 }
 
 function productsKeyHandler(e){
@@ -6531,7 +6678,7 @@ const ATTACHMENTS_BUCKET = 'client-files';
 async function uploadClientFile(clientId, file){
   await ensureFreshSession();
   const safeName = file.name.replace(/[^\w.\-]+/g,'_');
-  const path = `${clientId}/${Date.now()}_${safeName}`;
+  const path = `${state.tenantId}/${clientId}/${Date.now()}_${safeName}`;
   const res = await fetch(`${SUPABASE_URL}/storage/v1/object/${ATTACHMENTS_BUCKET}/${path}`, {
     method: 'POST',
     headers: {
@@ -7066,7 +7213,7 @@ document.addEventListener('click', async (e)=>{
     state.authView='login'; state.view='dashboard';
     render();
   }
-  else if(action==='nav'){ state.view = el.getAttribute('data-view'); state.editingInvoiceId=null; state.editingClientId=null; state.viewingClientId=null; state.newClientDraftId=null; state.newClientDraftAttachments=[]; state.editingCompanyId=null; state.newCompanyDraftId=null; state.newCompanyDraft={logo:'',signature:'',stamp:''}; state.companyNotice=''; state.formItems=[]; state.formCompanyId=null; state.selectedInvoiceIds.clear(); state.selectedClientIds.clear(); state.editingSupplierId=null; state.viewingSupplierId=null; state.newSupplierDraftId=null; state.newSupplierDraftAttachments=[]; state.editingProductId=null; state.newProductDraftId=null; state.currentProductDraftPhoto=''; state.eanLookupStatus=''; state.selectedProductIds.clear(); closeProductContextMenu(); state.productColsPanelOpen=false; state.editingReceivedInvoiceId=null; state.receivedFormItems=[]; render(); }
+  else if(action==='nav'){ state.view = el.getAttribute('data-view'); state.editingInvoiceId=null; state.editingClientId=null; state.viewingClientId=null; state.newClientDraftId=null; state.newClientDraftAttachments=[]; state.editingCompanyId=null; state.newCompanyDraftId=null; state.newCompanyDraft={logo:'',signature:'',stamp:''}; state.companyNotice=''; state.formItems=[]; state.formCompanyId=null; state.selectedInvoiceIds.clear(); state.selectedClientIds.clear(); state.editingSupplierId=null; state.viewingSupplierId=null; state.newSupplierDraftId=null; state.newSupplierDraftAttachments=[]; state.editingProductId=null; state.newProductDraftId=null; state.currentProductDraftPhoto=''; state.eanLookupStatus=''; state.selectedProductIds.clear(); closeProductContextMenu(); state.productColsPanelOpen=false; state.editingReceivedInvoiceId=null; state.receivedFormItems=[]; state.viewingReceivedInvoiceId=null; render(); }
   else if(action==='new-invoice'){ state.view='invoice-form'; state.editingInvoiceId=null; state.formItems=[]; state.formCompanyId=null; render(); }
   else if(action==='toggle-invoice-select'){
     const cid = el.getAttribute('data-id');
@@ -7415,6 +7562,13 @@ document.addEventListener('click', async (e)=>{
     state.view = 'received-invoice-form';
     render();
   }
+  else if(action==='new-received-invoice-for-supplier'){
+    state.editingReceivedInvoiceId = null;
+    state.receivedFormItems = [];
+    state.newReceivedInvoiceForSupplierId = id;
+    state.view = 'received-invoice-form';
+    render();
+  }
   else if(action==='toggle-received-quick-upload'){
     const box = document.getElementById('received-quick-upload-box');
     if(box) box.style.display = box.style.display==='none' ? '' : 'none';
@@ -7425,11 +7579,24 @@ document.addEventListener('click', async (e)=>{
     else state.receivedInvoiceSort = { key, dir:'asc' };
     render();
   }
+  else if(action==='view-received-invoice'){
+    state.viewingReceivedInvoiceId = el.getAttribute('data-id');
+    state.view = 'received-invoice-detail';
+    render();
+  }
   else if(action==='edit-received-invoice'){
     state.editingReceivedInvoiceId = el.getAttribute('data-id');
     state.receivedFormItems = [];
     state.view = 'received-invoice-form';
     render();
+  }
+  else if(action==='toggle-received-paid'){
+    const inv = state.receivedInvoices.find(i=>i.id===el.getAttribute('data-id'));
+    if(inv){
+      inv.status = inv.status==='paid' ? 'unpaid' : 'paid';
+      try{ await saveReceivedInvoices(); }catch(err){ alert('Uložení se nepovedlo, zkus to prosím znovu.'); }
+      render();
+    }
   }
   else if(action==='delete-received-invoice'){
     if(!confirm('Opravdu smazat tuto přijatou fakturu?')) return;
@@ -7440,6 +7607,8 @@ document.addEventListener('click', async (e)=>{
       catch(err){ if(err && err.message==='cancelled') return; }
     }
     state.receivedInvoices = state.receivedInvoices.filter(i=>i.id!==invId);
+    state.view = 'received-invoices';
+    state.viewingReceivedInvoiceId = null;
     try{ await saveReceivedInvoices(); }catch(err){ alert('Smazání se nepovedlo, zkus to prosím znovu.'); }
     render();
     if(inv && inv.attachment){ deleteReceivedInvoiceFile(inv.attachment.path); }
