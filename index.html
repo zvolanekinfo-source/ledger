@@ -4333,22 +4333,76 @@ function supplierOptionsForReceived(selectedId){
 function viewReceivedInvoiceForm(){
   const editing = state.editingReceivedInvoiceId ? state.receivedInvoices.find(i=>i.id===state.editingReceivedInvoiceId) : null;
   const inv = editing || {};
+  const selSupplier = supplierById(inv.supplierId);
   return `
     <div class="pagehead">
       <div><h1>${editing ? 'Upravit přijatou fakturu' : 'Nová přijatá faktura'}</h1><p class="desc">Doplň údaje o faktuře od dodavatele.</p></div>
     </div>
-    <form id="received-invoice-form" class="form-card" style="max-width:640px;">
-      <div class="field"><label>Dodavatel (volitelné propojení)</label><select name="supplierId">${supplierOptionsForReceived(inv.supplierId)}</select></div>
-      <div class="field"><label>Název dodavatele (na faktuře)</label><input name="supplierName" value="${escapeAttr(inv.supplierName||'')}" required></div>
-      <div class="field-row" style="display:flex;gap:12px;">
-        <div class="field" style="flex:1;"><label>Číslo faktury</label><input name="number" value="${escapeAttr(inv.number||'')}"></div>
-        <div class="field" style="flex:1;"><label>Částka celkem (Kč)</label><input name="amount" type="number" step="0.01" value="${inv.amount||''}" required></div>
+    <form id="received-invoice-form" class="form-card">
+      <div class="section-title" style="margin-top:0;padding-top:0;border-top:none;">Dodavatel</div>
+      <div class="field-row">
+        <div class="field"><label>Dodavatel (volitelné propojení)</label><select name="supplierId" id="received-supplier-select">${supplierOptionsForReceived(inv.supplierId)}</select></div>
+        <div class="field"><label>Název dodavatele (na faktuře)</label><input name="supplierName" id="received-supplier-name" value="${escapeAttr(inv.supplierName||'')}" required></div>
       </div>
-      <div class="field-row" style="display:flex;gap:12px;">
-        <div class="field" style="flex:1;"><label>Datum vystavení</label><input name="issueDate" type="date" value="${inv.issueDate||''}"></div>
-        <div class="field" style="flex:1;"><label>Datum splatnosti</label><input name="dueDate" type="date" value="${inv.dueDate||''}"></div>
+      <div class="client-detail-box" id="received-supplier-detail-box" style="${selSupplier?'':'display:none;'}">
+        <div class="field-row">
+          <div class="field"><label>Adresa dodavatele</label><div id="received-supplier-address" style="font-size:13px;color:var(--ink-soft);padding:9px 0;white-space:pre-line;">${selSupplier?escapeHtml(formatAddress(selSupplier.address))||'—':''}</div></div>
+          <div class="field"><label>IČO</label><input name="supplierIco" id="received-supplier-ico" value="${escapeAttr(selSupplier?selSupplier.ico||'':'')}"></div>
+        </div>
+        <div class="field-row">
+          <div class="field"><label>DIČ</label><input name="supplierDic" id="received-supplier-dic" value="${escapeAttr(selSupplier?selSupplier.dic||'':'')}"></div>
+          <div class="field"><label>Kontaktní e-mail</label><input name="supplierEmail" id="received-supplier-email" value="${escapeAttr(selSupplier?selSupplier.contactEmail||'':'')}"></div>
+        </div>
+        <div class="field-row">
+          <div class="field"><label>Kontaktní telefon</label><input name="supplierPhone" id="received-supplier-phone" value="${escapeAttr(selSupplier?selSupplier.contactPhone||'':'')}"></div>
+          <div class="field"></div>
+        </div>
+        <p style="font-size:11.5px;color:var(--ink-soft);margin:-8px 0 4px 0;">Adresu uprav v kartě dodavatele. IČO/DIČ/kontakty tady se po uložení faktury promítnou i do karty dodavatele.</p>
       </div>
-      <div class="field"><label>Poznámka</label><textarea name="note" rows="2">${escapeHtml(inv.note||'')}</textarea></div>
+
+      <div class="section-title">Základní údaje faktury</div>
+      <div class="field-row">
+        <div class="field"><label>Číslo faktury (dodavatele)</label><input name="number" value="${escapeAttr(inv.number||'')}"></div>
+        <div class="field"><label>Naše číslo objednávky</label><input name="orderNumber" value="${escapeAttr(inv.orderNumber||'')}"></div>
+      </div>
+      <div class="field-row">
+        <div class="field"><label>Datum vystavení</label><input name="issueDate" type="date" value="${inv.issueDate||''}"></div>
+        <div class="field"><label>Datum splatnosti</label><input name="dueDate" type="date" value="${inv.dueDate||''}"></div>
+      </div>
+      <div class="field-row">
+        <div class="field"><label>Datum zdanitelného plnění</label><input name="taxDate" type="date" value="${inv.taxDate||''}"></div>
+        <div class="field"></div>
+      </div>
+      <div class="field-row">
+        <div class="field"><label>Variabilní symbol</label><input name="variableSymbol" value="${escapeAttr(inv.variableSymbol||'')}"></div>
+        <div class="field"><label>Konstantní symbol</label><input name="constantSymbol" value="${escapeAttr(inv.constantSymbol||'')}"></div>
+      </div>
+      <div class="field-row">
+        <div class="field"><label>Forma úhrady</label>
+          <select name="paymentMethod">
+            ${['Bankovním převodem','Hotově','Kartou'].map(m=>`<option value="${m}" ${(inv.paymentMethod||'Bankovním převodem')===m?'selected':''}>${m}</option>`).join('')}
+          </select>
+        </div>
+        <div class="field"><label>Měna</label>
+          <select name="currency">
+            ${['CZK','EUR','USD'].map(m=>`<option value="${m}" ${(inv.currency||'CZK')===m?'selected':''}>${m}</option>`).join('')}
+          </select>
+        </div>
+      </div>
+
+      <div class="section-title">Částka</div>
+      <div class="field-row">
+        <div class="field"><label>Základ daně (bez DPH)</label><input name="amountExVat" id="received-amount-exvat" type="number" step="0.01" min="0" value="${inv.amountExVat||''}"></div>
+        <div class="field"><label>Sazba DPH (%)</label><input name="vatRate" id="received-vat-rate" type="number" step="0.1" min="0" list="vat-rate-options" value="${inv.vatRate??''}" placeholder="21"></div>
+      </div>
+      <datalist id="vat-rate-options">${VAT_RATES.map(r=>`<option value="${r}">`).join('')}</datalist>
+      <div class="field-row">
+        <div class="field"><label>Celkem k úhradě (s DPH)</label><input name="amount" id="received-amount-total" type="number" step="0.01" value="${inv.amount||''}" required></div>
+        <div class="field"><p id="received-vat-info" style="font-size:12px;color:var(--ink-soft);margin:26px 0 0 0;"></p></div>
+      </div>
+
+      <div class="section-title">Ostatní</div>
+      <div class="field"><label>Poznámka / předmět fakturace</label><textarea name="note" rows="2">${escapeHtml(inv.note||'')}</textarea></div>
       <label style="display:flex;align-items:center;gap:8px;font-size:14px;margin:6px 0 14px 0;">
         <input type="checkbox" name="paid" ${inv.status==='paid'?'checked':''}> Už zaplaceno
       </label>
@@ -5741,6 +5795,7 @@ function afterRender(){
   if(accountForm){ accountForm.addEventListener('submit', onSubmitAccount); }
   const receivedInvoiceForm = document.getElementById('received-invoice-form');
   if(receivedInvoiceForm) receivedInvoiceForm.addEventListener('submit', onSubmitReceivedInvoice);
+  setupReceivedInvoiceForm();
   const colleagueForm = document.getElementById('colleague-form');
   if(colleagueForm){ colleagueForm.addEventListener('submit', onSubmitColleague); }
   const userCredsForm = document.getElementById('user-creds-form');
@@ -6332,22 +6387,48 @@ async function onSubmitReceivedInvoice(e){
   const supplierId = fd.get('supplierId') || null;
   const supplierName = (fd.get('supplierName')||'').trim();
   const number = (fd.get('number')||'').trim();
-  const amount = parseFloat(fd.get('amount'))||0;
+  const orderNumber = (fd.get('orderNumber')||'').trim();
   const issueDate = fd.get('issueDate')||'';
   const dueDate = fd.get('dueDate')||'';
+  const taxDate = fd.get('taxDate')||'';
+  const variableSymbol = (fd.get('variableSymbol')||'').trim();
+  const constantSymbol = (fd.get('constantSymbol')||'').trim();
+  const paymentMethod = fd.get('paymentMethod') || 'Bankovním převodem';
+  const currency = fd.get('currency') || 'CZK';
+  const amountExVat = parseFloat(fd.get('amountExVat'))||0;
+  const vatRateRaw = fd.get('vatRate');
+  const vatRate = vatRateRaw==='' || vatRateRaw==null ? null : parseFloat(vatRateRaw);
+  const amount = parseFloat(fd.get('amount'))||0;
   const note = (fd.get('note')||'').trim();
   const paid = fd.get('paid') === 'on';
   const existing = state.editingReceivedInvoiceId ? state.receivedInvoices.find(i=>i.id===state.editingReceivedInvoiceId) : null;
   const attachment = existing ? existing.attachment : null;
 
+  // Promítnutí ručně upravených údajů zpět do karty dodavatele (stejně jako u odběratele na vystavené faktuře)
+  if(supplierId){
+    const supplierIdx = state.suppliers.findIndex(s=>s.id===supplierId);
+    if(supplierIdx > -1){
+      state.suppliers[supplierIdx] = {
+        ...state.suppliers[supplierIdx],
+        ico: fd.get('supplierIco') ?? state.suppliers[supplierIdx].ico,
+        dic: fd.get('supplierDic') ?? state.suppliers[supplierIdx].dic,
+        contactEmail: fd.get('supplierEmail') ?? state.suppliers[supplierIdx].contactEmail,
+        contactPhone: fd.get('supplierPhone') ?? state.suppliers[supplierIdx].contactPhone
+      };
+      await saveSuppliers();
+    }
+  }
+
+  const fields = {
+    supplierId, supplierName, number, orderNumber, issueDate, dueDate, taxDate,
+    variableSymbol, constantSymbol, paymentMethod, currency, amountExVat, vatRate, amount, note,
+    status: paid?'paid':'unpaid', attachment
+  };
   if(existing){
     const idx = state.receivedInvoices.findIndex(i=>i.id===existing.id);
-    state.receivedInvoices[idx] = { ...existing, supplierId, supplierName, number, amount, issueDate, dueDate, note, status: paid?'paid':'unpaid', attachment };
+    state.receivedInvoices[idx] = { ...existing, ...fields };
   } else {
-    state.receivedInvoices.push({
-      id: uid(), supplierId, supplierName, number, amount, issueDate, dueDate, note,
-      status: paid?'paid':'unpaid', attachment, createdAt: new Date().toISOString()
-    });
+    state.receivedInvoices.push({ id: uid(), ...fields, createdAt: new Date().toISOString() });
   }
   const btn = e.target.querySelector('button[type="submit"]');
   if(btn) btn.disabled = true;
@@ -6456,6 +6537,58 @@ function setupInvoiceCompanySelect(){
     if(val!=='__new__'){ state.formCompanyId = val; applyVat(val); }
   }
   select.addEventListener('change', apply);
+}
+
+function setupReceivedInvoiceForm(){
+  const select = document.getElementById('received-supplier-select');
+  const nameInput = document.getElementById('received-supplier-name');
+  const detailBox = document.getElementById('received-supplier-detail-box');
+  if(select && detailBox){
+    function fillSupplierBox(s){
+      if(!s){ detailBox.style.display='none'; return; }
+      detailBox.style.display='';
+      const addr = document.getElementById('received-supplier-address');
+      const ico = document.getElementById('received-supplier-ico');
+      const dic = document.getElementById('received-supplier-dic');
+      const email = document.getElementById('received-supplier-email');
+      const phone = document.getElementById('received-supplier-phone');
+      if(addr) addr.textContent = formatAddress(s.address) || '—';
+      if(ico) ico.value = s.ico||'';
+      if(dic) dic.value = s.dic||'';
+      if(email) email.value = s.contactEmail||'';
+      if(phone) phone.value = s.contactPhone||'';
+    }
+    select.addEventListener('change', ()=>{
+      const s = supplierById(select.value);
+      fillSupplierBox(s);
+      if(s && nameInput && !nameInput.value.trim()) nameInput.value = s.name;
+    });
+  }
+
+  // Dopočet DPH / celkové částky ze základu daně a sazby, dokud uživatel ručně nezasáhne do pole "Celkem"
+  const baseInput = document.getElementById('received-amount-exvat');
+  const rateInput = document.getElementById('received-vat-rate');
+  const totalInput = document.getElementById('received-amount-total');
+  const infoEl = document.getElementById('received-vat-info');
+  if(baseInput && rateInput && totalInput){
+    const isEditing = !!state.editingReceivedInvoiceId;
+    let touched = isEditing; // u existující faktury nepřepisujeme uloženou částku automaticky
+    function recalc(){
+      const base = parseFloat(baseInput.value);
+      const rate = parseFloat(rateInput.value);
+      if(!isNaN(base) && base>0 && !isNaN(rate) && rate>=0){
+        const vatAmount = base * rate/100;
+        if(!touched) totalInput.value = (base+vatAmount).toFixed(2);
+        if(infoEl) infoEl.textContent = `DPH: ${fmt(vatAmount)} Kč`;
+      } else if(infoEl){
+        infoEl.textContent = '';
+      }
+    }
+    totalInput.addEventListener('input', ()=>{ touched = true; });
+    baseInput.addEventListener('input', recalc);
+    rateInput.addEventListener('input', recalc);
+    recalc();
+  }
 }
 
 function setupClientCombo(){
