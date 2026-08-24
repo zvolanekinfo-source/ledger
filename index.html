@@ -4310,9 +4310,19 @@ function viewReceivedInvoices(){
         </div>
         <div class="field"><button type="button" class="btn-link" data-action="toggle-quick-new-supplier">+ Nový dodavatel</button></div>
       </div>
-      <div class="field-row" id="received-quick-new-supplier-box" style="display:none;">
-        <div class="field"><label>Název nového dodavatele</label><input type="text" id="received-quick-new-supplier-name" placeholder="Název firmy"></div>
-        <div class="field"><label>&nbsp;</label><button type="button" class="btn secondary" id="received-quick-new-supplier-btn" style="width:100%;">Vytvořit dodavatele</button></div>
+      <div id="received-quick-new-supplier-box" style="display:none;">
+        <div class="field combo-field">
+          <label>Název nového dodavatele</label>
+          <input type="text" id="received-quick-new-supplier-name" placeholder="Začni psát a ledgers nabídne shody z ARES…" autocomplete="off">
+          <div class="combo-list" id="received-quick-new-supplier-name-list"></div>
+        </div>
+        <p id="received-quick-new-supplier-ares-status" style="font-size:12px;color:var(--ink-soft);margin:-6px 0 10px 0;"></p>
+        <div class="field-row">
+          <div class="field"><label>IČO</label><input type="text" id="received-quick-new-supplier-ico"></div>
+          <div class="field"><label>DIČ</label><input type="text" id="received-quick-new-supplier-dic"></div>
+        </div>
+        ${addressFieldGroup('received-quick-new-supplier-address','Adresa', blankAddr())}
+        <button type="button" class="btn secondary" id="received-quick-new-supplier-btn">Vytvořit dodavatele</button>
       </div>
       <div class="field-row" style="align-items:flex-end;">
         <div class="field">
@@ -4575,13 +4585,19 @@ function viewSupplierForm(){
   return `
     <div class="pagehead"><div><h1>${editing?'Upravit dodavatele':'Nový dodavatel'}</h1></div></div>
     <form id="supplier-form" class="form-card">
+      <div class="field combo-field">
+        <label>Název firmy</label>
+        <input name="name" id="supplier-name" value="${escapeAttr(s.name)}" placeholder="Začni psát a ledgers nabídne shody z ARES…" autocomplete="off" required autofocus>
+        <div class="combo-list" id="supplier-name-list"></div>
+      </div>
+      <p id="supplier-ares-status" style="font-size:12px;color:var(--ink-soft);margin:-6px 0 14px 0;"></p>
       <div class="field-row">
-        <div class="field"><label>Název firmy</label><input name="name" value="${escapeAttr(s.name)}" required autofocus></div>
-        <div class="field"><label>Web</label><input name="website" value="${escapeAttr(s.website||'')}"></div>
+        <div class="field"><label>IČO</label><input name="ico" id="supplier-ico" value="${escapeAttr(s.ico)}"></div>
+        <div class="field"><label>DIČ</label><input name="dic" id="supplier-dic" value="${escapeAttr(s.dic)}"></div>
       </div>
       <div class="field-row">
-        <div class="field"><label>IČO</label><input name="ico" value="${escapeAttr(s.ico)}"></div>
-        <div class="field"><label>DIČ</label><input name="dic" value="${escapeAttr(s.dic)}"></div>
+        <div class="field"><label>Web</label><input name="website" value="${escapeAttr(s.website||'')}"></div>
+        <div class="field"></div>
       </div>
       ${addressFieldGroup('supplier-address','Adresa', s.address)}
       <div class="field-row">
@@ -5949,6 +5965,8 @@ function afterRender(){
   ['client-address','client-delivery-address'].forEach(setupAddressGroupAutocomplete);
   setupAresCombo({ name:'co-name', list:'co-name-list', status:'co-ares-status', ico:'co-ico', dic:'co-dic', addrPrefix:'co-address' });
   setupAddressGroupAutocomplete('co-address');
+  setupAresCombo({ name:'supplier-name', list:'supplier-name-list', status:'supplier-ares-status', ico:'supplier-ico', dic:'supplier-dic', addrPrefix:'supplier-address' });
+  setupAddressGroupAutocomplete('supplier-address');
   setupAttachmentUpload();
   const clientSearchInput = document.getElementById('client-search-input');
   if(clientSearchInput){
@@ -6153,6 +6171,13 @@ function gatherAddrField(fd, prefix){
   return {
     street: fd.get(prefix+'-street')||'', number: fd.get(prefix+'-number')||'',
     zip: fd.get(prefix+'-zip')||'', city: fd.get(prefix+'-city')||''
+  };
+}
+function addrFromInputs(prefix){
+  const val = id => { const el = document.getElementById(id); return el ? el.value||'' : ''; };
+  return {
+    street: val(prefix+'-street'), number: val(prefix+'-number'),
+    zip: val(prefix+'-zip'), city: val(prefix+'-city')
   };
 }
 
@@ -6799,12 +6824,21 @@ function setupReceivedQuickUpload(){
   const uploadTrigger = document.getElementById('received-quick-upload-trigger');
   const statusEl = document.getElementById('received-quick-upload-status');
 
+  setupAresCombo({ name:'received-quick-new-supplier-name', list:'received-quick-new-supplier-name-list', status:'received-quick-new-supplier-ares-status', ico:'received-quick-new-supplier-ico', dic:'received-quick-new-supplier-dic', addrPrefix:'received-quick-new-supplier-address' });
+  setupAddressGroupAutocomplete('received-quick-new-supplier-address');
+
   if(newSupplierBtn){
     newSupplierBtn.addEventListener('click', async ()=>{
       const name = (newSupplierNameInput.value||'').trim();
       if(!name){ newSupplierNameInput.focus(); return; }
       newSupplierBtn.disabled = true;
-      const supplier = { ...blankSupplier(), name };
+      const supplier = {
+        ...blankSupplier(),
+        name,
+        ico: (document.getElementById('received-quick-new-supplier-ico')||{}).value||'',
+        dic: (document.getElementById('received-quick-new-supplier-dic')||{}).value||'',
+        address: addrFromInputs('received-quick-new-supplier-address')
+      };
       state.suppliers.push(supplier);
       try{
         await saveSuppliers();
@@ -6814,6 +6848,9 @@ function setupReceivedQuickUpload(){
         supplierSelect.appendChild(opt);
         supplierSelect.value = supplier.id;
         newSupplierNameInput.value = '';
+        ['ico','dic'].forEach(f=>{ const el=document.getElementById('received-quick-new-supplier-'+f); if(el) el.value=''; });
+        ['street','number','zip','city'].forEach(f=>{ const el=document.getElementById('received-quick-new-supplier-address-'+f); if(el) el.value=''; });
+        const aresStatus = document.getElementById('received-quick-new-supplier-ares-status'); if(aresStatus) aresStatus.textContent='';
         if(newSupplierBox) newSupplierBox.style.display = 'none';
         if(statusEl) statusEl.textContent = '';
       }catch(err){
