@@ -4298,7 +4298,31 @@ function viewReceivedInvoices(){
       <div><h1>Přijaté faktury</h1><p class="desc">${state.receivedInvoices.length} přijatých faktur v evidenci · nezaplaceno ${money(fmt(totalUnpaid)+' Kč')}.</p></div>
       <div style="display:flex;gap:10px;">
         <button class="btn secondary" data-action="new-received-invoice">+ Zadat ručně</button>
+        <button class="btn" data-action="toggle-received-quick-upload">⇪ Nahrát fakturu</button>
       </div>
+    </div>
+    <div class="client-detail-box" id="received-quick-upload-box" style="display:none;">
+      <div class="mini-label" style="margin-top:0;">Nahrát PDF fakturu k dodavateli</div>
+      <div class="field-row" style="align-items:flex-end;">
+        <div class="field">
+          <label>Dodavatel</label>
+          <select id="received-quick-supplier-select">${quickUploadSupplierOptions()}</select>
+        </div>
+        <div class="field"><button type="button" class="btn-link" data-action="toggle-quick-new-supplier">+ Nový dodavatel</button></div>
+      </div>
+      <div class="field-row" id="received-quick-new-supplier-box" style="display:none;">
+        <div class="field"><label>Název nového dodavatele</label><input type="text" id="received-quick-new-supplier-name" placeholder="Název firmy"></div>
+        <div class="field"><label>&nbsp;</label><button type="button" class="btn secondary" id="received-quick-new-supplier-btn" style="width:100%;">Vytvořit dodavatele</button></div>
+      </div>
+      <div class="field-row" style="align-items:flex-end;">
+        <div class="field">
+          <label>PDF faktury</label>
+          <button type="button" class="btn secondary" id="received-quick-upload-trigger" style="width:100%;">Vybrat PDF a nahrát</button>
+          <input type="file" id="received-quick-upload-file-input" accept="application/pdf" style="display:none;">
+        </div>
+        <div class="field"></div>
+      </div>
+      <p id="received-quick-upload-status" style="font-size:12px;color:var(--ink-soft);margin:-6px 0 14px 0;"></p>
     </div>
     ${list.length ? `
     <div class="table-scroll">
@@ -4329,6 +4353,11 @@ function viewReceivedInvoices(){
 function supplierOptionsForReceived(selectedId){
   return `<option value="">— bez vazby na dodavatele —</option>` + state.suppliers.map(s=>
     `<option value="${s.id}" ${selectedId===s.id?'selected':''}>${escapeHtml(s.name)}</option>`
+  ).join('');
+}
+function quickUploadSupplierOptions(){
+  return `<option value="" disabled selected>— vyber dodavatele —</option>` + state.suppliers.map(s=>
+    `<option value="${s.id}">${escapeHtml(s.name)}</option>`
   ).join('');
 }
 function viewReceivedInvoiceForm(){
@@ -5888,6 +5917,7 @@ function afterRender(){
   const receivedInvoiceForm = document.getElementById('received-invoice-form');
   if(receivedInvoiceForm) receivedInvoiceForm.addEventListener('submit', onSubmitReceivedInvoice);
   setupReceivedInvoiceForm();
+  setupReceivedQuickUpload();
   const colleagueForm = document.getElementById('colleague-form');
   if(colleagueForm){ colleagueForm.addEventListener('submit', onSubmitColleague); }
   const userCredsForm = document.getElementById('user-creds-form');
@@ -6450,6 +6480,25 @@ async function signAttachmentUrl(path){
 
 /* ---------- PŘIJATÉ FAKTURY — PDF příloha (bucket "received-invoices") ---------- */
 const RECEIVED_INVOICES_BUCKET = 'received-invoices';
+async function uploadReceivedInvoiceFile(file){
+  await ensureFreshSession();
+  const safeName = file.name.replace(/[^\w.\-]+/g,'_');
+  const path = `${state.tenantId}/${uid()}_${safeName}`;
+  const res = await fetch(`${SUPABASE_URL}/storage/v1/object/${RECEIVED_INVOICES_BUCKET}/${path}`, {
+    method: 'POST',
+    headers: {
+      'apikey': SUPABASE_KEY,
+      'Authorization': 'Bearer ' + (session ? session.access_token : SUPABASE_KEY),
+      'Content-Type': file.type || 'application/pdf'
+    },
+    body: file
+  });
+  if(!res.ok){
+    const text = await res.text().catch(()=>'');
+    throw new Error(`Nahrání PDF se nepovedlo: ${text}`);
+  }
+  return { name: file.name, path, uploaded_at: new Date().toISOString() };
+}
 async function deleteReceivedInvoiceFile(path){
   await ensureFreshSession();
   await fetch(`${SUPABASE_URL}/storage/v1/object/${RECEIVED_INVOICES_BUCKET}`, {
@@ -6737,6 +6786,81 @@ function setupReceivedProductPicker(){
   });
   document.addEventListener('click', (e)=>{
     if(e.target!==input && !list.contains(e.target)) list.classList.remove('open');
+  });
+}
+
+function setupReceivedQuickUpload(){
+  const supplierSelect = document.getElementById('received-quick-supplier-select');
+  const fileInput = document.getElementById('received-quick-upload-file-input');
+  if(!supplierSelect || !fileInput) return;
+  const newSupplierBox = document.getElementById('received-quick-new-supplier-box');
+  const newSupplierNameInput = document.getElementById('received-quick-new-supplier-name');
+  const newSupplierBtn = document.getElementById('received-quick-new-supplier-btn');
+  const uploadTrigger = document.getElementById('received-quick-upload-trigger');
+  const statusEl = document.getElementById('received-quick-upload-status');
+
+  if(newSupplierBtn){
+    newSupplierBtn.addEventListener('click', async ()=>{
+      const name = (newSupplierNameInput.value||'').trim();
+      if(!name){ newSupplierNameInput.focus(); return; }
+      newSupplierBtn.disabled = true;
+      const supplier = { ...blankSupplier(), name };
+      state.suppliers.push(supplier);
+      try{
+        await saveSuppliers();
+        const opt = document.createElement('option');
+        opt.value = supplier.id;
+        opt.textContent = supplier.name;
+        supplierSelect.appendChild(opt);
+        supplierSelect.value = supplier.id;
+        newSupplierNameInput.value = '';
+        if(newSupplierBox) newSupplierBox.style.display = 'none';
+        if(statusEl) statusEl.textContent = '';
+      }catch(err){
+        state.suppliers = state.suppliers.filter(s=>s.id!==supplier.id);
+        alert('Založení dodavatele se nepovedlo, zkus to prosím znovu.');
+      }
+      newSupplierBtn.disabled = false;
+    });
+  }
+
+  if(uploadTrigger){
+    uploadTrigger.addEventListener('click', ()=>{
+      if(!supplierSelect.value){
+        if(statusEl) statusEl.textContent = 'Nejdřív vyber dodavatele (nebo ho založ tlačítkem „+ Nový dodavatel“).';
+        supplierSelect.focus();
+        return;
+      }
+      fileInput.click();
+    });
+  }
+
+  fileInput.addEventListener('change', async ()=>{
+    const file = fileInput.files[0];
+    fileInput.value = '';
+    if(!file) return;
+    const supplier = supplierById(supplierSelect.value);
+    if(!supplier){ if(statusEl) statusEl.textContent = 'Nejdřív vyber dodavatele.'; return; }
+    if(statusEl) statusEl.textContent = 'Nahrávám…';
+    if(uploadTrigger) uploadTrigger.disabled = true;
+    try{
+      const attachment = await uploadReceivedInvoiceFile(file);
+      const invoice = {
+        id: uid(), supplierId: supplier.id, supplierName: supplier.name, companyId: (state.companies[0]||{}).id||null,
+        number:'', orderNumber:'', issueDate:'', dueDate:'', taxDate:'', variableSymbol:'', constantSymbol:'',
+        paymentMethod:'Bankovním převodem', currency:'CZK', amount:0, note:'', items:[],
+        status:'unpaid', attachment, createdAt: new Date().toISOString()
+      };
+      state.receivedInvoices.push(invoice);
+      await saveReceivedInvoices();
+      state.editingReceivedInvoiceId = invoice.id;
+      state.receivedFormItems = [];
+      state.view = 'received-invoice-form';
+      render();
+    }catch(err){
+      if(statusEl) statusEl.textContent = err.message || 'Nahrání se nepovedlo, zkus to prosím znovu.';
+      if(uploadTrigger) uploadTrigger.disabled = false;
+    }
   });
 }
 
@@ -7219,6 +7343,18 @@ document.addEventListener('click', async (e)=>{
     state.receivedFormItems = [];
     state.view = 'received-invoice-form';
     render();
+  }
+  else if(action==='toggle-received-quick-upload'){
+    const box = document.getElementById('received-quick-upload-box');
+    if(box) box.style.display = box.style.display==='none' ? '' : 'none';
+  }
+  else if(action==='toggle-quick-new-supplier'){
+    const box = document.getElementById('received-quick-new-supplier-box');
+    if(box){
+      const opening = box.style.display==='none';
+      box.style.display = opening ? '' : 'none';
+      if(opening){ const inp = document.getElementById('received-quick-new-supplier-name'); if(inp) inp.focus(); }
+    }
   }
   else if(action==='edit-received-invoice'){
     state.editingReceivedInvoiceId = el.getAttribute('data-id');
