@@ -635,6 +635,7 @@ let state = {
   newClientDraftAttachments: [],
   previewId: null,
   formItems: [],
+  receivedFormItems: [],
   loaded: false,
   clientSearch: '',
   clientSort: 'newest',
@@ -4333,6 +4334,9 @@ function supplierOptionsForReceived(selectedId){
 function viewReceivedInvoiceForm(){
   const editing = state.editingReceivedInvoiceId ? state.receivedInvoices.find(i=>i.id===state.editingReceivedInvoiceId) : null;
   const inv = editing || {};
+  if(!state.receivedFormItems.length){
+    state.receivedFormItems = editing && editing.items && editing.items.length ? JSON.parse(JSON.stringify(editing.items)) : [{desc:'',qty:1,unit:'ks',price:0,vat:21}];
+  }
   const selSupplier = supplierById(inv.supplierId);
   return `
     <div class="pagehead">
@@ -4361,10 +4365,25 @@ function viewReceivedInvoiceForm(){
       </div>
 
       <div class="section-title">Základní údaje faktury</div>
+      ${state.companies.length ? `
+      <div class="field-row">
+        <div class="field"><label>Firma (příjemce faktury)</label>
+          <select name="companyId">
+            ${state.companies.map(co=>`<option value="${co.id}" ${(inv.companyId||state.companies[0].id)===co.id?'selected':''}>${escapeHtml(co.name||'(bez názvu)')}</option>`).join('')}
+          </select>
+        </div>
+        <div class="field"><label>Číslo faktury (dodavatele)</label><input name="number" value="${escapeAttr(inv.number||'')}"></div>
+      </div>
+      <div class="field-row">
+        <div class="field"><label>Naše číslo objednávky</label><input name="orderNumber" value="${escapeAttr(inv.orderNumber||'')}"></div>
+        <div class="field"></div>
+      </div>
+      ` : `
       <div class="field-row">
         <div class="field"><label>Číslo faktury (dodavatele)</label><input name="number" value="${escapeAttr(inv.number||'')}"></div>
         <div class="field"><label>Naše číslo objednávky</label><input name="orderNumber" value="${escapeAttr(inv.orderNumber||'')}"></div>
       </div>
+      `}
       <div class="field-row">
         <div class="field"><label>Datum vystavení</label><input name="issueDate" type="date" value="${inv.issueDate||''}"></div>
         <div class="field"><label>Datum splatnosti</label><input name="dueDate" type="date" value="${inv.dueDate||''}"></div>
@@ -4390,15 +4409,28 @@ function viewReceivedInvoiceForm(){
         </div>
       </div>
 
-      <div class="section-title">Částka</div>
-      <div class="field-row">
-        <div class="field"><label>Základ daně (bez DPH)</label><input name="amountExVat" id="received-amount-exvat" type="number" step="0.01" min="0" value="${inv.amountExVat||''}"></div>
-        <div class="field"><label>Sazba DPH (%)</label><input name="vatRate" id="received-vat-rate" type="number" step="0.1" min="0" list="vat-rate-options" value="${inv.vatRate??''}" placeholder="21"></div>
+      <div class="section-title">Položky</div>
+      <div class="field combo-field" style="max-width:460px;">
+        <label>Přidat položku z produktů</label>
+        <input type="text" id="received-product-picker-input" placeholder="Hledej podle názvu, EAN nebo kódu…" autocomplete="off">
+        <div class="combo-list" id="received-product-picker-list"></div>
       </div>
-      <datalist id="vat-rate-options">${VAT_RATES.map(r=>`<option value="${r}">`).join('')}</datalist>
-      <div class="field-row">
-        <div class="field"><label>Celkem k úhradě (s DPH)</label><input name="amount" id="received-amount-total" type="number" step="0.01" value="${inv.amount||''}" required></div>
-        <div class="field"><p id="received-vat-info" style="font-size:12px;color:var(--ink-soft);margin:26px 0 0 0;"></p></div>
+      <div class="items-table-wrap">
+      <datalist id="received-vat-rate-options">${VAT_RATES.map(r=>`<option value="${r}">`).join('')}</datalist>
+      <table class="items-table">
+        <thead><tr><th class="col-desc">Popis</th><th class="col-qty">Množství</th><th class="col-unit">Jedn.</th><th class="col-price">Nákupní cena/ks</th><th class="col-vat">DPH</th><th class="col-total num">Celkem</th><th class="col-remove"></th></tr></thead>
+        <tbody id="received-items-body">${renderReceivedItemRows()}</tbody>
+      </table>
+      </div>
+      <button type="button" class="btn secondary small no-print" data-action="add-received-item">+ Přidat položku</button>
+      <p style="font-size:11px;color:var(--ink-soft);margin:8px 0 0 0;">Položky napojené na produkt appka po uložení automaticky naskladní (skladový pohyb „příjem“).</p>
+
+      <div class="section-title">Souhrn</div>
+      <div class="totals-box" id="received-totals-box">${renderReceivedTotalsBox()}</div>
+      <div class="field" style="max-width:300px;margin-top:10px;">
+        <label>Celkem k úhradě (s DPH)</label>
+        <input name="amount" id="received-amount-total" type="number" step="0.01" value="${inv.amount||''}" required>
+        <p style="font-size:11px;color:var(--ink-soft);margin:4px 0 0 0;">Předvyplní se součtem položek — uprav, pokud se liší od částky na faktuře (zaokrouhlení apod.).</p>
       </div>
 
       <div class="section-title">Ostatní</div>
@@ -4412,6 +4444,35 @@ function viewReceivedInvoiceForm(){
         <button type="submit" class="btn">${editing ? 'Uložit změny' : 'Uložit přijatou fakturu'}</button>
       </div>
     </form>
+  `;
+}
+function renderReceivedItemRows(){
+  return state.receivedFormItems.map((it,idx)=>{
+    const lineTotal = (it.qty||0)*(it.price||0)*(1+(it.vat||0)/100);
+    return `<tr>
+      <td class="col-desc"><input data-field="desc" data-index="${idx}" value="${escapeAttr(it.desc)}" placeholder="Popis položky"></td>
+      <td class="col-qty"><input type="number" step="0.01" data-field="qty" data-index="${idx}" value="${it.qty}"></td>
+      <td class="col-unit"><input data-field="unit" data-index="${idx}" value="${escapeAttr(it.unit||'ks')}"></td>
+      <td class="col-price"><input type="number" step="0.01" data-field="price" data-index="${idx}" value="${it.price}"></td>
+      <td class="col-vat">
+        <input type="number" step="0.1" min="0" max="100" list="received-vat-rate-options" data-field="vat" data-index="${idx}" value="${it.vat}">
+      </td>
+      <td class="col-total num" style="white-space:nowrap;padding-top:14px;">${fmt(lineTotal)} Kč</td>
+      <td class="col-remove"><button type="button" class="iconbtn no-print" data-action="remove-received-item" data-index="${idx}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></td>
+    </tr>`;
+  }).join('');
+}
+function receivedItemsTotals(items){
+  let base=0, vat=0;
+  (items||[]).forEach(it=>{ const b=(it.qty||0)*(it.price||0); base+=b; vat+=b*((it.vat||0)/100); });
+  return { base, vat, total: base+vat };
+}
+function renderReceivedTotalsBox(){
+  const t = receivedItemsTotals(state.receivedFormItems);
+  return `
+    <div class="trow"><span>Základ daně</span><span class="num">${fmt(t.base)} Kč</span></div>
+    <div class="trow"><span>DPH</span><span class="num">${fmt(t.vat)} Kč</span></div>
+    <div class="trow grand"><span>Celkem</span><span>${fmt(t.total)} Kč</span></div>
   `;
 }
 function viewSuppliers(){
@@ -5543,6 +5604,37 @@ async function applyStockForInvoiceChange(oldItems, newItems, reasonLabel){
   });
   if(changed) await saveProducts();
 }
+async function applyStockForReceivedInvoiceChange(oldItems, newItems, reasonLabel){
+  // Přijatá faktura = zboží k nám přichází, takže sklad se (na rozdíl od vystavené faktury) navyšuje.
+  const oldMap = productStockDeltaMap(oldItems);
+  const newMap = productStockDeltaMap(newItems);
+  const allIds = new Set([...oldMap.keys(), ...newMap.keys()]);
+  if(!allIds.size) return;
+  const negatives = [];
+  allIds.forEach(pid=>{
+    const product = productById(pid);
+    if(!product) return;
+    const delta = (newMap.get(pid)||0) - (oldMap.get(pid)||0);
+    if(delta===0) return;
+    const resulting = (product.stockCurrent||0) + delta;
+    if(resulting<0) negatives.push(product.name);
+  });
+  if(negatives.length && !confirm(`Sklad u produktů (${negatives.join(', ')}) klesne do záporných hodnot. Pokračovat a uložit fakturu?`)) {
+    throw new Error('cancelled');
+  }
+  let changed = false;
+  allIds.forEach(pid=>{
+    const product = productById(pid);
+    if(!product) return;
+    const delta = (newMap.get(pid)||0) - (oldMap.get(pid)||0);
+    if(delta===0) return;
+    product.stockCurrent = (product.stockCurrent||0) + delta;
+    product.movements = product.movements || [];
+    product.movements.push({ id: uid(), type: delta>0?'příjem':'ruční úprava', qty: delta, reason: reasonLabel, note:'', date: new Date().toISOString(), user: state.currentUser, resultingStock: product.stockCurrent, unitCost: product.purchasePrice||0, expiryAtTime: product.expiryDate||'', vatAtTime: product.vatRatePurchase??21 });
+    changed = true;
+  });
+  if(changed) await saveProducts();
+}
 
 /* ---------- HROMADNÉ OPERACE S PRODUKTY ---------- */
 async function bulkUpdateProducts(ids, fields){
@@ -6386,6 +6478,7 @@ async function onSubmitReceivedInvoice(e){
   const fd = new FormData(e.target);
   const supplierId = fd.get('supplierId') || null;
   const supplierName = (fd.get('supplierName')||'').trim();
+  const companyId = fd.get('companyId') || (state.companies[0]||{}).id || null;
   const number = (fd.get('number')||'').trim();
   const orderNumber = (fd.get('orderNumber')||'').trim();
   const issueDate = fd.get('issueDate')||'';
@@ -6395,14 +6488,12 @@ async function onSubmitReceivedInvoice(e){
   const constantSymbol = (fd.get('constantSymbol')||'').trim();
   const paymentMethod = fd.get('paymentMethod') || 'Bankovním převodem';
   const currency = fd.get('currency') || 'CZK';
-  const amountExVat = parseFloat(fd.get('amountExVat'))||0;
-  const vatRateRaw = fd.get('vatRate');
-  const vatRate = vatRateRaw==='' || vatRateRaw==null ? null : parseFloat(vatRateRaw);
   const amount = parseFloat(fd.get('amount'))||0;
   const note = (fd.get('note')||'').trim();
   const paid = fd.get('paid') === 'on';
   const existing = state.editingReceivedInvoiceId ? state.receivedInvoices.find(i=>i.id===state.editingReceivedInvoiceId) : null;
   const attachment = existing ? existing.attachment : null;
+  const items = state.receivedFormItems.filter(it=> (it.desc||'').trim()!=='' || (it.qty||0)!==0 );
 
   // Promítnutí ručně upravených údajů zpět do karty dodavatele (stejně jako u odběratele na vystavené faktuře)
   if(supplierId){
@@ -6419,9 +6510,16 @@ async function onSubmitReceivedInvoice(e){
     }
   }
 
+  const oldItemsForStock = existing ? (existing.items || []) : [];
+  try{
+    await applyStockForReceivedInvoiceChange(oldItemsForStock, items, 'Přijatá faktura '+(number||supplierName));
+  }catch(err){
+    if(err && err.message==='cancelled') return; // uživatel zrušil kvůli zápornému skladu
+  }
+
   const fields = {
-    supplierId, supplierName, number, orderNumber, issueDate, dueDate, taxDate,
-    variableSymbol, constantSymbol, paymentMethod, currency, amountExVat, vatRate, amount, note,
+    supplierId, supplierName, companyId, number, orderNumber, issueDate, dueDate, taxDate,
+    variableSymbol, constantSymbol, paymentMethod, currency, amount, note, items,
     status: paid?'paid':'unpaid', attachment
   };
   if(existing){
@@ -6435,6 +6533,7 @@ async function onSubmitReceivedInvoice(e){
   try{
     await saveReceivedInvoices();
     state.editingReceivedInvoiceId = null;
+    state.receivedFormItems = [];
     state.view = 'received-invoices';
     render();
   }catch(err){
@@ -6565,30 +6664,80 @@ function setupReceivedInvoiceForm(){
     });
   }
 
-  // Dopočet DPH / celkové částky ze základu daně a sazby, dokud uživatel ručně nezasáhne do pole "Celkem"
-  const baseInput = document.getElementById('received-amount-exvat');
-  const rateInput = document.getElementById('received-vat-rate');
+  // Položky: sync vstupů, přepočet řádků a souhrnu, dopočet pole "Celkem" dokud do něj uživatel ručně nezasáhne
+  const itemsBody = document.getElementById('received-items-body');
   const totalInput = document.getElementById('received-amount-total');
-  const infoEl = document.getElementById('received-vat-info');
-  if(baseInput && rateInput && totalInput){
-    const isEditing = !!state.editingReceivedInvoiceId;
-    let touched = isEditing; // u existující faktury nepřepisujeme uloženou částku automaticky
-    function recalc(){
-      const base = parseFloat(baseInput.value);
-      const rate = parseFloat(rateInput.value);
-      if(!isNaN(base) && base>0 && !isNaN(rate) && rate>=0){
-        const vatAmount = base * rate/100;
-        if(!touched) totalInput.value = (base+vatAmount).toFixed(2);
-        if(infoEl) infoEl.textContent = `DPH: ${fmt(vatAmount)} Kč`;
-      } else if(infoEl){
-        infoEl.textContent = '';
-      }
-    }
-    totalInput.addEventListener('input', ()=>{ touched = true; });
-    baseInput.addEventListener('input', recalc);
-    rateInput.addEventListener('input', recalc);
-    recalc();
+  const isEditing = !!state.editingReceivedInvoiceId;
+  let totalTouched = isEditing; // u existující faktury nepřepisujeme uloženou částku automaticky
+  function syncTotalFromItems(){
+    if(!totalInput || totalTouched) return;
+    const t = receivedItemsTotals(state.receivedFormItems);
+    if(t.total>0) totalInput.value = t.total.toFixed(2);
   }
+  if(totalInput) totalInput.addEventListener('input', ()=>{ totalTouched = true; });
+  if(itemsBody){
+    itemsBody.addEventListener('input', (e)=>{
+      const f = e.target.getAttribute('data-field');
+      const idx = e.target.getAttribute('data-index');
+      if(f==null||idx==null) return;
+      let val = e.target.value;
+      if(f==='qty'||f==='price'||f==='vat') val = parseFloat(val)||0;
+      state.receivedFormItems[idx][f]=val;
+      const totalsBox = document.getElementById('received-totals-box');
+      if(totalsBox) totalsBox.innerHTML = renderReceivedTotalsBox();
+      const row = e.target.closest('tr');
+      if(row){
+        const it = state.receivedFormItems[idx];
+        const lineTotal = (it.qty||0)*(it.price||0)*(1+(it.vat||0)/100);
+        const cell = row.querySelector('.num');
+        if(cell) cell.textContent = fmt(lineTotal)+' Kč';
+      }
+      syncTotalFromItems();
+    });
+  }
+  syncTotalFromItems();
+  setupReceivedProductPicker();
+}
+function setupReceivedProductPicker(){
+  const input = document.getElementById('received-product-picker-input');
+  const list = document.getElementById('received-product-picker-list');
+  if(!input || !list) return;
+
+  function renderList(query){
+    const q = stripDiacritics(query||'').toLowerCase().trim();
+    const matches = state.products.filter(p=>{
+      if(p.archived) return false;
+      if(!q) return true;
+      return stripDiacritics(`${p.name} ${p.ean||''} ${p.number||''} ${p.internalCode||''}`).toLowerCase().includes(q);
+    }).slice(0,30);
+    if(!matches.length){
+      list.innerHTML = `<div class="combo-empty">Žádný produkt neodpovídá.</div>`;
+    } else {
+      list.innerHTML = matches.map(p=>`
+        <div class="combo-item" data-id="${p.id}">
+          <div>${escapeHtml(p.name)} <span class="num" style="color:var(--ink-soft);">${fmt(p.purchasePrice||0)} Kč</span></div>
+          <div class="sub">${escapeHtml(p.number||'')}${p.ean?' · EAN '+escapeHtml(p.ean):''} · sklad ${stockAvailable(p)} ${escapeHtml(p.unit||'ks')}</div>
+        </div>
+      `).join('');
+    }
+    list.classList.add('open');
+  }
+  input.addEventListener('focus', ()=> renderList(input.value));
+  input.addEventListener('input', ()=> renderList(input.value));
+  list.addEventListener('mousedown', (e)=>{
+    const item = e.target.closest('.combo-item');
+    if(!item) return;
+    const p = productById(item.getAttribute('data-id'));
+    if(p){
+      state.receivedFormItems.push({ desc: p.name, qty:1, unit: p.unit||'ks', price: p.purchasePrice||0, vat: p.vatRatePurchase??21, productId: p.id, ean: p.ean||'', productNumber: p.number||'' });
+      input.value = '';
+      render();
+    }
+    list.classList.remove('open');
+  });
+  document.addEventListener('click', (e)=>{
+    if(e.target!==input && !list.contains(e.target)) list.classList.remove('open');
+  });
 }
 
 function setupClientCombo(){
@@ -6722,7 +6871,7 @@ document.addEventListener('click', async (e)=>{
     state.authView='login'; state.view='dashboard';
     render();
   }
-  else if(action==='nav'){ state.view = el.getAttribute('data-view'); state.editingInvoiceId=null; state.editingClientId=null; state.viewingClientId=null; state.newClientDraftId=null; state.newClientDraftAttachments=[]; state.editingCompanyId=null; state.newCompanyDraftId=null; state.newCompanyDraft={logo:'',signature:'',stamp:''}; state.companyNotice=''; state.formItems=[]; state.formCompanyId=null; state.selectedInvoiceIds.clear(); state.selectedClientIds.clear(); state.editingSupplierId=null; state.viewingSupplierId=null; state.newSupplierDraftId=null; state.newSupplierDraftAttachments=[]; state.editingProductId=null; state.newProductDraftId=null; state.currentProductDraftPhoto=''; state.eanLookupStatus=''; state.selectedProductIds.clear(); closeProductContextMenu(); state.productColsPanelOpen=false; render(); }
+  else if(action==='nav'){ state.view = el.getAttribute('data-view'); state.editingInvoiceId=null; state.editingClientId=null; state.viewingClientId=null; state.newClientDraftId=null; state.newClientDraftAttachments=[]; state.editingCompanyId=null; state.newCompanyDraftId=null; state.newCompanyDraft={logo:'',signature:'',stamp:''}; state.companyNotice=''; state.formItems=[]; state.formCompanyId=null; state.selectedInvoiceIds.clear(); state.selectedClientIds.clear(); state.editingSupplierId=null; state.viewingSupplierId=null; state.newSupplierDraftId=null; state.newSupplierDraftAttachments=[]; state.editingProductId=null; state.newProductDraftId=null; state.currentProductDraftPhoto=''; state.eanLookupStatus=''; state.selectedProductIds.clear(); closeProductContextMenu(); state.productColsPanelOpen=false; state.editingReceivedInvoiceId=null; state.receivedFormItems=[]; render(); }
   else if(action==='new-invoice'){ state.view='invoice-form'; state.editingInvoiceId=null; state.formItems=[]; state.formCompanyId=null; render(); }
   else if(action==='toggle-invoice-select'){
     const cid = el.getAttribute('data-id');
@@ -6937,6 +7086,11 @@ document.addEventListener('click', async (e)=>{
     render();
   }
   else if(action==='remove-item'){ const idx = parseInt(el.getAttribute('data-index')); state.formItems.splice(idx,1); if(!state.formItems.length) state.formItems.push({desc:'',qty:1,unit:'ks',price:0,vat:21}); render(); }
+  else if(action==='add-received-item'){
+    state.receivedFormItems.push({desc:'',qty:1,unit:'ks',price:0,vat:21});
+    render();
+  }
+  else if(action==='remove-received-item'){ const idx = parseInt(el.getAttribute('data-index')); state.receivedFormItems.splice(idx,1); if(!state.receivedFormItems.length) state.receivedFormItems.push({desc:'',qty:1,unit:'ks',price:0,vat:21}); render(); }
   else if(action==='goto-bulk-import'){
     state.view='bulk-import';
     state.bulkImport = { mode:'invoices', step:'upload', error:'', fileName:'', headers:[], rows:[], mapping:{}, preview:null, companyId:null };
@@ -7062,11 +7216,13 @@ document.addEventListener('click', async (e)=>{
   /* --- Dodavatelé --- */
   else if(action==='new-received-invoice'){
     state.editingReceivedInvoiceId = null;
+    state.receivedFormItems = [];
     state.view = 'received-invoice-form';
     render();
   }
   else if(action==='edit-received-invoice'){
     state.editingReceivedInvoiceId = el.getAttribute('data-id');
+    state.receivedFormItems = [];
     state.view = 'received-invoice-form';
     render();
   }
@@ -7074,6 +7230,10 @@ document.addEventListener('click', async (e)=>{
     if(!confirm('Opravdu smazat tuto přijatou fakturu?')) return;
     const invId = el.getAttribute('data-id');
     const inv = state.receivedInvoices.find(i=>i.id===invId);
+    if(inv && inv.items && inv.items.length){
+      try{ await applyStockForReceivedInvoiceChange(inv.items, [], 'Storno přijaté faktury '+(inv.number||inv.supplierName)); }
+      catch(err){ if(err && err.message==='cancelled') return; }
+    }
     state.receivedInvoices = state.receivedInvoices.filter(i=>i.id!==invId);
     try{ await saveReceivedInvoices(); }catch(err){ alert('Smazání se nepovedlo, zkus to prosím znovu.'); }
     render();
