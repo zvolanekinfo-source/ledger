@@ -1231,6 +1231,8 @@ async function loadAll(){
     const validKeys = new Set(DEFAULT_PRODUCT_COLUMNS.map(c=>c.key));
     state.productColumns = state.productColumns.filter(c=>validKeys.has(c.key));
     state.productColumns.forEach(c=>{
+      const def = DEFAULT_PRODUCT_COLUMNS.find(d=>d.key===c.key);
+      if(def) c.label = def.label; // popisky sloupců udržujeme aktuální, i pro už uložené nastavení
       if(c.key==='location' && c.width<200) c.width = 200;
       if(c.key==='expiry' && c.width<120) c.width = 120;
     });
@@ -3808,7 +3810,7 @@ function viewBulkImport(){
       ${step==='upload' ? `
         <p style="font-size:13px;color:var(--ink-soft);">
           Podporované formáty: .xlsx, .xls, .csv. ${isProducts
-            ? 'Nahraj export produktů — appka podle EAN a produktového čísla sama pozná duplicity a přeskočí je.'
+            ? 'Nahraj export produktů — appka podle EAN a SKU sama pozná duplicity a přeskočí je.'
             : isContacts
             ? 'Nahraj export kontaktů/odběratelů — appka je buď spáruje s existujícími (podle IČO nebo jména), nebo založí nové.'
             : 'Nahraj export faktur (ideálně s údaji o odběrateli u každého řádku — appka odběratele buď spáruje s existujícím, nebo založí nového).'}
@@ -3854,7 +3856,7 @@ function viewBulkImport(){
       ${step==='preview' && bi.preview ? (isProducts ? `
         <div class="cards" style="margin-bottom:16px;">
           <div class="card"><div class="label">K importu</div><div class="value">${bi.preview.items.filter(i=>!i.isDup).length}</div></div>
-          <div class="card"><div class="label">Přeskočené duplicity (EAN/číslo)</div><div class="value amber">${bi.preview.dupCount}</div></div>
+          <div class="card"><div class="label">Přeskočené duplicity (EAN/SKU)</div><div class="value amber">${bi.preview.dupCount}</div></div>
           <div class="card"><div class="label">Prázdné řádky</div><div class="value">${bi.preview.skipped}</div></div>
         </div>
         <table class="fixed-table">
@@ -3941,7 +3943,8 @@ function viewBulkImport(){
 const DEFAULT_PRODUCT_COLUMNS = [
   {key:'photo', label:'', width:44, visible:true},
   {key:'name', label:'Název', width:190, visible:true},
-  {key:'number', label:'Č. produktu', width:100, visible:true},
+  {key:'number', label:'SKU', width:100, visible:true},
+  {key:'internalCode', label:'Č. produktu', width:100, visible:true},
   {key:'ean', label:'EAN', width:100, visible:true},
   {key:'category', label:'Kategorie', width:105, visible:true},
   {key:'manufacturer', label:'Výrobce', width:100, visible:true},
@@ -4485,7 +4488,7 @@ function filteredSortedProducts(){
     if(f.archived==='' && p.archived) return false;
     if(f.archived==='archived' && !p.archived) return false;
     if(q){
-      const hay = stripDiacritics(`${p.name} ${p.ean} ${p.number} ${p.manufacturer} ${formatLocation(p.location)} ${(supplierById(p.supplierId)||{}).name||''}`).toLowerCase();
+      const hay = stripDiacritics(`${p.name} ${p.ean} ${p.number} ${p.internalCode} ${p.manufacturer} ${formatLocation(p.location)} ${(supplierById(p.supplierId)||{}).name||''}`).toLowerCase();
       if(!hay.includes(q)) return false;
     }
     if(f.stock && stockStatus(p)!==f.stock) return false;
@@ -4519,6 +4522,7 @@ function productCellContent(p, key){
     case 'photo': return p.photo ? `<img class="prod-thumb" src="${p.photo}" alt="">` : `<div class="prod-thumb-empty"></div>`;
     case 'name': return `<div style="font-weight:500;">${escapeHtml(p.name||'(bez názvu)')}</div>`;
     case 'number': return `<span class="num">${escapeHtml(p.number||'—')}</span>`;
+    case 'internalCode': return `<span class="num">${escapeHtml(p.internalCode||'—')}</span>`;
     case 'ean': return `<span class="num">${escapeHtml(p.ean||'—')}</span>`;
     case 'category': return escapeHtml(p.category||'—');
     case 'manufacturer': return escapeHtml(p.manufacturer||'—');
@@ -4717,12 +4721,17 @@ function viewProductForm(){
       <div class="field"><label>Název produktu</label><input name="name" value="${escapeAttr(p.name)}" required autofocus></div>
       <div class="field"><label>Popis</label><textarea name="description">${escapeHtml(p.description||'')}</textarea></div>
       <div class="field">
-        <label>Produktové číslo (= EAN-13 na štítku)</label>
+        <label>SKU (= EAN-13 na štítku)</label>
         <div style="display:flex;gap:8px;">
           <input name="number" id="product-number-input" value="${escapeAttr(p.number)}" placeholder="${editing?'':escapeAttr(peekProductNumber('EAN13'))+' (auto)'}" style="flex:1;">
           <button type="button" class="btn secondary small" id="regen-number-btn">↻ Vygenerovat</button>
         </div>
-        <p style="font-size:11px;color:var(--ink-soft);margin:4px 0 0 0;">Necháš prázdné = appka vygeneruje platný EAN-13 (nejběžnější typ, funguje skoro na vše). Můžeš si ale klidně napsat i vlastní 13místné číslo.</p>
+        <p style="font-size:11px;color:var(--ink-soft);margin:4px 0 0 0;">Necháš prázdné = appka vygeneruje platný EAN-13 (nejběžnější typ, funguje skoro na vše) — nikdy se nebude opakovat u jiného produktu. Můžeš si ale klidně napsat i vlastní 13místné číslo.</p>
+      </div>
+      <div class="field">
+        <label>Produktové číslo</label>
+        <input name="internalCode" value="${escapeAttr(p.internalCode||'')}" placeholder="Vlastní/katalogové číslo produktu — zadává se ručně">
+        <p style="font-size:11px;color:var(--ink-soft);margin:4px 0 0 0;">Volitelné — appka ho nijak negeneruje ani nekontroluje.</p>
       </div>
       <input type="hidden" name="barcodeType" value="EAN13">
       <div class="barcode-preview-box" style="max-width:340px;">
@@ -4997,7 +5006,7 @@ async function onSubmitProduct(e){
   const existing = productById(id);
   let number = (fd.get('number')||'').trim();
   if(number && state.products.some(p=>p.number===number && p.id!==id)){
-    alert('Toto produktové číslo už používá jiný produkt. Zvol jiné, nebo pole nech prázdné pro automatické vygenerování.');
+    alert('Toto SKU už používá jiný produkt. Zvol jiné, nebo pole nech prázdné pro automatické vygenerování.');
     return;
   }
   const ean = (fd.get('ean')||'').trim();
@@ -5011,7 +5020,7 @@ async function onSubmitProduct(e){
 
   const p = {
     id: id || uid(),
-    number, ean, internalCode: existing ? (existing.internalCode||'') : '',
+    number, ean, internalCode: (fd.get('internalCode')||'').trim(),
     name: fd.get('name'), description: fd.get('description')||'',
     category: fd.get('category')||'', manufacturer: fd.get('manufacturer')||'',
     supplierId: fd.get('supplierId')||'', unit: fd.get('unit')||'ks',
@@ -5337,7 +5346,8 @@ function productInfoSheetHtml(p){
           ${p.description?`<div style="font-size:12.5px;color:var(--ink-soft);">${escapeHtml(p.description)}</div>`:''}
         </div>
       </div>
-      <div class="pi-row"><span>Produktové číslo</span><span>${escapeHtml(p.number||'—')}</span></div>
+      <div class="pi-row"><span>SKU</span><span>${escapeHtml(p.number||'—')}</span></div>
+      ${p.internalCode?`<div class="pi-row"><span>Produktové číslo</span><span>${escapeHtml(p.internalCode)}</span></div>`:''}
       ${hasMfrEan?`<div class="pi-row"><span>EAN výrobce</span><span>${escapeHtml(p.ean)}</span></div>`:''}
       <div class="pi-row"><span>Kategorie</span><span>${escapeHtml(p.category||'—')}</span></div>
       <div class="pi-row"><span>Výrobce</span><span>${escapeHtml(p.manufacturer||'—')}</span></div>
@@ -5354,7 +5364,7 @@ function productInfoSheetHtml(p){
       ${p.expiryDate?`<div class="pi-row"><span>Expirace</span><span>${p.expiryDate}</span></div>`:''}
       ${p.note?`<div class="pi-row"><span>Poznámka</span><span>${escapeHtml(p.note)}</span></div>`:''}
       <div class="pi-codes">
-        ${hasOwnCode?`<div class="pi-code-box"><div class="pi-code-label">Interní kód (EAN-13)</div><svg class="pi-code-own" data-code="${escapeAttr(p.number)}"></svg></div>`:''}
+        ${hasOwnCode?`<div class="pi-code-box"><div class="pi-code-label">SKU (EAN-13)</div><svg class="pi-code-own" data-code="${escapeAttr(p.number)}"></svg></div>`:''}
         ${hasMfrEan?`<div class="pi-code-box"><div class="pi-code-label">EAN výrobce</div><svg class="pi-code-mfr" data-code="${escapeAttr(p.ean)}"></svg></div>`:''}
       </div>
       <div class="pi-doc-footer">
@@ -5491,7 +5501,8 @@ const PRODUCT_BULK_FIELDS = [
   {key:'', label:'— Ignorovat —'},
   {key:'name', label:'Produkt — název'},
   {key:'ean', label:'Produkt — EAN'},
-  {key:'number', label:'Produkt — produktové číslo'},
+  {key:'number', label:'Produkt — SKU'},
+  {key:'internalCode', label:'Produkt — produktové číslo'},
   {key:'category', label:'Produkt — kategorie'},
   {key:'manufacturer', label:'Produkt — výrobce'},
   {key:'supplierName', label:'Produkt — dodavatel (název)'},
@@ -5509,7 +5520,8 @@ function guessProductFieldForHeader(header){
   const h = stripDiacritics(String(header||'')).toLowerCase().trim();
   const rules = [
     [/ean|čárov|carov|barcode/, 'ean'],
-    [/produktov.{0,3}č[íi]slo|product\s*number|sku/, 'number'],
+    [/^sku$|\bsku\b/, 'number'],
+    [/produktov.{0,3}č[íi]slo|product\s*number/, 'internalCode'],
     [/kategori/, 'category'],
     [/v[ýy]robce|manufacturer|brand/, 'manufacturer'],
     [/dodavatel|supplier/, 'supplierName'],
@@ -5561,9 +5573,10 @@ function computeProductBulkPreview(){
     if(ean && seenEans.has(ean)) isDup = true;
     const number = (get(row,'number')||'').toString().trim();
     if(number && seenNumbers.has(number)) isDup = true;
+    const internalCode = (get(row,'internalCode')||'').toString().trim();
     if(isDup) dupCount++;
     items.push({
-      name: name || '(bez názvu)', ean, number,
+      name: name || '(bez názvu)', ean, number, internalCode,
       category: (get(row,'category')||'').toString().trim(), manufacturer: (get(row,'manufacturer')||'').toString().trim(),
       supplierName: (get(row,'supplierName')||'').toString().trim(), unit: (get(row,'unit')||'ks').toString().trim()||'ks',
       vatRate: bulkParseNumber(get(row,'vatRate'))||0, purchasePrice: bulkParseNumber(get(row,'purchasePrice'))||0,
@@ -5589,7 +5602,7 @@ async function confirmProductBulkImport(){
     }
     const number = it.number || generateUniqueProductNumber();
     state.products.push({
-      ...blankProduct(), id: uid(), number, ean: it.ean,
+      ...blankProduct(), id: uid(), number, ean: it.ean, internalCode: it.internalCode||'',
       name: it.name, category: it.category, manufacturer: it.manufacturer, supplierId,
       unit: it.unit, vatRate: it.vatRate, purchasePrice: it.purchasePrice, salePrice: it.salePrice,
       stockCurrent: it.stockCurrent, stockMin: it.stockMin, location: it.location ? { warehouse: it.location, rack:'', shelf:'', spot:'' } : blankLocation(), expiryDate: it.expiryDate, note: it.note,
@@ -5605,7 +5618,7 @@ async function confirmProductBulkImport(){
 }
 function exportProductsCsv(format){
   const rows = state.products.map(p=>({
-    Název: p.name, EAN: p.ean, 'Produktové číslo': p.number,
+    Název: p.name, EAN: p.ean, SKU: p.number, 'Produktové číslo': p.internalCode,
     Kategorie: p.category, Výrobce: p.manufacturer, Dodavatel: (supplierById(p.supplierId)||{}).name||'',
     Jednotka: p.unit, 'DPH % (nákup)': p.vatRatePurchase, 'DPH % (prodej)': p.vatRate, 'Nákupní cena': p.purchasePrice, 'Náklady': p.costs, 'Prodejní cena': p.salePrice,
     Sklad: p.stockCurrent, Minimum: p.stockMin, Umístění: formatLocation(p.location), Expirace: p.expiryDate, Poznámka: p.note
@@ -6511,7 +6524,7 @@ function setupProductPicker(){
     const matches = state.products.filter(p=>{
       if(p.archived) return false;
       if(!q) return true;
-      return stripDiacritics(`${p.name} ${p.ean||''} ${p.number||''}`).toLowerCase().includes(q);
+      return stripDiacritics(`${p.name} ${p.ean||''} ${p.number||''} ${p.internalCode||''}`).toLowerCase().includes(q);
     }).slice(0,30);
     if(!matches.length){
       list.innerHTML = `<div class="combo-empty">Žádný produkt neodpovídá.</div>`;
@@ -6960,7 +6973,7 @@ document.addEventListener('click', async (e)=>{
   else if(action==='duplicate-product'){
     const p = productById(id);
     if(p){
-      const copy = { ...JSON.parse(JSON.stringify(p)), id: uid(), number: generateUniqueProductNumber(), ean:'', name: p.name+' (kopie)', movements:[], stockCurrent:0 };
+      const copy = { ...JSON.parse(JSON.stringify(p)), id: uid(), number: generateUniqueProductNumber(), ean:'', internalCode:'', name: p.name+' (kopie)', movements:[], stockCurrent:0 };
       state.products.push(copy);
       await saveProducts(); await saveProductSettings();
       closeProductContextMenu();
