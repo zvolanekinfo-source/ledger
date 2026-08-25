@@ -670,6 +670,18 @@ let state = {
   receivedInvoices: [],
   editingReceivedInvoiceId: null,
   viewingReceivedInvoiceId: null,
+  recurringInvoices: [],
+  editingRecurringId: null,
+  recurringFormItems: [],
+  warehouses: [],
+  editingWarehouseId: null,
+  orders: [],
+  editingOrderId: null,
+  orderFormItems: [],
+  fulfillingOrderId: null,
+  orderFilter: { search:'', status:'' },
+  integrations: { eshops:[], carriers:[], pollIntervalSec:60 },
+  integrationTestStatus: {},
   receivedInvoiceSearch: '',
   receivedInvoiceSort: { key:'issueDate', dir:'desc' },
   receivedInvoiceFilters: { status:'', supplierId:'' },
@@ -1085,7 +1097,9 @@ function isCurrentUserAdmin(){
 const TAB_DEFS = [
   { key:'dashboard', label:'Přehled' },
   { key:'invoices', label:'Faktury' },
+  { key:'recurring-invoices', label:'Opakované faktury' },
   { key:'received-invoices', label:'Přijaté faktury' },
+  { key:'orders', label:'Objednávky' },
   { key:'clients', label:'Odběratelé' },
   { key:'suppliers', label:'Dodavatelé' },
   { key:'products', label:'Produkty' },
@@ -1094,11 +1108,13 @@ const TAB_DEFS = [
 const VIEW_TO_TAB = {
   dashboard:'dashboard',
   invoices:'invoices', 'invoice-form':'invoices', 'invoice-preview':'invoices', 'bulk-import':'invoices',
+  'recurring-invoices':'recurring-invoices', 'recurring-invoice-form':'recurring-invoices',
   'received-invoices':'received-invoices', 'received-invoice-form':'received-invoices', 'received-invoice-detail':'received-invoices',
+  orders:'orders', 'order-form':'orders', 'order-fulfillment':'orders',
   clients:'clients', 'client-form':'clients', 'client-detail':'clients',
   suppliers:'suppliers', 'supplier-form':'suppliers', 'supplier-detail':'suppliers',
   products:'products', 'product-form':'products',
-  stock:'stock'
+  stock:'stock', warehouses:'stock', 'warehouse-form':'stock'
 };
 function defaultUserPermissions(){
   // Výchozí je plný přístup — omezení nastavuje admin ručně za konkrétního
@@ -1106,8 +1122,7 @@ function defaultUserPermissions(){
   const tabs = {};
   TAB_DEFS.forEach(t=> tabs[t.key] = true);
   return { tabs, hidePrices:false };
-}
-function getUserPermissions(userId){
+}function getUserPermissions(userId){
   const saved = state.userPermissions[userId];
   const def = defaultUserPermissions();
   if(!saved) return def;
@@ -1248,6 +1263,27 @@ async function loadAll(){
   }
   try{ const r = await window.storage.get('suppliers', true); state.suppliers = r ? JSON.parse(r.value) : []; }catch(e){ state.suppliers = []; }
   try{ const r = await window.storage.get('received-invoices', true); state.receivedInvoices = r ? JSON.parse(r.value) : []; }catch(e){ state.receivedInvoices = []; }
+  try{ const r = await window.storage.get('recurring-invoices', true); state.recurringInvoices = r ? JSON.parse(r.value) : []; }catch(e){ state.recurringInvoices = []; }
+  try{ const r = await window.storage.get('warehouses', true); state.warehouses = r ? JSON.parse(r.value) : []; }catch(e){ state.warehouses = []; }
+  if(!state.warehouses.length){ state.warehouses = [{ id: uid(), name:'Hlavní sklad', address:'', isDefault:true }]; }
+  try{ const r = await window.storage.get('orders', true); state.orders = r ? JSON.parse(r.value) : []; }catch(e){ state.orders = []; }
+  try{
+    const r = await window.storage.get('integrations', true);
+    if(r){
+      const loaded = JSON.parse(r.value);
+      // migrace ze starší podoby (jeden Shopify + jedna Zásilkovna/DPD) na obecný seznam více e-shopů/dopravců
+      if(loaded && !loaded.eshops && (loaded.shopify||loaded.zasilkovna||loaded.dpd)){
+        const eshops = [];
+        if(loaded.shopify && loaded.shopify.storeDomain) eshops.push({ id:uid(), platform:'shopify', name:'Shopify', active:true, credentials:loaded.shopify, lastSyncAt:null });
+        const carriers = [];
+        if(loaded.zasilkovna && loaded.zasilkovna.apiKey) carriers.push({ id:uid(), type:'zasilkovna', name:'Zásilkovna', active:true, credentials:loaded.zasilkovna, rules:[] });
+        if(loaded.dpd && loaded.dpd.username) carriers.push({ id:uid(), type:'dpd', name:'DPD', active:true, credentials:loaded.dpd, rules:[] });
+        state.integrations = { eshops, carriers, pollIntervalSec:60 };
+      } else {
+        state.integrations = { eshops:[], carriers:[], pollIntervalSec:60, ...loaded };
+      }
+    }
+  }catch(e){}
   state.suppliers = state.suppliers.map(s=>({ attachments:[], ...s }));
   try{ const r = await window.storage.get('products', true); state.products = r ? JSON.parse(r.value) : []; }catch(e){ state.products = []; }
   try{ const r = await window.storage.get('product-settings', true); state.productSettings = r ? JSON.parse(r.value) : { prefix:'PRD-', nextNumber:1, padding:6 }; }catch(e){ state.productSettings = { prefix:'PRD-', nextNumber:1, padding:6 }; }
@@ -1287,6 +1323,10 @@ async function saveClients(){ await storageSet('clients', JSON.stringify(state.c
 async function saveInvoices(){ await storageSet('invoices', JSON.stringify(state.invoices), true); saveSnapshotBackup(); }
 async function saveSuppliers(){ await storageSet('suppliers', JSON.stringify(state.suppliers), true); saveSnapshotBackup(); }
 async function saveReceivedInvoices(){ await storageSet('received-invoices', JSON.stringify(state.receivedInvoices), true); saveSnapshotBackup(); }
+async function saveRecurringInvoices(){ await storageSet('recurring-invoices', JSON.stringify(state.recurringInvoices), true); saveSnapshotBackup(); }
+async function saveWarehouses(){ await storageSet('warehouses', JSON.stringify(state.warehouses), true); saveSnapshotBackup(); }
+async function saveOrders(){ await storageSet('orders', JSON.stringify(state.orders), true); saveSnapshotBackup(); }
+async function saveIntegrations(){ await storageSet('integrations', JSON.stringify(state.integrations), true); }
 async function saveProducts(){ await storageSet('products', JSON.stringify(state.products), true); saveSnapshotBackup(); }
 async function saveProductSettings(){ await storageSet('product-settings', JSON.stringify(state.productSettings), true); }
 async function saveInventorySettings(){ await storageSet('inventory-settings', JSON.stringify(state.inventorySettings), true); }
@@ -1474,6 +1514,107 @@ function buildRevenueChart(list){
   return `<svg viewBox="0 0 ${w} ${h}" style="width:100%;height:220px;display:block;">${grid}${bars}</svg>`;
 }
 
+/* ---------- PŘEDPOVĚĎ CASH FLOW ---------- */
+function computeCashFlowForecast(weeks){
+  weeks = weeks || 12;
+  const today = todayISO();
+  // bucket 0 = už po splatnosti (nezaplacené s termínem v minulosti), pak weeks bacherlů po týdnu dopředu
+  const buckets = [];
+  for(let i=0;i<=weeks;i++){
+    const start = i===0 ? null : addDays(today, (i-1)*7);
+    const end = i===0 ? today : addDays(today, i*7-1);
+    buckets.push({ label: i===0?'Po splatnosti':`${start.slice(5)}–${end.slice(5)}`, start, end, inflow:0, outflow:0 });
+  }
+  function bucketIndexFor(dateStr){
+    if(!dateStr) return null;
+    if(dateStr < today) return 0;
+    const diffDays = Math.floor((new Date(dateStr) - new Date(today)) / 86400000);
+    const idx = Math.floor(diffDays/7) + 1;
+    return idx < buckets.length ? idx : buckets.length-1;
+  }
+  state.invoices.forEach(inv=>{
+    if(invoiceStatus(inv)==='paid') return;
+    const idx = bucketIndexFor(inv.dueDate);
+    if(idx==null) return;
+    const t = invoiceSignedTotal(inv); // faktura kladně, dobropis záporně, zálohová faktura 0
+    buckets[idx].inflow += t;
+  });
+  state.receivedInvoices.forEach(inv=>{
+    if(receivedInvoiceStatus(inv)==='paid' || receivedInvoiceStatus(inv)==='draft') return;
+    const idx = bucketIndexFor(inv.dueDate);
+    if(idx==null) return;
+    buckets[idx].outflow += parseFloat(inv.amount)||0;
+  });
+  // Opakované faktury: promítnout budoucí předpokládané occurences do prognózy jako plánovaný příjem
+  state.recurringInvoices.forEach(tpl=>{
+    if(!tpl.active) return;
+    let d = tpl.nextRunDate;
+    const t = (tpl.items||[]).reduce((s,it)=>s+(it.qty||0)*(it.price||0)*(1+(it.vat||0)/100),0);
+    let guard = 0;
+    while(d && d <= buckets[buckets.length-1].end && guard<60){
+      const idx = bucketIndexFor(d);
+      if(idx!=null && idx>0) buckets[idx].inflow += t; // budoucí, nezahrnujeme do "už po splatnosti"
+      d = advanceRecurringDate(d, tpl.interval);
+      guard++;
+    }
+  });
+  let cumulative = 0;
+  buckets.forEach(b=>{ b.net = b.inflow - b.outflow; cumulative += b.net; b.cumulative = cumulative; });
+  return buckets;
+}
+function buildCashFlowChart(buckets){
+  const w = 820, h = 260, padL = 64, padR = 12, padT = 16, padB = 40;
+  const chartW = w - padL - padR;
+  const gap = 8;
+  const barW = Math.max(4, chartW/buckets.length - gap);
+  const maxAbs = Math.max(...buckets.map(b=>Math.max(Math.abs(b.inflow), Math.abs(b.outflow))), 1);
+  const maxCum = Math.max(...buckets.map(b=>Math.abs(b.cumulative)), 1);
+  const zeroY = padT + (h-padT-padB)/2;
+  const scale = (h-padT-padB)/2 / maxAbs;
+  let grid = `<line x1="${padL}" y1="${zeroY}" x2="${w-padR}" y2="${zeroY}" stroke="var(--line)" stroke-width="1.5"/>`;
+  let bars = '', line = '';
+  const pts = [];
+  buckets.forEach((b,i)=>{
+    const x = padL + i*(barW+gap);
+    if(b.inflow>0){
+      const bh = Math.round(b.inflow*scale);
+      bars += `<rect x="${x}" y="${zeroY-bh}" width="${barW}" height="${bh}" rx="2" style="fill:var(--accent);opacity:0.85;"><title>${b.label}: příjem ${fmt(b.inflow)} Kč</title></rect>`;
+    }
+    if(b.outflow>0){
+      const bh = Math.round(b.outflow*scale);
+      bars += `<rect x="${x}" y="${zeroY}" width="${barW}" height="${bh}" rx="2" style="fill:var(--red);opacity:0.75;"><title>${b.label}: výdaj ${fmt(b.outflow)} Kč</title></rect>`;
+    }
+    if(i%2===0 || buckets.length<10) bars += `<text x="${x+barW/2}" y="${h-padB+16}" text-anchor="middle" font-size="9.5" style="fill:var(--ink-soft);font-family:Inter,sans-serif;">${b.label}</text>`;
+    const cumY = zeroY - (b.cumulative/maxCum)*((h-padT-padB)/2 - 6);
+    pts.push(`${x+barW/2},${Math.max(padT, Math.min(h-padB, cumY))}`);
+  });
+  line = `<polyline points="${pts.join(' ')}" fill="none" stroke="var(--ink)" stroke-width="2"/>` +
+    pts.map(p=>`<circle cx="${p.split(',')[0]}" cy="${p.split(',')[1]}" r="2.5" fill="var(--ink)"/>`).join('');
+  return `<svg viewBox="0 0 ${w} ${h}" style="width:100%;height:250px;display:block;">${grid}${bars}${line}</svg>
+    <div style="display:flex;gap:16px;font-size:11.5px;color:var(--ink-soft);margin-top:6px;">
+      <span><span style="display:inline-block;width:10px;height:10px;background:var(--accent);border-radius:2px;margin-right:4px;"></span>Očekávané příjmy</span>
+      <span><span style="display:inline-block;width:10px;height:10px;background:var(--red);border-radius:2px;margin-right:4px;"></span>Očekávané výdaje</span>
+      <span><span style="display:inline-block;width:10px;height:2px;background:var(--ink);margin-right:4px;vertical-align:middle;"></span>Kumulovaný zůstatek</span>
+    </div>`;
+}
+function renderWidgetCashFlow(){
+  const buckets = computeCashFlowForecast(12);
+  const overdue = buckets[0];
+  const endCumulative = buckets[buckets.length-1].cumulative;
+  const sheetRows = [['Období','Očekávané příjmy (Kč)','Očekávané výdaje (Kč)','Čistý tok (Kč)','Kumulovaně (Kč)'],
+    ...buckets.map(b=>[b.label, b.inflow, b.outflow, b.net, b.cumulative])];
+  return {
+    title: 'Předpověď cash flow (12 týdnů)',
+    subtitle: `za 12 týdnů: ${endCumulative>=0?'+':''}${fmt(endCumulative)} Kč`,
+    bodyHtml: pricesHiddenForMe() ? `<p style="color:var(--ink-soft);font-size:13px;margin:0;">Cash flow je pro tebe skryté.</p>` : `
+      ${(overdue.inflow||overdue.outflow) ? `<div style="background:var(--red-soft);color:var(--red);padding:8px 14px;border-radius:var(--radius);font-size:12.5px;font-weight:600;margin-bottom:14px;">Po splatnosti: ${overdue.inflow>0?`čeká se na příjem ${fmt(overdue.inflow)} Kč`:''}${overdue.inflow>0&&overdue.outflow>0?' · ':''}${overdue.outflow>0?`dlužíš ${fmt(overdue.outflow)} Kč`:''}</div>` : ''}
+      ${buildCashFlowChart(buckets)}
+      <p style="font-size:11px;color:var(--ink-soft);margin:10px 0 0 0;">Založeno na splatnostech nezaplacených faktur a přijatých faktur + plánovaných opakovaných fakturách. Nejde o skutečný bankovní zůstatek, appka nezná tvůj aktuální stav účtu.</p>
+    `,
+    sheetRows
+  };
+}
+
 /* ---------- WIDGETY PŘEHLEDU ---------- */
 function renderWidgetRevenueSummary(range){
   const filtered = state.invoices.filter(inv=>inDateRange(inv.issueDate, range) && invoiceCountsAsRevenue(inv)).map(i=>({...i, status:invoiceStatus(i), t:invoiceSignedTotal(i)}));
@@ -1649,6 +1790,7 @@ function renderInvoiceTableCompact(list){
 const WIDGET_DEFS = {
   'revenue-summary': { label:'Souhrn tržeb', render: renderWidgetRevenueSummary, size:'full', tab:'dashboard' },
   'revenue-chart':   { label:'Graf výnosů podle měsíce', render: renderWidgetRevenueChart, size:'full', tab:'dashboard' },
+  'cashflow-forecast': { label:'Předpověď cash flow', render: renderWidgetCashFlow, size:'full', tab:'dashboard' },
   'top-clients':     { label:'Nejvýkonnější odběratelé', render: renderWidgetTopClients, size:'half', tab:'clients' },
   'top-products':    { label:'Nejprodávanější produkty', render: renderWidgetTopProducts, size:'half', tab:'products' },
   'stock-overview':  { label:'Přehled skladu', render: renderWidgetStockOverview, size:'full', tab:'stock' },
@@ -1656,7 +1798,7 @@ const WIDGET_DEFS = {
   'top-suppliers':   { label:'Nákupy od dodavatelů', render: renderWidgetTopSuppliers, size:'half', tab:'suppliers' },
   'invoice-list':    { label:'Seznam faktur', render: renderWidgetInvoiceList, size:'full', tab:'invoices' }
 };
-const DEFAULT_DASHBOARD_WIDGETS = ['revenue-summary','revenue-chart','top-clients','top-products','stock-overview','low-stock','top-suppliers','invoice-list'];
+const DEFAULT_DASHBOARD_WIDGETS = ['revenue-summary','cashflow-forecast','revenue-chart','top-clients','top-products','stock-overview','low-stock','top-suppliers','invoice-list'];
 function visibleWidgetDefs(){
   // Zaměstnanec s omezeným přístupem do záložek nevidí ani widget, který na
   // tu záložku odkazuje (např. bez přístupu do Skladu nemá smysl mu ukazovat
@@ -1905,7 +2047,9 @@ function render(){
       </div>
       ${canAccessTab('dashboard')?`<div class="navitem ${state.view==='dashboard'?'active':''}" data-action="nav" data-view="dashboard">Přehled</div>`:''}
       ${canAccessTab('invoices')?`<div class="navitem ${state.view==='invoices'||state.view==='invoice-form'||state.view==='invoice-preview'?'active':''}" data-action="nav" data-view="invoices">Faktury</div>`:''}
+      ${canAccessTab('recurring-invoices')?`<div class="navitem ${state.view==='recurring-invoices'||state.view==='recurring-invoice-form'?'active':''}" data-action="nav" data-view="recurring-invoices">Opakované faktury</div>`:''}
       ${canAccessTab('received-invoices')?`<div class="navitem ${state.view==='received-invoices'||state.view==='received-invoice-form'||state.view==='received-invoice-detail'?'active':''}" data-action="nav" data-view="received-invoices">Přijaté faktury</div>`:''}
+      ${canAccessTab('orders')?`<div class="navitem ${state.view==='orders'||state.view==='order-form'||state.view==='order-fulfillment'?'active':''}" data-action="nav" data-view="orders">Objednávky</div>`:''}
       ${canAccessTab('clients')?`<div class="navitem ${state.view==='clients'||state.view==='client-form'||state.view==='client-detail'?'active':''}" data-action="nav" data-view="clients">Odběratelé</div>`:''}
       ${canAccessTab('suppliers')?`<div class="navitem ${state.view==='suppliers'||state.view==='supplier-form'||state.view==='supplier-detail'?'active':''}" data-action="nav" data-view="suppliers">Dodavatelé</div>`:''}
       ${canAccessTab('products')?`<div class="navitem ${state.view==='products'||state.view==='product-form'?'active':''}" data-action="nav" data-view="products">Produkty</div>`:''}
@@ -2133,6 +2277,7 @@ async function afterLogin(){
   await loadAll();
   state.view = firstAccessibleView();
   state.authError=''; state.authNotice='';
+  startEshopPolling();
   render();
 }
 async function loadSubscriptionStatus(){
@@ -2202,6 +2347,11 @@ function renderView(){
     case 'received-invoices': return viewReceivedInvoices();
     case 'received-invoice-form': return viewReceivedInvoiceForm();
     case 'received-invoice-detail': return viewReceivedInvoiceDetail();
+    case 'recurring-invoices': return viewRecurringInvoices();
+    case 'recurring-invoice-form': return viewRecurringInvoiceForm();
+    case 'orders': return viewOrders();
+    case 'order-form': return viewOrderForm();
+    case 'order-fulfillment': return viewOrderFulfillment();
     case 'invoice-form': return viewInvoiceForm();
     case 'invoice-preview': return viewInvoicePreview();
     case 'bulk-import': return viewBulkImport();
@@ -3428,6 +3578,397 @@ function renderSubscriptionCard(){
   `;
 }
 
+const ESHOP_PLATFORMS = {
+  shopify: { label:'Shopify', fields:[
+    {key:'storeDomain', label:'Doména obchodu', placeholder:'tvuj-obchod.myshopify.com'},
+    {key:'accessToken', label:'Admin API access token', type:'password', placeholder:'shpat_…'}
+  ]},
+  shoptet: { label:'Shoptet', fields:[
+    {key:'eshopUrl', label:'URL e-shopu', placeholder:'https://tvuj-eshop.cz'},
+    {key:'accessToken', label:'API token (Addon API)', type:'password'}
+  ]},
+  woocommerce: { label:'WooCommerce', fields:[
+    {key:'siteUrl', label:'URL webu', placeholder:'https://tvuj-web.cz'},
+    {key:'consumerKey', label:'Consumer key', type:'password'},
+    {key:'consumerSecret', label:'Consumer secret', type:'password'}
+  ]}
+};
+const CARRIER_TYPES = {
+  zasilkovna: { label:'Zásilkovna', fields:[{key:'apiKey', label:'API klíč', type:'password'}] },
+  dpd: { label:'DPD', fields:[{key:'username', label:'Přihlašovací jméno'},{key:'password', label:'Heslo', type:'password'},{key:'customerId', label:'Zákaznické číslo'}] },
+  ppl: { label:'PPL', fields:[{key:'apiKey', label:'API klíč', type:'password'}] },
+  gls: { label:'GLS', fields:[{key:'username', label:'Přihlašovací jméno'},{key:'password', label:'Heslo', type:'password'}] }
+};
+const DELIVERY_TYPES = [ {value:'', label:'— nerozlišovat —'}, {value:'home', label:'Doručení domů'}, {value:'pickup_point', label:'Výdejní místo'} ];
+
+function integrationStatusBox(msg, ok){
+  if(!msg) return '';
+  const color = ok ? 'var(--accent)' : 'var(--red)';
+  const bg = ok ? 'var(--accent-soft)' : 'var(--red-soft)';
+  return `<div style="background:${bg};color:${color};padding:8px 12px;border-radius:var(--radius);font-size:12.5px;margin-top:10px;">${escapeHtml(msg)}</div>`;
+}
+
+/* ---------- E-SHOPY (víc platforem, průběžná synchronizace) ---------- */
+async function fetchShopifyOrders(cred){
+  const res = await fetch(`https://${cred.storeDomain}/admin/api/2024-01/orders.json?status=open&limit=50`, {
+    headers: { 'X-Shopify-Access-Token': cred.accessToken, 'Content-Type':'application/json' }
+  });
+  if(!res.ok) throw new Error(`Shopify odpovědělo chybou ${res.status}.`);
+  const data = await res.json();
+  return (data.orders||[]).map(so=>({
+    externalId: String(so.id), number: 'SHOPIFY-'+so.order_number, email: so.email||'',
+    lineItems: (so.line_items||[]).map(li=>({ sku: li.sku, title: li.title, qty: li.quantity, price: parseFloat(li.price)||0 })),
+    weightKg: (so.total_weight||0)/1000
+  }));
+}
+async function fetchShoptetOrders(cred){
+  const base = (cred.eshopUrl||'').replace(/\/$/,'');
+  const res = await fetch(`${base}/api/orders?status=new`, {
+    headers: { 'Authorization': 'Bearer '+cred.accessToken, 'Content-Type':'application/json' }
+  });
+  if(!res.ok) throw new Error(`Shoptet odpovědělo chybou ${res.status}.`);
+  const data = await res.json();
+  const list = data.data || data.orders || [];
+  return list.map(so=>({
+    externalId: String(so.id||so.code), number: 'SHOPTET-'+(so.code||so.id),
+    email: (so.customer && so.customer.email) || '',
+    lineItems: (so.items||[]).map(li=>({ sku: li.code||li.sku, title: li.name||li.title, qty: li.amount||li.qty, price: parseFloat(li.price)||0 })),
+    weightKg: 0
+  }));
+}
+async function fetchWooCommerceOrders(cred){
+  const base = (cred.siteUrl||'').replace(/\/$/,'');
+  const auth = btoa(`${cred.consumerKey}:${cred.consumerSecret}`);
+  const res = await fetch(`${base}/wp-json/wc/v3/orders?status=processing&per_page=50`, {
+    headers: { 'Authorization': 'Basic '+auth }
+  });
+  if(!res.ok) throw new Error(`WooCommerce odpovědělo chybou ${res.status}.`);
+  const data = await res.json();
+  return (data||[]).map(so=>({
+    externalId: String(so.id), number: 'WOO-'+so.number,
+    email: (so.billing && so.billing.email) || '',
+    lineItems: (so.line_items||[]).map(li=>({ sku: li.sku, title: li.name, qty: li.quantity, price: parseFloat(li.price)||0 })),
+    weightKg: 0
+  }));
+}
+async function fetchEshopOrders(eshop){
+  if(eshop.platform==='shopify') return fetchShopifyOrders(eshop.credentials);
+  if(eshop.platform==='shoptet') return fetchShoptetOrders(eshop.credentials);
+  if(eshop.platform==='woocommerce') return fetchWooCommerceOrders(eshop.credentials);
+  throw new Error('Neznámá platforma e-shopu.');
+}
+async function pollEshopOrders(eshopId, silent){
+  const eshop = state.integrations.eshops.find(e=>e.id===eshopId);
+  if(!eshop || !eshop.active) return;
+  try{
+    const orders = await fetchEshopOrders(eshop);
+    let imported = 0;
+    orders.forEach(eo=>{
+      if(state.orders.some(o=>o.externalId===eo.externalId)) return;
+      const items = eo.lineItems.map(li=>{
+        const product = state.products.find(p=>p.ean===li.sku || p.number===li.sku);
+        return product ? { productId:product.id, desc:li.title, qty:li.qty, unit:'ks', price:li.price, vat:21, ean:product.ean||'', productNumber:product.number||'', scannedQty:0 } : null;
+      }).filter(Boolean);
+      if(!items.length) return;
+      state.orders.push({
+        ...blankOrder(), id: uid(), number: eo.number, externalId: eo.externalId, eshopId: eshop.id,
+        clientId: null, items, weightKg: eo.weightKg||0,
+        note: `Import z ${ESHOP_PLATFORMS[eshop.platform].label}${eo.email?(' — '+eo.email):''}`
+      });
+      imported++;
+    });
+    eshop.lastSyncAt = new Date().toISOString();
+    eshop.lastSyncStatus = { ok:true, message: imported ? `Nalezeno ${imported} nových objednávek.` : 'Žádné nové objednávky.' };
+    if(imported){ await saveOrders(); if(state.view==='orders') render(); }
+    await saveIntegrations();
+  }catch(err){
+    eshop.lastSyncAt = new Date().toISOString();
+    eshop.lastSyncStatus = { ok:false, message: err.message || 'Synchronizace se nepovedla.' };
+    try{ await saveIntegrations(); }catch(e){}
+    if(!silent && state.view==='settings') render();
+  }
+}
+function startEshopPolling(){
+  if(!window._pollTimers) window._pollTimers = {};
+  Object.values(window._pollTimers).forEach(t=>clearInterval(t));
+  window._pollTimers = {};
+  (state.integrations.eshops||[]).forEach(e=>{
+    if(!e.active) return;
+    window._pollTimers[e.id] = setInterval(()=>pollEshopOrders(e.id, true), (state.integrations.pollIntervalSec||60)*1000);
+    pollEshopOrders(e.id, true); // hned při spuštění appky zkontrolovat, ať nečekáš na první interval
+  });
+  // Fronta z webhooku (viz Nastavení → Integrace, tlačítko "Nastavit okamžité doručení webhookem")
+  // se kontroluje vždy, nezávisle na tom, jestli má uživatel aktivní přímé dotazování e-shopu —
+  // je to levné (jen vlastní databáze), takže jede na krátkém intervalu.
+  if(window._queuePollTimer) clearInterval(window._queuePollTimer);
+  window._queuePollTimer = setInterval(()=>pollIncomingOrdersQueue(true), 15000);
+  pollIncomingOrdersQueue(true);
+}
+async function pollIncomingOrdersQueue(silent){
+  if(!state.tenantId) return;
+  try{
+    const res = await sbRequest(`/incoming_orders?tenant_id=eq.${encodeURIComponent(state.tenantId)}&processed=eq.false&select=*`);
+    const rows = await res.json();
+    if(!rows.length) return;
+    let imported = 0;
+    for(const row of rows){
+      const eo = row.payload || {};
+      if(!state.orders.some(o=>o.externalId===eo.external_id)){
+        const items = (eo.line_items||[]).map(li=>{
+          const product = state.products.find(p=>p.ean===li.sku || p.number===li.sku);
+          return product ? { productId:product.id, desc:li.title, qty:li.qty, unit:'ks', price:li.price, vat:21, ean:product.ean||'', productNumber:product.number||'', scannedQty:0 } : null;
+        }).filter(Boolean);
+        if(items.length){
+          const platformLabel = (ESHOP_PLATFORMS[row.platform]||{}).label || row.platform;
+          state.orders.push({
+            ...blankOrder(), id: uid(), number: eo.number || row.external_id, externalId: eo.external_id,
+            clientId: null, items, weightKg: eo.weight_kg||0,
+            note: `Webhook z ${platformLabel}${eo.email?(' — '+eo.email):''}`
+          });
+          imported++;
+        }
+      }
+      // označit jako zpracované i v případě, že se nepodařilo spárovat položky —
+      // ať appka pořád nezkouší tu samou nespárovanou objednávku dokola
+      await sbRequest(`/incoming_orders?id=eq.${row.id}`, { method:'PATCH', body: JSON.stringify({ processed:true }) }).catch(()=>{});
+    }
+    if(imported){ await saveOrders(); if(state.view==='orders') render(); }
+  }catch(err){
+    if(!silent) console.error('Fronta webhooku se nepovedla načíst:', err);
+  }
+}
+
+/* ---------- DOPRAVCI (víc dopravců, pravidla pro automatický výběr) ---------- */
+async function createZasilkovnaShipment(o, cred){
+  if(!cred || !cred.apiKey) throw new Error('Chybí API klíč Zásilkovny.');
+  const c = clientById(o.clientId);
+  if(!c) throw new Error('Objednávka nemá odběratele s adresou.');
+  const payload = {
+    apiPassword: cred.apiKey,
+    packetAttributes: {
+      number: o.number,
+      name: (c.name||'').split(' ')[0]||c.name,
+      surname: (c.name||'').split(' ').slice(1).join(' ')||'',
+      email: c.contactEmail||'', phone: c.contactPhone||'', addressId: 0,
+      value: (o.items||[]).reduce((s,it)=>s+(it.qty||0)*(it.price||0),0),
+      eshop: (companyById(o.companyId)||{}).name||''
+    }
+  };
+  const res = await fetch('https://www.zasilkovna.cz/api/rest/createPacket', {
+    method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload)
+  });
+  if(!res.ok) throw new Error(`Zásilkovna odpovědělo chybou ${res.status} (pravděpodobně CORS blokace přímého volání z appky).`);
+  return await res.json();
+}
+async function createDpdShipment(o, cred){
+  // DPD API je určené výhradně pro server-to-server komunikaci — nejde bezpečně ani technicky
+  // zavolat přímo z prohlížeče appky (CORS).
+  throw new Error('DPD API nejde bezpečně zavolat přímo z appky v prohlížeči (vyžaduje server).');
+}
+async function createPplShipment(o, cred){
+  throw new Error('PPL API nejde bezpečně zavolat přímo z appky v prohlížeči (vyžaduje server).');
+}
+async function createGlsShipment(o, cred){
+  throw new Error('GLS API nejde bezpečně zavolat přímo z appky v prohlížeči (vyžaduje server).');
+}
+async function createCarrierShipment(carrier, o){
+  if(carrier.type==='zasilkovna') return createZasilkovnaShipment(o, carrier.credentials);
+  if(carrier.type==='dpd') return createDpdShipment(o, carrier.credentials);
+  if(carrier.type==='ppl') return createPplShipment(o, carrier.credentials);
+  if(carrier.type==='gls') return createGlsShipment(o, carrier.credentials);
+  throw new Error('Neznámý typ dopravce.');
+}
+function carrierRuleMatches(rule, o){
+  if(rule.maxWeightKg && (o.weightKg||0) > parseFloat(rule.maxWeightKg)) return false;
+  if(rule.deliveryType && o.deliveryType && rule.deliveryType!==o.deliveryType) return false;
+  return true;
+}
+function selectCarrierForOrder(o){
+  const candidates = (state.integrations.carriers||[]).filter(c=>c.active).sort((a,b)=>(a.priority||0)-(b.priority||0));
+  for(const c of candidates){
+    const rules = c.rules||[];
+    if(!rules.length || rules.every(r=>carrierRuleMatches(r,o))) return c;
+  }
+  return candidates[0] || null;
+}
+async function autoProcessShipping(o){
+  const carrier = selectCarrierForOrder(o);
+  state.fulfillmentStage = 'shipping';
+  if(!carrier) return;
+  try{
+    const result = await createCarrierShipment(carrier, o);
+    o.trackingNumber = (result && (result.id || result.trackingNumber)) || o.trackingNumber || '';
+    o.shippingCarrier = carrier.type;
+    await saveOrders();
+    setTimeout(()=>printShippingLabel(o.id), 300); // rovnou nabídnout tisk štítku
+  }catch(err){
+    o.shippingCarrier = carrier.type;
+    await saveOrders().catch(()=>{});
+    state.integrationTestStatus = state.integrationTestStatus || {};
+    state.integrationTestStatus['auto-ship'] = { ok:false, message: `Automatické vytvoření zásilky u ${carrier.name} se nepovedlo: ${err.message||''} Doplň sledovací číslo ručně a vytiskni appkou vygenerovaný štítek.` };
+  }
+}
+
+/* ---------- UI: Nastavení > Integrace ---------- */
+function renderIntegrationsSection(){
+  const it = state.integrations;
+  return `
+    <div class="form-card">
+      <p style="font-size:12.5px;color:var(--ink-soft);margin-top:0;">
+        Appka bez dalšího nastavení volá API e-shopů přímo z prohlížeče a <strong>pravidelně sama kontroluje nové objednávky</strong>,
+        dokud ji máš otevřenou (interval nastavíš níž). U API, která volání z prohlížeče blokují (typicky Shopify a přepravci jako
+        DPD), appka chybu hned ukáže a bezpečně přepne na ruční zadání, takže nikdy nic nerozbije.
+      </p>
+      <p style="font-size:12.5px;color:var(--ink-soft);">
+        Chceš, aby se objednávka objevila <strong>prakticky okamžitě</strong>, ne až při další kontrole? U každého e-shopu níž najdeš
+        webhook URL — po nasazení přiložené malé serverové funkce do vašeho Supabase projektu (návod je v balíčku, cos dostal/a ke
+        stažení) appka objednávku uvidí do pár vteřin od jejího vzniku.
+      </p>
+      <div class="field" style="max-width:260px;">
+        <label>Jak často kontrolovat nové objednávky (přímé dotazování)</label>
+        <select id="poll-interval-select">
+          <option value="30" ${it.pollIntervalSec===30?'selected':''}>Každých 30 s</option>
+          <option value="60" ${!it.pollIntervalSec||it.pollIntervalSec===60?'selected':''}>Každou minutu</option>
+          <option value="300" ${it.pollIntervalSec===300?'selected':''}>Každých 5 minut</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="section-title" style="margin-top:22px;">E-shopy</div>
+    ${(it.eshops||[]).map(e=>renderEshopCard(e)).join('') || `<p style="font-size:13px;color:var(--ink-soft);">Zatím žádný e-shop.</p>`}
+    <button type="button" class="btn secondary small" data-action="add-eshop">+ Přidat e-shop</button>
+
+    <div class="section-title" style="margin-top:26px;">Dopravci</div>
+    <p style="font-size:12.5px;color:var(--ink-soft);margin-top:-8px;">Appka vybírá dopravce automaticky podle pořadí a pravidel (váha, typ doručení) — první, který na objednávku sedí, se použije.</p>
+    ${(it.carriers||[]).map((c,idx)=>renderCarrierCard(c,idx)).join('') || `<p style="font-size:13px;color:var(--ink-soft);">Zatím žádný dopravce.</p>`}
+    <button type="button" class="btn secondary small" data-action="add-carrier">+ Přidat dopravce</button>
+  `;
+}
+function renderEshopCard(e){
+  const platform = ESHOP_PLATFORMS[e.platform];
+  const st = e.lastSyncStatus;
+  const webhookUrl = `${SUPABASE_URL}/functions/v1/order-webhook?tenant=${encodeURIComponent(state.tenantId)}&platform=${e.platform}`;
+  return `
+    <div class="form-card">
+      <div class="section-title" style="margin-top:0;padding-top:0;border-top:none;display:flex;justify-content:space-between;align-items:center;">
+        <span>${platform?platform.label:e.platform} — ${escapeHtml(e.name||'')}</span>
+        <label style="font-size:12.5px;font-weight:400;display:flex;align-items:center;gap:6px;">
+          <input type="checkbox" data-action="toggle-eshop-active" data-id="${e.id}" ${e.active?'checked':''}> aktivní
+        </label>
+      </div>
+      <form class="eshop-form" data-id="${e.id}">
+        <div class="field"><label>Název (jen pro tebe)</label><input name="name" value="${escapeAttr(e.name||'')}"></div>
+        <div class="field-row">
+          ${platform.fields.map(f=>`<div class="field"><label>${f.label}</label><input name="${f.key}" type="${f.type||'text'}" placeholder="${f.placeholder||''}" value="${escapeAttr(e.credentials[f.key]||'')}"></div>`).join('')}
+        </div>
+        <div class="formfoot" style="margin-top:6px;justify-content:flex-start;gap:10px;">
+          <button type="submit" class="btn secondary small">Uložit</button>
+          <button type="button" class="btn secondary small" data-action="test-eshop" data-id="${e.id}">Otestovat připojení</button>
+          <button type="button" class="btn secondary small" data-action="sync-eshop-now" data-id="${e.id}">Synchronizovat teď</button>
+          <button type="button" class="btn danger small" data-action="delete-eshop" data-id="${e.id}">Smazat</button>
+        </div>
+      </form>
+      <div class="mini-label">Webhook URL pro okamžité doručení objednávek (po nasazení serverové funkce)</div>
+      <div style="display:flex;gap:8px;align-items:center;">
+        <input type="text" readonly value="${escapeAttr(webhookUrl)}" style="flex:1;font-family:'IBM Plex Mono',monospace;font-size:11.5px;background:var(--paper);" onclick="this.select()">
+        <button type="button" class="btn secondary small" data-action="copy-webhook-url" data-url="${escapeAttr(webhookUrl)}">Kopírovat</button>
+      </div>
+      <p style="font-size:11px;color:var(--ink-soft);margin:6px 0 0 0;">Tuhle URL vlož do webhooků v ${platform?platform.label:e.platform} — návod je v souboru, který appka poslala pro nasazení serverové funkce.</p>
+      ${e.lastSyncAt ? `<p style="font-size:11.5px;color:var(--ink-soft);margin:8px 0 0 0;">Poslední kontrola: ${new Date(e.lastSyncAt).toLocaleString('cs-CZ')}</p>` : ''}
+      ${st ? integrationStatusBox(st.message, st.ok) : ''}
+    </div>
+  `;
+}
+function renderCarrierCard(c, idx){
+  const type = CARRIER_TYPES[c.type];
+  return `
+    <div class="form-card">
+      <div class="section-title" style="margin-top:0;padding-top:0;border-top:none;display:flex;justify-content:space-between;align-items:center;">
+        <span>#${idx+1} · ${type?type.label:c.type} — ${escapeHtml(c.name||'')}</span>
+        <label style="font-size:12.5px;font-weight:400;display:flex;align-items:center;gap:6px;">
+          <input type="checkbox" data-action="toggle-carrier-active" data-id="${c.id}" ${c.active?'checked':''}> aktivní
+        </label>
+      </div>
+      <form class="carrier-form" data-id="${c.id}">
+        <div class="field"><label>Název (jen pro tebe)</label><input name="name" value="${escapeAttr(c.name||'')}"></div>
+        <div class="field-row">
+          ${type.fields.map(f=>`<div class="field"><label>${f.label}</label><input name="${f.key}" type="${f.type||'text'}" value="${escapeAttr(c.credentials[f.key]||'')}"></div>`).join('')}
+        </div>
+        <div class="mini-label">Pravidlo pro automatický výběr (nepovinné — bez pravidla je dopravce vždy „sedí")</div>
+        <div class="field-row">
+          <div class="field"><label>Max. váha objednávky (kg)</label><input name="ruleMaxWeightKg" type="number" step="0.1" value="${c.rules&&c.rules[0]?c.rules[0].maxWeightKg||'':''}"></div>
+          <div class="field"><label>Typ doručení</label><select name="ruleDeliveryType">
+            ${DELIVERY_TYPES.map(d=>`<option value="${d.value}" ${(c.rules&&c.rules[0]&&c.rules[0].deliveryType)===d.value?'selected':''}>${d.label}</option>`).join('')}
+          </select></div>
+        </div>
+        <div class="formfoot" style="margin-top:6px;justify-content:flex-start;gap:10px;">
+          <button type="submit" class="btn secondary small">Uložit</button>
+          <button type="button" class="btn secondary small" data-action="test-carrier" data-id="${c.id}">Otestovat připojení</button>
+          ${idx>0?`<button type="button" class="btn-link" data-action="move-carrier-up" data-id="${c.id}">↑ Výš v pořadí</button>`:''}
+          <button type="button" class="btn danger small" data-action="delete-carrier" data-id="${c.id}">Smazat</button>
+        </div>
+      </form>
+      ${integrationStatusBox(c.testStatus&&c.testStatus.message, c.testStatus&&c.testStatus.ok)}
+    </div>
+  `;
+}
+function setupIntegrationsSection(){
+  const pollSelect = document.getElementById('poll-interval-select');
+  if(pollSelect){
+    pollSelect.addEventListener('change', async ()=>{
+      state.integrations.pollIntervalSec = parseInt(pollSelect.value)||60;
+      try{ await saveIntegrations(); }catch(e){}
+      startEshopPolling();
+    });
+  }
+  document.querySelectorAll('.eshop-form').forEach(form=>{
+    form.addEventListener('submit', async (e)=>{
+      e.preventDefault();
+      const id = form.getAttribute('data-id');
+      const eshop = state.integrations.eshops.find(x=>x.id===id);
+      if(!eshop) return;
+      const fd = new FormData(form);
+      eshop.name = fd.get('name')||'';
+      const platform = ESHOP_PLATFORMS[eshop.platform];
+      const cred = {};
+      platform.fields.forEach(f=>{ cred[f.key] = (fd.get(f.key)||'').trim(); });
+      eshop.credentials = cred;
+      try{ await saveIntegrations(); }catch(err){ alert('Uložení se nepovedlo.'); return; }
+      startEshopPolling();
+      render();
+    });
+  });
+  document.querySelectorAll('.carrier-form').forEach(form=>{
+    form.addEventListener('submit', async (e)=>{
+      e.preventDefault();
+      const id = form.getAttribute('data-id');
+      const carrier = state.integrations.carriers.find(x=>x.id===id);
+      if(!carrier) return;
+      const fd = new FormData(form);
+      carrier.name = fd.get('name')||'';
+      const type = CARRIER_TYPES[carrier.type];
+      const cred = {};
+      type.fields.forEach(f=>{ cred[f.key] = (fd.get(f.key)||'').trim(); });
+      carrier.credentials = cred;
+      const maxWeightKg = fd.get('ruleMaxWeightKg');
+      const deliveryType = fd.get('ruleDeliveryType');
+      carrier.rules = (maxWeightKg || deliveryType) ? [{ maxWeightKg: maxWeightKg?parseFloat(maxWeightKg):null, deliveryType: deliveryType||'' }] : [];
+      try{ await saveIntegrations(); }catch(err){ alert('Uložení se nepovedlo.'); return; }
+      render();
+    });
+  });
+}
+async function addEshopPlatform(platform){
+  state.integrations.eshops.push({ id:uid(), platform, name:ESHOP_PLATFORMS[platform].label, active:true, credentials:{}, lastSyncAt:null, lastSyncStatus:null });
+  await saveIntegrations();
+  render();
+}
+async function addCarrierType(type){
+  state.integrations.carriers.push({ id:uid(), type, name:CARRIER_TYPES[type].label, active:true, credentials:{}, rules:[], priority:state.integrations.carriers.length, testStatus:null });
+  await saveIntegrations();
+  render();
+}
+
 function viewSettings(){
   const primary = state.companies[0];
   return `
@@ -3502,6 +4043,9 @@ function viewSettings(){
         Appka hesla nikdy neukládá ani nevidí — o vše se stará Supabase Auth.
       </p>
     </div>
+
+    <div class="section-title" style="margin-top:30px;">Integrace</div>
+    ${renderIntegrationsSection()}
 
     <div class="section-title" style="margin-top:30px;">Zálohování dat</div>
     <div class="form-card">
@@ -4047,7 +4591,8 @@ const DEFAULT_PRODUCT_COLUMNS = [
   {key:'purchasePrice', label:'Nákupní', width:80, visible:true},
   {key:'salePrice', label:'Prodejní', width:80, visible:true},
   {key:'margin', label:'Marže', width:65, visible:true},
-  {key:'stock', label:'Sklad', width:100, visible:true},
+  {key:'stock', label:'Sklad. množství', width:100, visible:true},
+  {key:'warehouseName', label:'Sklad (název)', width:130, visible:true},
   {key:'location', label:'Umístění', width:200, visible:true},
   {key:'expiry', label:'Expirace', width:120, visible:true},
 ];
@@ -4091,6 +4636,7 @@ function blankProduct(){
     id: uid(), number:'', ean:'', internalCode:'', name:'', description:'',
     category:'', manufacturer:'', supplierId:'', unit:'ks', vatRate:21, vatRatePurchase:21, note:'',
     purchasePrice:0, salePrice:0, costs:0,
+    warehouseId: (defaultWarehouse()||{}).id || '',
     stockCurrent:0, stockReserved:0, stockMin:0, location:blankLocation(), barcodeType:'EAN13',
     expiryDate:'', photo:'', link:'', archived:false, createdAt:new Date().toISOString(),
     movements:[]
@@ -4605,6 +5151,664 @@ function viewReceivedInvoiceDetail(){
     </div>
   `;
 }
+/* ---------- OPAKOVANÉ FAKTURY ---------- */
+function blankRecurring(){
+  return {
+    id: uid(), clientId: state.clients[0]?state.clients[0].id:null, companyId: state.companies[0].id,
+    items: [{desc:'',qty:1,unit:'ks',price:0,vat:21}],
+    interval:'monthly', startDate: todayISO(), nextRunDate: todayISO(), dueDays:14,
+    paymentMethod:'Bankovním převodem', currency:'CZK', note:'', active:true,
+    createdCount:0, lastGeneratedAt:null, lastGeneratedInvoiceId:null
+  };
+}
+function recurringIntervalLabel(iv){ return iv==='monthly'?'Měsíčně':(iv==='quarterly'?'Čtvrtletně':'Ročně'); }
+function advanceRecurringDate(dateStr, interval){
+  const d = new Date(dateStr+'T00:00:00');
+  if(interval==='quarterly') d.setMonth(d.getMonth()+3);
+  else if(interval==='yearly') d.setFullYear(d.getFullYear()+1);
+  else d.setMonth(d.getMonth()+1);
+  return d.toISOString().slice(0,10);
+}
+async function generateInvoiceFromRecurring(tpl){
+  const co = companyById(tpl.companyId) || state.companies[0];
+  const num = `${co.prefix}${co.nextNumber}`;
+  const invoice = {
+    id: uid(), number: num, clientId: tpl.clientId, companyId: co.id,
+    docType:'invoice', relatedInvoiceId:null, creditReason:'',
+    issueDate: todayISO(), taxDate: todayISO(), dueDate: addDays(todayISO(), tpl.dueDays||14),
+    variableSymbol: num.replace(/\D/g,''), constantSymbol:'', orderNumber:'',
+    currency: tpl.currency||'CZK', discountType:'none', discountValue:0, rounding:'none',
+    paymentMethod: tpl.paymentMethod||'Bankovním převodem',
+    includeStamp:true, colorMode:'color', includeSignature:true, includeQr:true,
+    note: tpl.note||'', items: JSON.parse(JSON.stringify(tpl.items||[])),
+    paid:false, paidDate:null, createdBy: state.currentUser, generatedFromRecurringId: tpl.id
+  };
+  state.invoices.push(invoice);
+  co.nextNumber = (co.nextNumber||1) + 1;
+  tpl.nextRunDate = advanceRecurringDate(tpl.nextRunDate, tpl.interval);
+  tpl.createdCount = (tpl.createdCount||0) + 1;
+  tpl.lastGeneratedAt = new Date().toISOString();
+  tpl.lastGeneratedInvoiceId = invoice.id;
+  await saveCompanies();
+  await saveInvoices();
+  await saveRecurringInvoices();
+  return invoice;
+}
+function viewRecurringInvoices(){
+  const list = [...state.recurringInvoices].sort((a,b)=>(a.nextRunDate||'').localeCompare(b.nextRunDate||''));
+  const dueCount = list.filter(t=>t.active && t.nextRunDate<=todayISO()).length;
+  return `
+    <div class="pagehead">
+      <div><h1>Opakované faktury</h1><p class="desc">${list.length} šablon${dueCount?` · ${dueCount} čeká na vygenerování`:''}</p></div>
+      <button class="btn" data-action="new-recurring">+ Nová šablona</button>
+    </div>
+    <p style="font-size:12.5px;color:var(--ink-soft);margin:-10px 0 20px 0;">Appka generuje faktury, když si tuhle stránku otevřeš (ne přesně o půlnoci na pozadí) — šablony, kterým už nastal termín, jsou označené a stačí kliknout na „Vygenerovat".</p>
+    ${list.length ? `
+    <div class="table-scroll">
+    <table class="fixed-table">
+      <thead><tr><th>Odběratel</th><th style="width:120px;">Interval</th><th style="width:130px;">Další termín</th><th style="width:110px;">Vygenerováno</th><th style="width:90px;">Aktivní</th><th style="width:160px;"></th></tr></thead>
+      <tbody>
+        ${list.map(t=>{
+          const c = clientById(t.clientId);
+          const due = t.active && t.nextRunDate<=todayISO();
+          return `<tr>
+            <td>${c?escapeHtml(c.name):'—'}</td>
+            <td>${recurringIntervalLabel(t.interval)}</td>
+            <td class="num">${due?`<span class="pill overdue">${t.nextRunDate}</span>`:t.nextRunDate}</td>
+            <td class="num">${t.createdCount||0}×</td>
+            <td>${t.active?'✅':'⏸️'}</td>
+            <td class="actions-cell no-print">
+              ${due?`<button class="btn secondary small" data-action="run-recurring" data-id="${t.id}">Vygenerovat</button>`:''}
+              <button class="iconbtn" data-action="edit-recurring" data-id="${t.id}" title="Upravit"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg></button>
+              <button class="iconbtn" data-action="delete-recurring" data-id="${t.id}" title="Smazat"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+            </td>
+          </tr>`;
+        }).join('')}
+      </tbody>
+    </table>
+    </div>` : emptyState('Žádné opakované faktury', 'Vytvoř šablonu pro odběratele, kterému fakturuješ pravidelně (např. měsíční paušál).')}
+  `;
+}
+function viewRecurringInvoiceForm(){
+  const editing = state.editingRecurringId ? state.recurringInvoices.find(t=>t.id===state.editingRecurringId) : null;
+  const t = editing || blankRecurring();
+  if(!state.recurringFormItems.length){
+    state.recurringFormItems = editing ? JSON.parse(JSON.stringify(editing.items||[])) : JSON.parse(JSON.stringify(t.items));
+  }
+  const c = clientById(t.clientId);
+  return `
+    <div class="pagehead"><div><h1>${editing?'Upravit šablonu':'Nová opakovaná faktura'}</h1></div></div>
+    <form id="recurring-form" class="form-card">
+      <div class="section-title" style="margin-top:0;padding-top:0;border-top:none;">Základní údaje</div>
+      <div class="field-row">
+        <div class="field"><label>Odběratel</label><select name="clientId">${state.clients.map(cl=>`<option value="${cl.id}" ${t.clientId===cl.id?'selected':''}>${escapeHtml(cl.name)}</option>`).join('')}</select></div>
+        <div class="field"><label>Firma (vystavovatel)</label><select name="companyId">${state.companies.map(co=>`<option value="${co.id}" ${t.companyId===co.id?'selected':''}>${escapeHtml(co.name||'(bez názvu)')}</option>`).join('')}</select></div>
+      </div>
+      <div class="field-row">
+        <div class="field"><label>Interval</label><select name="interval">
+          <option value="monthly" ${t.interval==='monthly'?'selected':''}>Měsíčně</option>
+          <option value="quarterly" ${t.interval==='quarterly'?'selected':''}>Čtvrtletně</option>
+          <option value="yearly" ${t.interval==='yearly'?'selected':''}>Ročně</option>
+        </select></div>
+        <div class="field"><label>Další termín vystavení</label><input type="date" name="nextRunDate" value="${t.nextRunDate}"></div>
+      </div>
+      <div class="field-row">
+        <div class="field"><label>Splatnost (dny)</label><input type="number" name="dueDays" value="${t.dueDays||14}"></div>
+        <div class="field"><label>Forma úhrady</label><select name="paymentMethod">
+          ${['Bankovním převodem','Hotově','Kartou'].map(m=>`<option value="${m}" ${(t.paymentMethod||'Bankovním převodem')===m?'selected':''}>${m}</option>`).join('')}
+        </select></div>
+      </div>
+      <label style="display:flex;align-items:center;gap:8px;font-size:14px;margin:6px 0 14px 0;">
+        <input type="checkbox" name="active" ${t.active!==false?'checked':''}> Šablona je aktivní
+      </label>
+
+      <div class="section-title">Položky</div>
+      <div class="items-table-wrap">
+      <table class="items-table">
+        <thead><tr><th class="col-desc">Popis</th><th class="col-qty">Množství</th><th class="col-unit">Jedn.</th><th class="col-price">Cena/ks</th><th class="col-vat">DPH</th><th class="col-total num">Celkem</th><th class="col-remove"></th></tr></thead>
+        <tbody id="recurring-items-body">${renderRecurringItemRows()}</tbody>
+      </table>
+      </div>
+      <button type="button" class="btn secondary small no-print" data-action="add-recurring-item">+ Přidat položku</button>
+
+      <div class="section-title">Poznámka</div>
+      <div class="field"><textarea name="note" rows="2">${escapeHtml(t.note||'')}</textarea></div>
+
+      <div class="formfoot" style="justify-content:space-between;">
+        <button type="button" class="btn secondary" data-action="nav" data-view="recurring-invoices">Zrušit</button>
+        <button type="submit" class="btn">${editing?'Uložit změny':'Uložit šablonu'}</button>
+      </div>
+    </form>
+  `;
+}
+function renderRecurringItemRows(){
+  return state.recurringFormItems.map((it,idx)=>{
+    const lineTotal = (it.qty||0)*(it.price||0)*(1+(it.vat||0)/100);
+    return `<tr>
+      <td class="col-desc"><input data-field="desc" data-index="${idx}" value="${escapeAttr(it.desc)}" placeholder="Popis položky"></td>
+      <td class="col-qty"><input type="number" step="0.01" data-field="qty" data-index="${idx}" value="${it.qty}"></td>
+      <td class="col-unit"><input data-field="unit" data-index="${idx}" value="${escapeAttr(it.unit||'ks')}"></td>
+      <td class="col-price"><input type="number" step="0.01" data-field="price" data-index="${idx}" value="${it.price}"></td>
+      <td class="col-vat"><input type="number" step="0.1" min="0" max="100" data-field="vat" data-index="${idx}" value="${it.vat}"></td>
+      <td class="col-total num" style="white-space:nowrap;padding-top:14px;">${fmt(lineTotal)} Kč</td>
+      <td class="col-remove"><button type="button" class="iconbtn no-print" data-action="remove-recurring-item" data-index="${idx}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></td>
+    </tr>`;
+  }).join('');
+}
+async function onSubmitRecurring(e){
+  e.preventDefault();
+  const fd = new FormData(e.target);
+  const items = state.recurringFormItems.filter(it=>(it.desc||'').trim()!=='' || (it.qty||0)!==0);
+  const fields = {
+    clientId: fd.get('clientId'), companyId: fd.get('companyId'),
+    interval: fd.get('interval')||'monthly', nextRunDate: fd.get('nextRunDate')||todayISO(),
+    dueDays: parseInt(fd.get('dueDays'))||14, paymentMethod: fd.get('paymentMethod')||'Bankovním převodem',
+    currency:'CZK', note: fd.get('note')||'', active: fd.get('active')==='on', items
+  };
+  const editing = state.editingRecurringId ? state.recurringInvoices.find(t=>t.id===state.editingRecurringId) : null;
+  if(editing){
+    const idx = state.recurringInvoices.findIndex(t=>t.id===editing.id);
+    state.recurringInvoices[idx] = { ...editing, ...fields };
+  } else {
+    state.recurringInvoices.push({ ...blankRecurring(), ...fields, startDate: fields.nextRunDate });
+  }
+  try{ await saveRecurringInvoices(); }catch(err){ alert('Uložení se nepovedlo, zkus to prosím znovu.'); return; }
+  state.editingRecurringId = null;
+  state.recurringFormItems = [];
+  state.view = 'recurring-invoices';
+  render();
+}
+function setupRecurringForm(){
+  const itemsBody = document.getElementById('recurring-items-body');
+  if(!itemsBody) return;
+  itemsBody.addEventListener('input', (e)=>{
+    const f = e.target.getAttribute('data-field');
+    const idx = e.target.getAttribute('data-index');
+    if(f==null||idx==null) return;
+    let val = e.target.value;
+    if(f==='qty'||f==='price'||f==='vat') val = parseFloat(val)||0;
+    state.recurringFormItems[idx][f] = val;
+    const row = e.target.closest('tr');
+    if(row){
+      const it = state.recurringFormItems[idx];
+      const lineTotal = (it.qty||0)*(it.price||0)*(1+(it.vat||0)/100);
+      const cell = row.querySelector('.num');
+      if(cell) cell.textContent = fmt(lineTotal)+' Kč';
+    }
+  });
+}
+
+/* ---------- SKLADY (multi-sklad) ---------- */
+function blankWarehouse(){ return { id: uid(), name:'', address:'', isDefault:false }; }
+function warehouseById(id){ return state.warehouses.find(w=>w.id===id); }
+function defaultWarehouse(){ return state.warehouses.find(w=>w.isDefault) || state.warehouses[0]; }
+function warehouseOptions(selectedId){
+  return state.warehouses.map(w=>`<option value="${w.id}" ${selectedId===w.id?'selected':''}>${escapeHtml(w.name)}${w.isDefault?' (výchozí)':''}</option>`).join('');
+}
+function viewWarehouseForm(){
+  const editing = state.editingWarehouseId ? warehouseById(state.editingWarehouseId) : null;
+  const w = editing || blankWarehouse();
+  return `
+    <div class="pagehead"><div><h1>${editing?'Upravit sklad':'Nový sklad'}</h1></div></div>
+    <form id="warehouse-form" class="form-card">
+      <div class="field"><label>Název skladu</label><input name="name" value="${escapeAttr(w.name)}" placeholder="např. Hlavní sklad, Provozovna Brno…" required></div>
+      <div class="field"><label>Adresa</label><input name="address" value="${escapeAttr(w.address||'')}"></div>
+      <label style="display:flex;align-items:center;gap:8px;font-size:14px;margin:6px 0 14px 0;">
+        <input type="checkbox" name="isDefault" ${w.isDefault?'checked':''}> Výchozí sklad pro nové produkty
+      </label>
+      <div class="formfoot" style="justify-content:space-between;">
+        <button type="button" class="btn secondary" data-action="nav" data-view="stock">Zrušit</button>
+        <button type="submit" class="btn">${editing?'Uložit změny':'Uložit sklad'}</button>
+      </div>
+    </form>
+  `;
+}
+async function onSubmitWarehouse(e){
+  e.preventDefault();
+  const fd = new FormData(e.target);
+  const isDefault = fd.get('isDefault')==='on';
+  const fields = { name:(fd.get('name')||'').trim(), address:fd.get('address')||'', isDefault };
+  const editing = state.editingWarehouseId ? warehouseById(state.editingWarehouseId) : null;
+  if(isDefault) state.warehouses.forEach(w=>{ w.isDefault=false; });
+  if(editing){ Object.assign(editing, fields); }
+  else{ state.warehouses.push({ ...blankWarehouse(), ...fields }); }
+  if(!state.warehouses.some(w=>w.isDefault) && state.warehouses[0]) state.warehouses[0].isDefault = true;
+  try{ await saveWarehouses(); }catch(err){ alert('Uložení se nepovedlo, zkus to prosím znovu.'); return; }
+  state.editingWarehouseId = null;
+  state.view = 'stock';
+  render();
+}
+
+/* ---------- OBJEDNÁVKY (sklad-fulfillment) ---------- */
+function blankOrder(){
+  return {
+    id: uid(), number: 'OBJ-'+Date.now().toString().slice(-6),
+    clientId: state.clients[0]?state.clients[0].id:null, companyId: state.companies[0].id,
+    warehouseId: (defaultWarehouse()||{}).id||'',
+    items: [], status:'new', createdAt: new Date().toISOString(),
+    invoiceId:null, shippingCarrier:'', trackingNumber:'', shippingLabelPrinted:false, note:'',
+    weightKg:0, deliveryType:''
+  };
+}
+function orderStatusLabel(s){ return {new:'Nová',picking:'Vychystává se',packed:'Zabaleno',shipped:'Odesláno'}[s]||s; }
+function orderStatusPill(s){ return {new:'pending',picking:'pending',packed:'paid',shipped:'paid'}[s]||'pending'; }
+function orderProgress(o){
+  const total = (o.items||[]).reduce((s,it)=>s+(it.qty||0),0);
+  const done = (o.items||[]).reduce((s,it)=>s+Math.min(it.scannedQty||0, it.qty||0),0);
+  return { total, done, complete: total>0 && done>=total };
+}
+function viewOrders(){
+  const f = state.orderFilter;
+  let list = [...state.orders];
+  if(f.search){
+    const q = stripDiacritics(f.search).toLowerCase();
+    list = list.filter(o=>{
+      const c = clientById(o.clientId);
+      return stripDiacritics(`${o.number} ${c?c.name:''}`).toLowerCase().includes(q);
+    });
+  }
+  if(f.status) list = list.filter(o=>o.status===f.status);
+  list.sort((a,b)=>(b.createdAt||'').localeCompare(a.createdAt||''));
+  return `
+    <div class="pagehead">
+      <div><h1>Objednávky</h1><p class="desc">${list.length} z ${state.orders.length} objednávek.</p></div>
+      <div style="display:flex;gap:10px;">
+        ${(state.integrations.eshops||[]).length?`<button class="btn secondary" data-action="sync-all-eshops">🔄 Synchronizovat e-shopy</button>`:''}
+        <button class="btn" data-action="new-order">+ Nová objednávka</button>
+      </div>
+    </div>
+    <div class="filter-bar no-print">
+      <div class="search-row" style="margin-bottom:14px;display:flex;gap:10px;">
+        <input type="text" id="order-search" class="search-input" placeholder="Hledat podle čísla nebo odběratele…" value="${escapeAttr(f.search)}" style="flex:1;max-width:none;">
+        <select id="order-status-filter">
+          <option value="">Všechny stavy</option>
+          <option value="new" ${f.status==='new'?'selected':''}>Nová</option>
+          <option value="picking" ${f.status==='picking'?'selected':''}>Vychystává se</option>
+          <option value="packed" ${f.status==='packed'?'selected':''}>Zabaleno</option>
+          <option value="shipped" ${f.status==='shipped'?'selected':''}>Odesláno</option>
+        </select>
+      </div>
+    </div>
+    ${list.length ? `
+    <div class="table-scroll">
+    <table class="fixed-table">
+      <thead><tr><th style="width:130px;">Číslo</th><th>Odběratel</th><th style="width:110px;">Položky</th><th style="width:150px;">Postup</th><th style="width:150px;">Stav</th><th style="width:120px;"></th></tr></thead>
+      <tbody>
+        ${list.map(o=>{
+          const c = clientById(o.clientId);
+          const p = orderProgress(o);
+          return `<tr class="rowlink" data-action="open-order" data-id="${o.id}">
+            <td class="num">${escapeHtml(o.number)}</td>
+            <td>${c?escapeHtml(c.name):'—'}</td>
+            <td class="num">${(o.items||[]).length}</td>
+            <td class="num">${p.done}/${p.total} ${p.complete?'✅':''}</td>
+            <td><span class="pill ${orderStatusPill(o.status)}">${orderStatusLabel(o.status)}</span></td>
+            <td class="actions-cell no-print">
+              <button class="iconbtn" data-action="edit-order" data-id="${o.id}" title="Upravit"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg></button>
+              <button class="iconbtn" data-action="delete-order" data-id="${o.id}" title="Smazat"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+            </td>
+          </tr>`;
+        }).join('')}
+      </tbody>
+    </table>
+    </div>` : emptyState('Žádné objednávky', 'Vytvoř první objednávku — appka tě pak provede vychystáním, fakturou i štítkem.')}
+  `;
+}
+function viewOrderForm(){
+  const editing = state.editingOrderId ? state.orders.find(o=>o.id===state.editingOrderId) : null;
+  const o = editing || blankOrder();
+  if(!state.orderFormItems.length){
+    state.orderFormItems = editing ? JSON.parse(JSON.stringify(editing.items||[])) : [];
+  }
+  return `
+    <div class="pagehead"><div><h1>${editing?'Upravit objednávku':'Nová objednávka'}</h1></div></div>
+    <form id="order-form" class="form-card">
+      <div class="section-title" style="margin-top:0;padding-top:0;border-top:none;">Základní údaje</div>
+      <div class="field-row">
+        <div class="field"><label>Číslo objednávky</label><input name="number" value="${escapeAttr(o.number)}" required></div>
+        <div class="field"><label>Odběratel</label><select name="clientId">${state.clients.map(c=>`<option value="${c.id}" ${o.clientId===c.id?'selected':''}>${escapeHtml(c.name)}</option>`).join('')}</select></div>
+      </div>
+      <div class="field-row">
+        <div class="field"><label>Firma (vystavovatel budoucí faktury)</label><select name="companyId">${state.companies.map(co=>`<option value="${co.id}" ${o.companyId===co.id?'selected':''}>${escapeHtml(co.name||'(bez názvu)')}</option>`).join('')}</select></div>
+        <div class="field"><label>Sklad pro vychystání</label><select name="warehouseId">${warehouseOptions(o.warehouseId)}</select></div>
+      </div>
+
+      <div class="section-title">Položky k vychystání</div>
+      <div class="field combo-field" style="max-width:460px;">
+        <label>Přidat produkt</label>
+        <input type="text" id="order-product-picker-input" placeholder="Hledej podle názvu, EAN nebo SKU…" autocomplete="off">
+        <div class="combo-list" id="order-product-picker-list"></div>
+      </div>
+      <div class="items-table-wrap">
+      <table class="items-table">
+        <thead><tr><th class="col-desc">Produkt</th><th class="col-qty">Množství</th><th class="col-price">Cena/ks</th><th class="col-vat">DPH</th><th class="col-total num">Celkem</th><th class="col-remove"></th></tr></thead>
+        <tbody id="order-items-body">${renderOrderItemRows()}</tbody>
+      </table>
+      </div>
+      <p style="font-size:11px;color:var(--ink-soft);margin:8px 0 0 0;">Položky musí být napojené na produkt (kvůli skenování a fotce při vychystávání).</p>
+
+      <div class="section-title">Poznámka</div>
+      <div class="field"><textarea name="note" rows="2">${escapeHtml(o.note||'')}</textarea></div>
+
+      <div class="formfoot" style="justify-content:space-between;">
+        <button type="button" class="btn secondary" data-action="nav" data-view="orders">Zrušit</button>
+        <button type="submit" class="btn">${editing?'Uložit změny':'Uložit objednávku'}</button>
+      </div>
+    </form>
+  `;
+}
+function renderOrderItemRows(){
+  return state.orderFormItems.map((it,idx)=>{
+    const lineTotal = (it.qty||0)*(it.price||0)*(1+(it.vat||0)/100);
+    const p = productById(it.productId);
+    return `<tr>
+      <td class="col-desc">${p?`<img src="${p.photo||''}" style="width:28px;height:28px;object-fit:cover;border-radius:4px;vertical-align:middle;margin-right:6px;background:var(--paper);">`:''}${escapeHtml(it.desc)}</td>
+      <td class="col-qty"><input type="number" step="1" min="1" data-field="qty" data-index="${idx}" value="${it.qty}"></td>
+      <td class="col-price"><input type="number" step="0.01" data-field="price" data-index="${idx}" value="${it.price}"></td>
+      <td class="col-vat"><input type="number" step="0.1" min="0" max="100" data-field="vat" data-index="${idx}" value="${it.vat}"></td>
+      <td class="col-total num" style="white-space:nowrap;padding-top:14px;">${fmt(lineTotal)} Kč</td>
+      <td class="col-remove"><button type="button" class="iconbtn no-print" data-action="remove-order-item" data-index="${idx}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></td>
+    </tr>`;
+  }).join('') || `<tr><td colspan="6" style="text-align:center;color:var(--ink-soft);padding:16px;">Zatím žádné položky — přidej produkt výše.</td></tr>`;
+}
+async function onSubmitOrder(e){
+  e.preventDefault();
+  const fd = new FormData(e.target);
+  const items = state.orderFormItems.filter(it=>it.productId && (it.qty||0)>0);
+  if(!items.length){ alert('Přidej alespoň jednu položku napojenou na produkt.'); return; }
+  const fields = {
+    number: (fd.get('number')||'').trim(), clientId: fd.get('clientId'), companyId: fd.get('companyId'),
+    warehouseId: fd.get('warehouseId'), note: fd.get('note')||'', items
+  };
+  const editing = state.editingOrderId ? state.orders.find(o=>o.id===state.editingOrderId) : null;
+  if(editing){
+    const idx = state.orders.findIndex(o=>o.id===editing.id);
+    // zachovat scannedQty u položek, které v editaci zůstaly stejné (podle productId)
+    fields.items = fields.items.map(it=>{
+      const prev = (editing.items||[]).find(x=>x.productId===it.productId);
+      return { ...it, scannedQty: prev ? Math.min(prev.scannedQty||0, it.qty) : 0 };
+    });
+    state.orders[idx] = { ...editing, ...fields };
+  } else {
+    fields.items = fields.items.map(it=>({ ...it, scannedQty:0 }));
+    state.orders.push({ ...blankOrder(), ...fields });
+  }
+  try{ await saveOrders(); }catch(err){ alert('Uložení se nepovedlo, zkus to prosím znovu.'); return; }
+  state.editingOrderId = null;
+  state.orderFormItems = [];
+  state.view = 'orders';
+  render();
+}
+function setupOrderForm(){
+  const itemsBody = document.getElementById('order-items-body');
+  if(itemsBody){
+    itemsBody.addEventListener('input', (e)=>{
+      const f = e.target.getAttribute('data-field');
+      const idx = e.target.getAttribute('data-index');
+      if(f==null||idx==null) return;
+      let val = e.target.value;
+      if(f==='qty'||f==='price'||f==='vat') val = parseFloat(val)||0;
+      state.orderFormItems[idx][f] = val;
+      const row = e.target.closest('tr');
+      if(row){
+        const it = state.orderFormItems[idx];
+        const lineTotal = (it.qty||0)*(it.price||0)*(1+(it.vat||0)/100);
+        const cell = row.querySelector('.num');
+        if(cell) cell.textContent = fmt(lineTotal)+' Kč';
+      }
+    });
+  }
+  const input = document.getElementById('order-product-picker-input');
+  const list = document.getElementById('order-product-picker-list');
+  if(!input || !list) return;
+  function renderList(query){
+    const q = stripDiacritics(query||'').toLowerCase().trim();
+    const matches = state.products.filter(p=>{
+      if(p.archived) return false;
+      if(!q) return true;
+      return stripDiacritics(`${p.name} ${p.ean||''} ${p.number||''}`).toLowerCase().includes(q);
+    }).slice(0,30);
+    list.innerHTML = matches.length ? matches.map(p=>`
+      <div class="combo-item" data-id="${p.id}">
+        <div>${escapeHtml(p.name)} <span class="num" style="color:var(--ink-soft);">${fmt(p.salePrice||0)} Kč</span></div>
+        <div class="sub">${escapeHtml(p.number||'')}${p.ean?' · EAN '+escapeHtml(p.ean):''} · sklad ${stockAvailable(p)} ${escapeHtml(p.unit||'ks')}</div>
+      </div>
+    `).join('') : `<div class="combo-empty">Žádný produkt neodpovídá.</div>`;
+    list.classList.add('open');
+  }
+  input.addEventListener('focus', ()=>renderList(input.value));
+  input.addEventListener('input', ()=>renderList(input.value));
+  list.addEventListener('mousedown', (e)=>{
+    const item = e.target.closest('.combo-item');
+    if(!item) return;
+    const p = productById(item.getAttribute('data-id'));
+    if(p){
+      state.orderFormItems.push({ productId:p.id, desc:p.name, qty:1, unit:p.unit||'ks', price:p.salePrice||0, vat:p.vatRate??21, ean:p.ean||'', productNumber:p.number||'', scannedQty:0 });
+      input.value='';
+      render();
+    }
+    list.classList.remove('open');
+  });
+  document.addEventListener('click', (e)=>{
+    if(e.target!==input && !list.contains(e.target)) list.classList.remove('open');
+  });
+}
+
+function currentPickItem(o){
+  return (o.items||[]).find(it => (it.scannedQty||0) < (it.qty||0));
+}
+function viewOrderFulfillment(){
+  const o = state.orders.find(x=>x.id===state.fulfillingOrderId);
+  if(!o) return emptyState('Objednávka nenalezena','') + `<div class="formfoot"><button class="btn secondary" data-action="nav" data-view="orders">Zpět</button></div>`;
+  const c = clientById(o.clientId);
+  const prog = orderProgress(o);
+  const stage = state.fulfillmentStage || (prog.complete ? (o.invoiceId ? 'shipping' : 'invoice') : 'scanning');
+
+  if(stage==='scanning'){
+    const item = currentPickItem(o);
+    if(!item) return viewOrderFulfillmentInvoiceStage(o);
+    const p = productById(item.productId);
+    return `
+      <div class="pagehead">
+        <div><h1>Vychystávání — ${escapeHtml(o.number)}</h1><p class="desc">${c?escapeHtml(c.name):''} · naskenováno ${prog.done}/${prog.total}</p></div>
+        <button class="btn secondary" data-action="nav" data-view="orders">← Zpět na objednávky</button>
+      </div>
+      <div class="form-card" style="text-align:center;padding:32px;">
+        ${p && p.photo ? `<img src="${p.photo}" style="max-width:340px;max-height:340px;width:100%;object-fit:contain;border-radius:8px;background:var(--paper);margin-bottom:20px;">` : `<div style="width:240px;height:240px;margin:0 auto 20px auto;background:var(--paper);border-radius:8px;display:flex;align-items:center;justify-content:center;color:var(--ink-soft);font-size:13px;">Bez fotky</div>`}
+        <h2 style="margin:0 0 6px 0;font-size:22px;">${escapeHtml(item.desc)}</h2>
+        <p style="color:var(--ink-soft);font-size:14px;margin:0 0 4px 0;">SKU: <strong>${escapeHtml(item.productNumber||'—')}</strong>${item.ean?` · EAN: <strong>${escapeHtml(item.ean)}</strong>`:''}</p>
+        <p style="color:var(--ink-soft);font-size:14px;margin:0 0 20px 0;">Sklad: <strong>${escapeHtml((warehouseById(o.warehouseId)||{}).name||'—')}</strong>${p?` · Umístění: <strong>${escapeHtml(formatLocation(p.location))||'—'}</strong>`:''}</p>
+        <p style="font-size:28px;font-weight:700;margin:0 0 20px 0;">${item.scannedQty||0} / ${item.qty} ${escapeHtml(item.unit||'ks')} naskenováno</p>
+        <input type="text" id="fulfill-scan-input" autocomplete="off" placeholder="Naskenuj čtečkou nebo napiš kód a stiskni Enter…" style="width:100%;max-width:420px;padding:14px 16px;font-size:18px;border:2px solid var(--accent);border-radius:var(--radius);text-align:center;margin-bottom:12px;">
+        <div id="fulfill-scan-status" style="font-size:13px;color:var(--ink-soft);min-height:20px;margin-bottom:16px;"></div>
+        <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap;">
+          <button type="button" class="btn secondary" data-action="fulfill-camera-scan">📷 Skenovat kamerou</button>
+          <button type="button" class="btn secondary" data-action="fulfill-manual-confirm" data-id="${item.productId}">Potvrdit ručně (+1 ${escapeHtml(item.unit||'ks')})</button>
+        </div>
+        <video id="fulfill-camera-video" style="display:none;max-width:340px;margin:16px auto 0 auto;border-radius:8px;" playsinline muted></video>
+      </div>
+      <div class="section-title">Zbývající položky (${(o.items||[]).filter(it=>(it.scannedQty||0)<(it.qty||0)).length})</div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;">
+        ${(o.items||[]).filter(it=>(it.scannedQty||0)<(it.qty||0)).map(it=>{
+          const pp = productById(it.productId);
+          return `<div class="card" style="width:140px;text-align:center;">
+            ${pp&&pp.photo?`<img src="${pp.photo}" style="width:60px;height:60px;object-fit:cover;border-radius:6px;margin-bottom:6px;">`:''}
+            <div style="font-size:12px;">${escapeHtml(it.desc)}</div>
+            <div style="font-size:11px;color:var(--ink-soft);">${it.scannedQty||0}/${it.qty}</div>
+          </div>`;
+        }).join('')}
+      </div>
+    `;
+  }
+  if(stage==='invoice') return viewOrderFulfillmentInvoiceStage(o);
+  return viewOrderFulfillmentShippingStage(o);
+}
+function viewOrderFulfillmentInvoiceStage(o){
+  const c = clientById(o.clientId);
+  const inv = o.invoiceId ? state.invoices.find(i=>i.id===o.invoiceId) : null;
+  return `
+    <div class="pagehead">
+      <div><h1>Vychystávání — ${escapeHtml(o.number)}</h1><p class="desc">Všechny položky naskenované ✅</p></div>
+      <button class="btn secondary" data-action="nav" data-view="orders">← Zpět na objednávky</button>
+    </div>
+    <div class="form-card" style="text-align:center;padding:32px;">
+      <p style="font-size:16px;margin-bottom:20px;">Objednávka pro <strong>${c?escapeHtml(c.name):'—'}</strong> je kompletně vychystaná.</p>
+      ${inv ? `
+        <p style="margin-bottom:16px;">Faktura <strong>${escapeHtml(inv.number)}</strong> už byla vytvořena.</p>
+        <div style="display:flex;gap:10px;justify-content:center;">
+          <button class="btn secondary" data-action="preview-invoice" data-id="${inv.id}">Zobrazit fakturu</button>
+          <button class="btn" data-action="fulfill-goto-shipping" data-id="${o.id}">Pokračovat na štítek →</button>
+        </div>
+      ` : `
+        <button class="btn" data-action="fulfill-create-invoice" data-id="${o.id}">Vytvořit fakturu a pokračovat</button>
+      `}
+    </div>
+  `;
+}
+function viewOrderFulfillmentShippingStage(o){
+  const carrier = selectCarrierForOrder(o);
+  const alreadyShipped = !!(o.trackingNumber || o.shippingLabelPrinted);
+  return `
+    <div class="pagehead">
+      <div><h1>Vychystávání — ${escapeHtml(o.number)}</h1><p class="desc">Poslední krok — přepravní štítek</p></div>
+      <button class="btn secondary" data-action="nav" data-view="orders">← Zpět na objednávky</button>
+    </div>
+    <div class="form-card">
+      <div class="section-title" style="margin-top:0;padding-top:0;border-top:none;">Automatický výběr dopravce</div>
+      <p style="font-size:12.5px;color:var(--ink-soft);margin:-6px 0 14px 0;">
+        ${carrier ? `Podle nastavených pravidel appka pro tuhle objednávku vybrala <strong>${escapeHtml(carrier.name)}</strong>.` : 'Nemáš nastaveného žádného aktivního dopravce (Nastavení → Integrace) — appka vygeneruje vlastní jednoduchý štítek k nalepení.'}
+        ${alreadyShipped ? ' Zásilka/štítek už byly vytvořeny.' : ''}
+      </p>
+      <div class="field-row">
+        <div class="field"><label>Váha objednávky (kg) — ovlivňuje výběr dopravce</label><input id="fulfill-weight" type="number" step="0.1" value="${o.weightKg||''}"></div>
+        <div class="field"><label>Typ doručení</label><select id="fulfill-delivery-type">
+          ${DELIVERY_TYPES.map(d=>`<option value="${d.value}" ${(o.deliveryType||'')===d.value?'selected':''}>${d.label}</option>`).join('')}
+        </select></div>
+      </div>
+      <div class="field-row">
+        <div class="field"><label>Dopravce (ruční přepsání)</label><select id="fulfill-carrier">
+          <option value="">— automaticky (${carrier?escapeHtml(carrier.name):'vlastní štítek'}) —</option>
+          ${(state.integrations.carriers||[]).map(c=>`<option value="${c.type}" data-carrier-id="${c.id}" ${o.shippingCarrier===c.type?'selected':''}>${escapeHtml(c.name)}</option>`).join('')}
+        </select></div>
+        <div class="field"><label>Sledovací číslo</label><input id="fulfill-tracking" value="${escapeAttr(o.trackingNumber||'')}" placeholder="Doplní se automaticky, nebo zadej ručně"></div>
+      </div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;">
+        <button type="button" class="btn secondary" data-action="fulfill-save-shipping" data-id="${o.id}">Uložit údaje</button>
+        <button type="button" class="btn" data-action="fulfill-create-shipment" data-id="${o.id}">📮 ${alreadyShipped?'Vytvořit znovu':'Vytvořit zásilku u dopravce'}</button>
+        <button type="button" class="btn secondary" data-action="fulfill-print-label" data-id="${o.id}">🖨️ Vytisknout štítek</button>
+      </div>
+      <div id="shipment-status" style="margin-top:12px;"></div>
+    </div>
+    <div class="formfoot" style="justify-content:space-between;margin-top:20px;">
+      <button type="button" class="btn secondary" data-action="fulfill-mark-shipped" data-id="${o.id}">Označit jako odesláno</button>
+      <button type="button" class="btn" data-action="fulfill-next-order">Další objednávka →</button>
+    </div>
+  `;
+}
+async function createInvoiceFromOrder(o){
+  const co = companyById(o.companyId) || state.companies[0];
+  const num = `${co.prefix}${co.nextNumber}`;
+  const items = (o.items||[]).map(it=>({ desc:it.desc, qty:it.qty, unit:it.unit||'ks', price:it.price, vat:it.vat, productId:it.productId, ean:it.ean||'', productNumber:it.productNumber||'' }));
+  const invoice = {
+    id: uid(), number:num, clientId:o.clientId, companyId:co.id,
+    docType:'invoice', relatedInvoiceId:null, creditReason:'',
+    issueDate: todayISO(), taxDate: todayISO(), dueDate: addDays(todayISO(), co.defaultDueDays||14),
+    variableSymbol: num.replace(/\D/g,''), constantSymbol:'', orderNumber:o.number,
+    currency:'CZK', discountType:'none', discountValue:0, rounding:'none',
+    paymentMethod: co.defaultPaymentMethod||'Bankovním převodem',
+    includeStamp:true, colorMode:'color', includeSignature:true, includeQr:true,
+    note:o.note||'', items, paid:false, paidDate:null, createdBy:state.currentUser
+  };
+  await applyStockForInvoiceChange([], invoice.items, 'Objednávka '+o.number);
+  state.invoices.push(invoice);
+  co.nextNumber = (co.nextNumber||1)+1;
+  o.invoiceId = invoice.id;
+  o.status = 'packed';
+  await saveCompanies();
+  await saveInvoices();
+  await saveOrders();
+  return invoice;
+}
+function processScan(code){
+  code = (code||'').trim();
+  if(!code) return;
+  const o = state.orders.find(x=>x.id===state.fulfillingOrderId);
+  if(!o) return;
+  const item = currentPickItem(o);
+  const statusEl = document.getElementById('fulfill-scan-status');
+  if(!item) return;
+  const matches = (item.ean && code===item.ean) || (item.productNumber && code===item.productNumber);
+  if(matches){
+    item.scannedQty = (item.scannedQty||0) + 1;
+    if(o.status==='new') o.status = 'picking';
+    saveOrders().catch(()=>{});
+    if(statusEl) statusEl.textContent = '✅ Naskenováno';
+    render();
+  } else {
+    if(statusEl) statusEl.textContent = '❌ Kód neodpovídá téhle položce — zkus znovu, nebo potvrď ručně.';
+  }
+}
+async function startCameraScan(){
+  if(!('BarcodeDetector' in window)){
+    alert('Tenhle prohlížeč nepodporuje skenování kamerou (funguje v Chrome na Androidu/desktopu). Použij čtečku napojenou jako klávesnice, nebo kód zadej ručně.');
+    return;
+  }
+  const video = document.getElementById('fulfill-camera-video');
+  if(!video) return;
+  try{
+    const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+    video.srcObject = stream;
+    video.style.display = '';
+    await video.play();
+    const detector = new BarcodeDetector({ formats: ['ean_13','ean_8','code_128','upc_a','upc_e'] });
+    const stop = ()=>{ stream.getTracks().forEach(t=>t.stop()); video.style.display='none'; };
+    const scanLoop = async ()=>{
+      if(video.style.display==='none' || !document.body.contains(video)) { stream.getTracks().forEach(t=>t.stop()); return; }
+      try{
+        const codes = await detector.detect(video);
+        if(codes.length){ processScan(codes[0].rawValue); stop(); return; }
+      }catch(err){}
+      requestAnimationFrame(scanLoop);
+    };
+    scanLoop();
+  }catch(err){
+    alert('Přístup ke kameře se nepovedlo získat.');
+  }
+}
+function printShippingLabel(orderId){
+  const o = state.orders.find(x=>x.id===orderId);
+  if(!o) return;
+  const c = clientById(o.clientId);
+  const co = companyById(o.companyId) || state.companies[0];
+  const w = window.open('', '_blank');
+  if(!w) return;
+  w.document.write(`<html><head><title>Štítek ${escapeHtml(o.number)}</title>
+    <style>body{font-family:Arial,sans-serif;padding:20px;} .label{border:2px solid #000;padding:20px;max-width:400px;} .from{font-size:11px;color:#555;margin-bottom:16px;} .to{font-size:16px;font-weight:bold;margin-bottom:10px;} .addr{font-size:14px;line-height:1.5;} .track{margin-top:16px;font-size:12px;border-top:1px solid #ccc;padding-top:8px;}</style>
+    </head><body onload="window.print()">
+    <div class="label">
+      <div class="from">Odesílatel: ${escapeHtml(co.name||'')} — ${escapeHtml(formatAddress(co.address))}</div>
+      <div class="to">${c?escapeHtml(c.name):''}</div>
+      <div class="addr">${c?nl2br(formatAddress(c.address)):''}</div>
+      <div class="track">Objednávka: ${escapeHtml(o.number)}${o.trackingNumber?`<br>Sledovací číslo: ${escapeHtml(o.trackingNumber)}`:''}${o.shippingCarrier?`<br>Dopravce: ${escapeHtml(o.shippingCarrier)}`:''}</div>
+    </div>
+    </body></html>`);
+  w.document.close();
+  o.shippingLabelPrinted = true;
+  saveOrders().catch(()=>{});
+}
+function setupOrderFulfillment(){
+  const input = document.getElementById('fulfill-scan-input');
+  if(input){
+    input.focus();
+    input.addEventListener('keydown', (e)=>{
+      if(e.key!=='Enter') return;
+      e.preventDefault();
+      processScan(input.value);
+      input.value = '';
+    });
+  }
+}
+
 function supplierOptionsForReceived(selectedId){
   return `<option value="">— bez vazby na dodavatele —</option>` + state.suppliers.map(s=>
     `<option value="${s.id}" ${selectedId===s.id?'selected':''}>${escapeHtml(s.name)}</option>`
@@ -4974,6 +6178,7 @@ function productCellContent(p, key){
     case 'salePrice': return `<span class="num">${money(fmt(p.salePrice||0)+' Kč')}</span>`;
     case 'margin': { const m=productMargin(p); return `<span class="num">${money(m.marginPct.toFixed(0)+'%')}</span>`; }
     case 'stock': { const s=stockStatus(p); return `<span class="pill ${stockPillClass(s)}">${stockAvailable(p)} ${escapeHtml(p.unit||'ks')}</span>`; }
+    case 'warehouseName': return escapeHtml((warehouseById(p.warehouseId)||{}).name||'—');
     case 'location': return escapeHtml(formatLocation(p.location)) || '—';
     case 'expiry': return expiryBadge(p) || '—';
     default: return '';
@@ -5251,8 +6456,8 @@ function viewProductForm(){
         </select></div>
       </div>
       <div class="field-row">
+        <div class="field"><label>Sklad</label><select name="warehouseId">${warehouseOptions(p.warehouseId||(defaultWarehouse()||{}).id)}</select></div>
         <div class="field"><label>Datum expirace</label><input type="date" name="expiryDate" value="${p.expiryDate||''}"></div>
-        <div class="field"></div>
       </div>
       <div class="field"><label>Poznámka</label><textarea name="note">${escapeHtml(p.note||'')}</textarea></div>
 
@@ -5467,6 +6672,7 @@ async function onSubmitProduct(e){
     name: fd.get('name'), description: fd.get('description')||'',
     category: fd.get('category')||'', manufacturer: fd.get('manufacturer')||'',
     supplierId: fd.get('supplierId')||'', unit: fd.get('unit')||'ks',
+    warehouseId: fd.get('warehouseId')||(defaultWarehouse()||{}).id||'',
     vatRate: parseFloat(fd.get('vatRate'))||0, vatRatePurchase: parseFloat(fd.get('vatRatePurchase'))||0, note: fd.get('note')||'',
     purchasePrice: parseFloat(fd.get('purchasePrice'))||0, salePrice: parseFloat(fd.get('salePrice'))||0, costs: parseFloat(fd.get('costs'))||0,
     stockCurrent: existing ? existing.stockCurrent : (parseFloat(fd.get('stockCurrent'))||0),
@@ -5600,6 +6806,26 @@ function viewStock(){
   const unitLabel = es.unit==='years'?(es.value===1?'rok':'let'):es.unit==='months'?'měsíců':'dní';
   return `
     <div class="pagehead"><div><h1>Sklad</h1><p class="desc">Přehled skladových zásob, nízkých stavů a expirací.</p></div></div>
+
+    <div class="form-card" style="margin-bottom:24px;">
+      <div class="section-title" style="margin-top:0;padding-top:0;border-top:none;display:flex;justify-content:space-between;align-items:center;">
+        <span>Sklady (${state.warehouses.length})</span>
+        <button type="button" class="btn secondary small" data-action="new-warehouse">+ Nový sklad</button>
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:10px;">
+        ${state.warehouses.map(w=>`
+          <div class="card" style="min-width:200px;flex:1;">
+            <div class="label">${escapeHtml(w.name)}${w.isDefault?' <span style="color:var(--accent);">★</span>':''}</div>
+            <div style="font-size:12.5px;color:var(--ink-soft);margin-bottom:8px;">${escapeHtml(w.address||'—')} · ${state.products.filter(p=>p.warehouseId===w.id && !p.archived).length} produktů</div>
+            <div style="display:flex;gap:6px;flex-wrap:wrap;">
+              <button type="button" class="btn-link" data-action="edit-warehouse" data-id="${w.id}">Upravit</button>
+              ${!w.isDefault?`<button type="button" class="btn-link" data-action="set-default-warehouse" data-id="${w.id}">Nastavit jako výchozí</button>`:''}
+              ${state.warehouses.length>1?`<button type="button" class="btn-link" data-action="delete-warehouse" data-id="${w.id}" style="color:var(--red);">Smazat</button>`:''}
+            </div>
+          </div>
+        `).join('')}
+      </div>
+    </div>
 
     <div class="form-card" style="margin-bottom:24px;">
       <div class="section-title" style="margin-top:0;padding-top:0;border-top:none;">Najít produkt podle kódu</div>
@@ -6203,6 +7429,25 @@ function setupReceivedInvoicesView(){
     });
   }
 }
+function setupOrdersView(){
+  const searchInput = document.getElementById('order-search');
+  if(searchInput){
+    searchInput.addEventListener('input', (e)=>{
+      const pos = e.target.selectionStart;
+      state.orderFilter.search = e.target.value;
+      render();
+      const refocused = document.getElementById('order-search');
+      if(refocused){ refocused.focus(); try{ refocused.setSelectionRange(pos,pos); }catch(err){} }
+    });
+  }
+  const statusSelect = document.getElementById('order-status-filter');
+  if(statusSelect){
+    statusSelect.addEventListener('change', ()=>{
+      state.orderFilter.status = statusSelect.value;
+      render();
+    });
+  }
+}
 
 function setupReceivedInvoiceDetail(){
   const box = document.getElementById('received-invoice-preview-box');
@@ -6258,6 +7503,14 @@ function afterRender(){
   if(receivedInvoiceForm) receivedInvoiceForm.addEventListener('submit', onSubmitReceivedInvoice);
   setupReceivedInvoiceForm();
   setupReceivedQuickUpload();
+  const recurringForm = document.getElementById('recurring-form');
+  if(recurringForm){ recurringForm.addEventListener('submit', onSubmitRecurring); setupRecurringForm(); }
+  const warehouseForm = document.getElementById('warehouse-form');
+  if(warehouseForm){ warehouseForm.addEventListener('submit', onSubmitWarehouse); }
+  if(state.view==='settings') setupIntegrationsSection();
+  const orderForm = document.getElementById('order-form');
+  if(orderForm){ orderForm.addEventListener('submit', onSubmitOrder); setupOrderForm(); }
+  if(state.view==='order-fulfillment') setupOrderFulfillment();
   const colleagueForm = document.getElementById('colleague-form');
   if(colleagueForm){ colleagueForm.addEventListener('submit', onSubmitColleague); }
   const userCredsForm = document.getElementById('user-creds-form');
@@ -6271,6 +7524,7 @@ function afterRender(){
   setupProductForm();
   if(state.view==='products') setupProductsView();
   if(state.view==='received-invoices') setupReceivedInvoicesView();
+  if(state.view==='orders') setupOrdersView();
   if(state.view==='received-invoice-detail') setupReceivedInvoiceDetail();
   if(state.view==='stock') setupStockScan();
   if(state.view==='stock'){
@@ -7319,6 +8573,7 @@ document.addEventListener('click', async (e)=>{
     if(state.subscription && state.subscription.status === 'active'){
       await loadAll();
       state.view = firstAccessibleView();
+      startEshopPolling();
     }
     render();
   }
@@ -7705,6 +8960,226 @@ document.addEventListener('click', async (e)=>{
     if(confirm('Odebrat tento obrázek?')) await removeBrandingImage(field, companyId);
   }
   /* --- Dodavatelé --- */
+  /* --- Objednávky --- */
+  else if(action==='new-order'){ state.editingOrderId=null; state.orderFormItems=[]; state.view='order-form'; render(); }
+  else if(action==='edit-order'){ state.editingOrderId=id; state.orderFormItems=[]; state.view='order-form'; render(); }
+  else if(action==='delete-order'){
+    if(!confirm('Smazat tuto objednávku?')) return;
+    state.orders = state.orders.filter(o=>o.id!==id);
+    try{ await saveOrders(); }catch(err){ alert('Smazání se nepovedlo.'); }
+    render();
+  }
+  else if(action==='open-order'){ state.fulfillingOrderId=id; state.fulfillmentStage=null; state.view='order-fulfillment'; render(); }
+  else if(action==='remove-order-item'){ const idx=parseInt(el.getAttribute('data-index')); state.orderFormItems.splice(idx,1); render(); }
+  else if(action==='fulfill-manual-confirm'){
+    const o = state.orders.find(x=>x.id===state.fulfillingOrderId);
+    if(o){
+      const item = (o.items||[]).find(it=>it.productId===id);
+      if(item){ item.scannedQty=(item.scannedQty||0)+1; if(o.status==='new') o.status='picking'; try{ await saveOrders(); }catch(err){} }
+    }
+    render();
+  }
+  else if(action==='fulfill-camera-scan'){ startCameraScan(); }
+  else if(action==='fulfill-create-invoice'){
+    const o = state.orders.find(x=>x.id===id);
+    if(o){
+      try{
+        await createInvoiceFromOrder(o);
+        await autoProcessShipping(o); // hned zkusí automaticky vybrat dopravce a vytvořit zásilku podle pravidel
+      }
+      catch(err){ if(!(err && err.message==='cancelled')) alert('Vytvoření faktury se nepovedlo, zkus to prosím znovu.'); }
+    }
+    render();
+  }
+  else if(action==='fulfill-goto-shipping'){ state.fulfillmentStage='shipping'; render(); }
+  else if(action==='fulfill-save-shipping'){
+    const o = state.orders.find(x=>x.id===id);
+    if(o){
+      const carrier = document.getElementById('fulfill-carrier');
+      const tracking = document.getElementById('fulfill-tracking');
+      const weight = document.getElementById('fulfill-weight');
+      const deliveryType = document.getElementById('fulfill-delivery-type');
+      o.shippingCarrier = carrier?carrier.value:o.shippingCarrier;
+      o.trackingNumber = tracking?tracking.value:o.trackingNumber;
+      o.weightKg = weight?(parseFloat(weight.value)||0):o.weightKg;
+      o.deliveryType = deliveryType?deliveryType.value:o.deliveryType;
+      try{ await saveOrders(); }catch(err){ alert('Uložení se nepovedlo.'); }
+    }
+    render();
+  }
+  else if(action==='fulfill-create-shipment'){
+    const o = state.orders.find(x=>x.id===id);
+    const statusEl = document.getElementById('shipment-status');
+    if(!o) return;
+    const carrierSelect = document.getElementById('fulfill-carrier');
+    const manualType = carrierSelect ? carrierSelect.value : '';
+    const carrier = manualType
+      ? (state.integrations.carriers||[]).find(c=>c.type===manualType)
+      : selectCarrierForOrder(o);
+    if(!carrier){ if(statusEl) statusEl.innerHTML = `<div style="background:var(--amber-soft);color:var(--amber);padding:8px 12px;border-radius:var(--radius);font-size:12.5px;">Nemáš nastaveného žádného dopravce — přidej ho v Nastavení → Integrace, nebo použij vlastní štítek.</div>`; return; }
+    if(statusEl) statusEl.innerHTML = `<div style="color:var(--ink-soft);font-size:12.5px;">Vytvářím zásilku u ${escapeHtml(carrier.name)}…</div>`;
+    try{
+      const result = await createCarrierShipment(carrier, o);
+      o.trackingNumber = (result && (result.id||result.trackingNumber)) || o.trackingNumber;
+      o.shippingCarrier = carrier.type;
+      await saveOrders();
+      if(statusEl) statusEl.innerHTML = `<div style="background:var(--accent-soft);color:var(--accent);padding:8px 12px;border-radius:var(--radius);font-size:12.5px;">✅ Zásilka vytvořena u ${escapeHtml(carrier.name)}${o.trackingNumber?(', sledovací číslo: '+escapeHtml(o.trackingNumber)):''}.</div>`;
+      render();
+    }catch(err){
+      if(statusEl) statusEl.innerHTML = `<div style="background:var(--red-soft);color:var(--red);padding:8px 12px;border-radius:var(--radius);font-size:12.5px;">❌ ${escapeHtml(err.message||'Vytvoření zásilky se nepovedlo.')} Appka zůstává funkční — zadej sledovací číslo ručně a použij tlačítko „Vytisknout štítek" pro vlastní štítek.</div>`;
+    }
+  }
+  else if(action==='fulfill-print-label'){ printShippingLabel(id); }
+  else if(action==='fulfill-mark-shipped'){
+    const o = state.orders.find(x=>x.id===id);
+    if(o){ o.status='shipped'; try{ await saveOrders(); }catch(err){ alert('Uložení se nepovedlo.'); } }
+    render();
+  }
+  else if(action==='fulfill-next-order'){
+    const remaining = state.orders.filter(o=>o.id!==state.fulfillingOrderId && (o.status==='new'||o.status==='picking'));
+    if(remaining.length){ state.fulfillingOrderId=remaining[0].id; state.fulfillmentStage=null; }
+    else{ state.view='orders'; }
+    render();
+  }
+  /* --- Opakované faktury --- */
+  else if(action==='new-recurring'){ state.editingRecurringId=null; state.recurringFormItems=[]; state.view='recurring-invoice-form'; render(); }
+  else if(action==='edit-recurring'){ state.editingRecurringId=id; state.recurringFormItems=[]; state.view='recurring-invoice-form'; render(); }
+  else if(action==='delete-recurring'){
+    if(!confirm('Smazat tuto šablonu opakované faktury?')) return;
+    state.recurringInvoices = state.recurringInvoices.filter(t=>t.id!==id);
+    try{ await saveRecurringInvoices(); }catch(err){ alert('Smazání se nepovedlo.'); }
+    render();
+  }
+  else if(action==='run-recurring'){
+    const tpl = state.recurringInvoices.find(t=>t.id===id);
+    if(tpl){
+      const inv = await generateInvoiceFromRecurring(tpl);
+      state.previewId = inv.id;
+      state.view = 'invoice-preview';
+    }
+    render();
+  }
+  else if(action==='add-recurring-item'){ state.recurringFormItems.push({desc:'',qty:1,unit:'ks',price:0,vat:21}); render(); }
+  else if(action==='remove-recurring-item'){
+    const idx = parseInt(el.getAttribute('data-index'));
+    state.recurringFormItems.splice(idx,1);
+    if(!state.recurringFormItems.length) state.recurringFormItems.push({desc:'',qty:1,unit:'ks',price:0,vat:21});
+    render();
+  }
+  /* --- Sklady --- */
+  else if(action==='new-warehouse'){ state.editingWarehouseId=null; state.view='warehouse-form'; render(); }
+  else if(action==='edit-warehouse'){ state.editingWarehouseId=id; state.view='warehouse-form'; render(); }
+  else if(action==='delete-warehouse'){
+    if(state.warehouses.length<=1){ alert('Musí zůstat alespoň jeden sklad.'); return; }
+    if(!confirm('Smazat tento sklad? Produkty v něm zůstanou, ale bez přiřazeného skladu.')) return;
+    state.warehouses = state.warehouses.filter(w=>w.id!==id);
+    if(!state.warehouses.some(w=>w.isDefault) && state.warehouses[0]) state.warehouses[0].isDefault = true;
+    try{ await saveWarehouses(); }catch(err){ alert('Smazání se nepovedlo.'); }
+    render();
+  }
+  else if(action==='set-default-warehouse'){
+    state.warehouses.forEach(w=> w.isDefault = (w.id===id));
+    try{ await saveWarehouses(); }catch(err){ alert('Uložení se nepovedlo.'); }
+    render();
+  }
+  /* --- Integrace --- */
+  else if(action==='copy-webhook-url'){
+    const url = el.getAttribute('data-url');
+    try{
+      await navigator.clipboard.writeText(url);
+      el.textContent = 'Zkopírováno ✓';
+      setTimeout(()=>{ el.textContent = 'Kopírovat'; }, 1500);
+    }catch(err){
+      prompt('Zkopíruj ručně (Ctrl+C):', url);
+    }
+  }
+  else if(action==='add-eshop'){
+    const platform = prompt('Kterou platformu chceš přidat? Napiš: shopify, shoptet, nebo woocommerce');
+    if(platform && ESHOP_PLATFORMS[platform.trim().toLowerCase()]) addEshopPlatform(platform.trim().toLowerCase());
+    else if(platform) alert('Neznámá platforma. Zadej: shopify, shoptet, nebo woocommerce.');
+  }
+  else if(action==='add-carrier'){
+    const type = prompt('Kterého dopravce chceš přidat? Napiš: zasilkovna, dpd, ppl, nebo gls');
+    if(type && CARRIER_TYPES[type.trim().toLowerCase()]) addCarrierType(type.trim().toLowerCase());
+    else if(type) alert('Neznámý dopravce. Zadej: zasilkovna, dpd, ppl, nebo gls.');
+  }
+  else if(action==='toggle-eshop-active'){
+    const e = state.integrations.eshops.find(x=>x.id===id);
+    if(e){ e.active = !e.active; try{ await saveIntegrations(); }catch(err){} startEshopPolling(); }
+    render();
+  }
+  else if(action==='toggle-carrier-active'){
+    const c = state.integrations.carriers.find(x=>x.id===id);
+    if(c){ c.active = !c.active; try{ await saveIntegrations(); }catch(err){} }
+    render();
+  }
+  else if(action==='delete-eshop'){
+    if(!confirm('Smazat tento e-shop?')) return;
+    state.integrations.eshops = state.integrations.eshops.filter(e=>e.id!==id);
+    try{ await saveIntegrations(); }catch(err){}
+    startEshopPolling();
+    render();
+  }
+  else if(action==='delete-carrier'){
+    if(!confirm('Smazat tohoto dopravce?')) return;
+    state.integrations.carriers = state.integrations.carriers.filter(c=>c.id!==id);
+    try{ await saveIntegrations(); }catch(err){}
+    render();
+  }
+  else if(action==='move-carrier-up'){
+    const idx = state.integrations.carriers.findIndex(c=>c.id===id);
+    if(idx>0){
+      const arr = state.integrations.carriers;
+      [arr[idx-1], arr[idx]] = [arr[idx], arr[idx-1]];
+      arr.forEach((c,i)=> c.priority=i);
+      try{ await saveIntegrations(); }catch(err){}
+    }
+    render();
+  }
+  else if(action==='sync-eshop-now'){
+    const e = state.integrations.eshops.find(x=>x.id===id);
+    if(e) await pollEshopOrders(e.id, false);
+    render();
+  }
+  else if(action==='sync-all-eshops'){
+    for(const e of state.integrations.eshops){ await pollEshopOrders(e.id, true); }
+    render();
+  }
+  else if(action==='test-eshop'){
+    const e = state.integrations.eshops.find(x=>x.id===id);
+    if(!e) return;
+    e.lastSyncStatus = { ok:false, message:'Testuju připojení…' };
+    render();
+    try{
+      const orders = await fetchEshopOrders(e);
+      e.lastSyncStatus = { ok:true, message:`✅ Připojeno — appka vidí ${orders.length} otevřených objednávek.` };
+    }catch(err){
+      e.lastSyncStatus = { ok:false, message:'❌ '+(err.message||'Připojení se nepovedlo — pravděpodobně kvůli CORS blokaci ze strany platformy.') };
+    }
+    try{ await saveIntegrations(); }catch(err){}
+    render();
+  }
+  else if(action==='test-carrier'){
+    const c = state.integrations.carriers.find(x=>x.id===id);
+    if(!c) return;
+    c.testStatus = { ok:false, message:'Testuju připojení…' };
+    render();
+    try{
+      if(c.type==='zasilkovna'){
+        if(!c.credentials.apiKey) throw new Error('Doplň API klíč.');
+        const res = await fetch(`https://www.zasilkovna.cz/api/rest/${c.credentials.apiKey}/branch/json`);
+        if(!res.ok) throw new Error(`Zásilkovna odpovědělo chybou ${res.status}.`);
+        c.testStatus = { ok:true, message:'✅ API klíč je platný.' };
+      } else {
+        throw new Error(`${CARRIER_TYPES[c.type].label} API vyžaduje volání ze serveru (nejde otestovat přímo z appky kvůli CORS) — přístupy jsou uložené a použijí se, chybu appka bezpečně ošetří.`);
+      }
+    }catch(err){
+      c.testStatus = { ok:false, message:'❌ '+(err.message||'Připojení se nepovedlo.') };
+    }
+    try{ await saveIntegrations(); }catch(err){}
+    render();
+  }
+  /* --- Přijaté faktury --- */
   else if(action==='new-received-invoice'){
     state.editingReceivedInvoiceId = null;
     state.receivedFormItems = [];
