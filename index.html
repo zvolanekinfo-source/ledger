@@ -614,6 +614,7 @@ let state = {
   currentUser: null,
   currentUserId: null,
   tenantId: null,
+  myMemberships: [],
   subscription: null, // { plan, billing_period, status, current_period_end }
   selectedPlan: null, // 'basic-monthly' | 'basic-yearly' | 'pro-lifetime'
   pendingDisplayName: '',
@@ -1212,10 +1213,51 @@ window.storage = {
    ke sdíleným datům (viz RLS na app_storage v supabase-setup.sql). */
 async function loadTeam(){
   try{
-    const res = await sbRequest('/team_members?select=user_id,email,display_name,role,tenant_id&order=created_at.asc');
+    const res = await sbRequest(`/team_members?tenant_id=eq.${encodeURIComponent(state.tenantId)}&select=user_id,email,display_name,role,tenant_id&order=created_at.asc`);
     const rows = await res.json();
     state.users = rows.map(r=>({ id:r.user_id, name:r.display_name, email:r.email, role:r.role||'member', tenantId:r.tenant_id }));
   }catch(e){ console.error(e); state.users = []; }
+}
+async function loadMyMemberships(){
+  // Zjistí, ke kolika různým firmám (tenantům) je tenhle přihlášený člověk přiřazený —
+  // jeden e-mail/login může patřit k víc firmám zároveň (appka je pro víc firem najednou).
+  try{
+    const res = await sbRequest(`/team_members?user_id=eq.${encodeURIComponent(session.user.id)}&select=tenant_id,role&order=created_at.asc`);
+    const rows = await res.json();
+    const uniqueTenantIds = [...new Set(rows.map(r=>r.tenant_id))];
+    const memberships = [];
+    for(const tid of uniqueTenantIds){
+      let label = tid;
+      try{
+        const r2 = await sbRequest(`/tenant_data?tenant_id=eq.${encodeURIComponent(tid)}&key=eq.companies&select=value`);
+        const rows2 = await r2.json();
+        if(rows2.length){
+          const companies = JSON.parse(rows2[0].value);
+          if(companies[0] && companies[0].name) label = companies[0].name;
+        }
+      }catch(e){}
+      memberships.push({ tenantId: tid, label, role: (rows.find(r=>r.tenant_id===tid)||{}).role || 'member' });
+    }
+    state.myMemberships = memberships;
+  }catch(e){ console.error(e); state.myMemberships = []; }
+}
+async function switchTenant(tenantId){
+  if(tenantId===state.tenantId) return;
+  state.tenantId = tenantId;
+  try{ localStorage.setItem('ledgers_last_tenant_'+session.user.id, tenantId); }catch(e){}
+  await loadTeam();
+  const me = state.users.find(u=>u.id===state.currentUserId);
+  state.currentUser = me ? me.name : state.currentUser;
+  await loadSubscriptionStatus();
+  if(!state.subscription || state.subscription.status !== 'active'){
+    state.view = 'billing-gate';
+    render();
+    return;
+  }
+  await loadAll();
+  state.view = firstAccessibleView();
+  startEshopPolling();
+  render();
 }
 async function insertTeamMember(user_id, email, display_name){
   await sbRequest('/team_members', {
@@ -1225,14 +1267,14 @@ async function insertTeamMember(user_id, email, display_name){
   });
 }
 async function updateTeamMember(user_id, fields){
-  await sbRequest(`/team_members?user_id=eq.${encodeURIComponent(user_id)}`, {
+  await sbRequest(`/team_members?user_id=eq.${encodeURIComponent(user_id)}&tenant_id=eq.${encodeURIComponent(state.tenantId)}`, {
     method:'PATCH',
     headers:{ 'Prefer':'return=minimal' },
     body: JSON.stringify(fields)
   });
 }
 async function removeTeamMember(user_id){
-  await sbRequest(`/team_members?user_id=eq.${encodeURIComponent(user_id)}`, { method:'DELETE' });
+  await sbRequest(`/team_members?user_id=eq.${encodeURIComponent(user_id)}&tenant_id=eq.${encodeURIComponent(state.tenantId)}`, { method:'DELETE' });
 }
 
 async function loadAll(){
@@ -1284,6 +1326,10 @@ async function loadAll(){
       }
     }
   }catch(e){}
+  // starší uložené e-shopy nemusí mít vlastní tajný klíč pro webhook — dopočítat, ať appka nikdy neřeší globální sdílený klíč
+  let neededSecretMigration = false;
+  (state.integrations.eshops||[]).forEach(e=>{ if(!e.webhookSecret){ e.webhookSecret = generateWebhookSecret(); neededSecretMigration = true; } });
+  if(neededSecretMigration){ try{ await saveIntegrations(); }catch(e){} }
   state.suppliers = state.suppliers.map(s=>({ attachments:[], ...s }));
   try{ const r = await window.storage.get('products', true); state.products = r ? JSON.parse(r.value) : []; }catch(e){ state.products = []; }
   try{ const r = await window.storage.get('product-settings', true); state.productSettings = r ? JSON.parse(r.value) : { prefix:'PRD-', nextNumber:1, padding:6 }; }catch(e){ state.productSettings = { prefix:'PRD-', nextNumber:1, padding:6 }; }
@@ -2045,6 +2091,13 @@ function render(){
         <img src="${LOGO_DATA_URI}" alt="Ledgers.cz" style="height:26px;width:auto;display:block;margin-bottom:8px;">
         <div class="sub">Podnikový systém</div>
       </div>
+      ${state.myMemberships.length>1 ? `
+      <div style="padding:0 20px 14px 20px;">
+        <select id="tenant-switcher" style="width:100%;padding:7px 9px;border:1px solid var(--line);border-radius:var(--radius);font-size:12.5px;background:#fff;">
+          ${state.myMemberships.map(m=>`<option value="${escapeAttr(m.tenantId)}" ${m.tenantId===state.tenantId?'selected':''}>${escapeHtml(m.label)}</option>`).join('')}
+        </select>
+      </div>
+      ` : ''}
       ${canAccessTab('dashboard')?`<div class="navitem ${state.view==='dashboard'?'active':''}" data-action="nav" data-view="dashboard">Přehled</div>`:''}
       ${canAccessTab('invoices')?`<div class="navitem ${state.view==='invoices'||state.view==='invoice-form'||state.view==='invoice-preview'?'active':''}" data-action="nav" data-view="invoices">Faktury</div>`:''}
       ${canAccessTab('recurring-invoices')?`<div class="navitem ${state.view==='recurring-invoices'||state.view==='recurring-invoice-form'?'active':''}" data-action="nav" data-view="recurring-invoices">Opakované faktury</div>`:''}
@@ -2244,28 +2297,35 @@ function afterRenderAuth(){
 }
 
 async function afterLogin(){
-  await loadTeam();
-  let me = state.users.find(u=>u.id===session.user.id);
-  if(!me){
-    // Účet existuje v Supabase Auth, ale ještě nemá záznam v týmu
+  await loadMyMemberships();
+  if(!state.myMemberships.length){
+    // Účet existuje v Supabase Auth, ale ještě nemá záznam v žádném týmu
     // (typicky když se přihlásí poprvé po potvrzení e-mailu) — doplníme ho.
     try{
       await insertTeamMember(session.user.id, session.user.email, session.user.email);
-      await loadTeam();
-      me = state.users.find(u=>u.id===session.user.id);
+      await loadMyMemberships();
     }catch(err){ console.error('Nepovedlo se založit záznam v týmu:', err); }
   }
-  state.currentUser = me ? me.name : session.user.email;
   state.currentUserId = session.user.id;
-  state.tenantId = me ? me.tenantId : null;
+  state.currentUser = session.user.email;
 
-  if(!state.tenantId){
+  if(!state.myMemberships.length){
     // Účet zatím nemá založenou/zaplacenou firmu — pošleme na výběr plánu.
+    state.tenantId = null;
     state.authView = 'select-plan';
     state.authError=''; state.authNotice='';
     render();
     return;
   }
+
+  let preferred = null;
+  try{ preferred = localStorage.getItem('ledgers_last_tenant_'+session.user.id); }catch(e){}
+  const match = state.myMemberships.find(m=>m.tenantId===preferred);
+  state.tenantId = match ? match.tenantId : state.myMemberships[0].tenantId;
+
+  await loadTeam();
+  const me = state.users.find(u=>u.id===session.user.id);
+  state.currentUser = me ? me.name : session.user.email;
 
   await loadSubscriptionStatus();
   if(!state.subscription || state.subscription.status !== 'active'){
@@ -3988,13 +4048,20 @@ function renderEshopCard(e){
           <input type="text" readonly value="${escapeAttr(webhookUrl)}" style="flex:1;font-family:'IBM Plex Mono',monospace;font-size:11.5px;background:var(--paper);" onclick="this.select()">
           <button type="button" class="btn secondary small" data-action="copy-webhook-url" data-url="${escapeAttr(webhookUrl)}">Kopírovat</button>
         </div>
+        <div class="mini-label">Tajný klíč — vygenerovala appka, jen pro tenhle systém. Pošli ho v hlavičce X-Custom-Secret</div>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <input type="text" readonly value="${escapeAttr(e.webhookSecret||'')}" style="flex:1;font-family:'IBM Plex Mono',monospace;font-size:11.5px;background:var(--paper);" onclick="this.select()">
+          <button type="button" class="btn secondary small" data-action="copy-webhook-url" data-url="${escapeAttr(e.webhookSecret||'')}">Kopírovat</button>
+          <button type="button" class="btn secondary small" data-action="regenerate-webhook-secret" data-id="${e.id}">Vygenerovat nový</button>
+        </div>
         <p style="font-size:11px;color:var(--ink-soft);margin:6px 0 0 0;">
           Očekávaný formát POST požadavku (JSON): <code>{"external_id":"…", "number":"…", "email":"…", "line_items":[{"sku":"…","title":"…","qty":1,"price":100}]}</code>.
-          Přesný formát a příklad je popsaný v README u serverové funkce order-webhook.
+          Klíč je unikátní jen pro tenhle jeden e-shop/systém — nikdo jiný ho nezná, nic kvůli tomu v Supabase nastavovat nemusíš.
         </p>
       </div>
     `;
   }
+  const usesOwnSecret = e.platform==='shopify'; // Shopify si signing secret generuje samo, appka ho jen přijme a uloží
   return `
     <div class="form-card">
       <div class="section-title" style="margin-top:0;padding-top:0;border-top:none;display:flex;justify-content:space-between;align-items:center;">
@@ -4008,6 +4075,11 @@ function renderEshopCard(e){
         <div class="field-row">
           ${platform.fields.map(f=>`<div class="field"><label>${f.label}</label><input name="${f.key}" type="${f.type||'text'}" placeholder="${f.placeholder||''}" value="${escapeAttr(e.credentials[f.key]||'')}"></div>`).join('')}
         </div>
+        ${usesOwnSecret ? `
+        <div class="field"><label>Webhook signing secret (vlož hodnotu, kterou ti ukáže ${platform.label} při vytvoření webhooku)</label>
+          <input name="webhookSecret" type="password" placeholder="whsec_… nebo podobný řetězec od Shopify" value="${escapeAttr(e.webhookSecret||'')}">
+        </div>
+        ` : ''}
         <div class="formfoot" style="margin-top:6px;justify-content:flex-start;gap:10px;">
           <button type="submit" class="btn secondary small">Uložit</button>
           <button type="button" class="btn secondary small" data-action="test-eshop" data-id="${e.id}">Otestovat připojení</button>
@@ -4021,6 +4093,15 @@ function renderEshopCard(e){
         <button type="button" class="btn secondary small" data-action="copy-webhook-url" data-url="${escapeAttr(webhookUrl)}">Kopírovat</button>
       </div>
       <p style="font-size:11px;color:var(--ink-soft);margin:6px 0 0 0;">Tuhle URL vlož do webhooků v ${platform?platform.label:e.platform} — návod je v souboru, který appka poslala pro nasazení serverové funkce.</p>
+      ${(!usesOwnSecret && e.platform==='woocommerce') ? `
+      <div class="mini-label">Webhook secret — appka ho vygenerovala, vlož ho do nastavení webhooku ve WooCommerce jako "Secret"</div>
+      <div style="display:flex;gap:8px;align-items:center;">
+        <input type="text" readonly value="${escapeAttr(e.webhookSecret||'')}" style="flex:1;font-family:'IBM Plex Mono',monospace;font-size:11.5px;background:var(--paper);" onclick="this.select()">
+        <button type="button" class="btn secondary small" data-action="copy-webhook-url" data-url="${escapeAttr(e.webhookSecret||'')}">Kopírovat</button>
+        <button type="button" class="btn secondary small" data-action="regenerate-webhook-secret" data-id="${e.id}">Vygenerovat nový</button>
+      </div>
+      <p style="font-size:11px;color:var(--ink-soft);margin:6px 0 0 0;">Klíč je unikátní jen pro tenhle e-shop, nikdo jiný ho nezná — nic kvůli tomu v Supabase nastavovat nemusíš.</p>
+      ` : ''}
       ${e.lastSyncAt ? `<p style="font-size:11.5px;color:var(--ink-soft);margin:8px 0 0 0;">Poslední kontrola: ${new Date(e.lastSyncAt).toLocaleString('cs-CZ')}</p>` : ''}
       ${st ? integrationStatusBox(st.message, st.ok) : ''}
     </div>
@@ -4078,8 +4159,9 @@ function setupIntegrationsSection(){
       eshop.name = fd.get('name')||'';
       const platform = ESHOP_PLATFORMS[eshop.platform];
       const cred = {};
-      platform.fields.forEach(f=>{ cred[f.key] = (fd.get(f.key)||'').trim(); });
+      (platform.fields||[]).forEach(f=>{ cred[f.key] = (fd.get(f.key)||'').trim(); });
       eshop.credentials = cred;
+      if(fd.has('webhookSecret')) eshop.webhookSecret = (fd.get('webhookSecret')||'').trim();
       try{ await saveIntegrations(); }catch(err){ alert('Uložení se nepovedlo.'); return; }
       startEshopPolling();
       render();
@@ -4105,8 +4187,13 @@ function setupIntegrationsSection(){
     });
   });
 }
+function generateWebhookSecret(){
+  const bytes = new Uint8Array(24);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, b => b.toString(16).padStart(2,'0')).join('');
+}
 async function addEshopPlatform(platform){
-  state.integrations.eshops.push({ id:uid(), platform, name:ESHOP_PLATFORMS[platform].label, active:true, credentials:{}, lastSyncAt:null, lastSyncStatus:null });
+  state.integrations.eshops.push({ id:uid(), platform, name:ESHOP_PLATFORMS[platform].label, active:true, credentials:{}, webhookSecret: generateWebhookSecret(), lastSyncAt:null, lastSyncStatus:null });
   await saveIntegrations();
   render();
 }
@@ -7672,6 +7759,8 @@ function afterRender(){
   if(state.view==='products') setupProductsView();
   if(state.view==='received-invoices') setupReceivedInvoicesView();
   if(state.view==='orders') setupOrdersView();
+  const tenantSwitcher = document.getElementById('tenant-switcher');
+  if(tenantSwitcher){ tenantSwitcher.addEventListener('change', ()=> switchTenant(tenantSwitcher.value)); }
   if(state.view==='received-invoice-detail') setupReceivedInvoiceDetail();
   if(state.view==='stock') setupStockScan();
   if(state.view==='stock'){
@@ -9240,8 +9329,16 @@ document.addEventListener('click', async (e)=>{
       prompt('Zkopíruj ručně (Ctrl+C):', url);
     }
   }
+  else if(action==='regenerate-webhook-secret'){
+    const eshop = state.integrations.eshops.find(x=>x.id===id);
+    if(eshop && confirm('Vygenerovat nový tajný klíč? Starý přestane fungovat, dokud novou hodnotu nezadáš i na druhé straně (e-shop/systém).')){
+      eshop.webhookSecret = generateWebhookSecret();
+      try{ await saveIntegrations(); }catch(err){ alert('Uložení se nepovedlo.'); }
+      render();
+    }
+  }
   else if(action==='add-eshop'){
-    const platform = prompt('Kterou platformu chceš přidat? Napiš: shopify, shoptet, nebo woocommerce');
+    const platform = prompt('Kterou platformu chceš přidat?\nNapiš: shopify, shoptet, woocommerce, wix, bigcommerce, opencart, custom_api (vlastní JSON API), nebo custom_push (ERP/K2/Helios/SAP/Money přes webhook)');
     if(platform && ESHOP_PLATFORMS[platform.trim().toLowerCase()]) addEshopPlatform(platform.trim().toLowerCase());
     else if(platform) alert('Neznámá platforma. Zadej: shopify, shoptet, nebo woocommerce.');
   }
