@@ -3591,7 +3591,34 @@ const ESHOP_PLATFORMS = {
     {key:'siteUrl', label:'URL webu', placeholder:'https://tvuj-web.cz'},
     {key:'consumerKey', label:'Consumer key', type:'password'},
     {key:'consumerSecret', label:'Consumer secret', type:'password'}
-  ]}
+  ]},
+  wix: { label:'Wix', fields:[
+    {key:'siteId', label:'Site ID', placeholder:'z Wix Dev Center'},
+    {key:'apiKey', label:'API klíč', type:'password'}
+  ]},
+  bigcommerce: { label:'BigCommerce', fields:[
+    {key:'storeHash', label:'Store hash', placeholder:'z URL adminu, např. abc123'},
+    {key:'accessToken', label:'Access token', type:'password'}
+  ]},
+  opencart: { label:'OpenCart', fields:[
+    {key:'storeUrl', label:'URL e-shopu', placeholder:'https://tvuj-eshop.cz'},
+    {key:'apiKey', label:'API klíč (REST API rozšíření)', type:'password'}
+  ]},
+  custom_api: { label:'Vlastní API (JSON)', fields:[
+    {key:'apiUrl', label:'URL, kam se dotazovat (vrací JSON)', placeholder:'https://…'},
+    {key:'authHeaderName', label:'Název hlavičky pro přihlášení (nepovinné)', placeholder:'např. Authorization'},
+    {key:'authHeaderValue', label:'Hodnota té hlavičky', type:'password'},
+    {key:'ordersPath', label:'Cesta k seznamu objednávek v JSON', placeholder:'např. data.orders (prázdné = celá odpověď je seznam)'},
+    {key:'externalIdField', label:'Pole s unikátním ID objednávky', placeholder:'např. id'},
+    {key:'numberField', label:'Pole s číslem objednávky', placeholder:'např. number'},
+    {key:'emailField', label:'Pole s e-mailem zákazníka', placeholder:'např. email'},
+    {key:'itemsPath', label:'Cesta k položkám uvnitř objednávky', placeholder:'např. items'},
+    {key:'skuField', label:'Pole s SKU/EAN položky', placeholder:'např. sku'},
+    {key:'titleField', label:'Pole s názvem položky', placeholder:'např. name'},
+    {key:'qtyField', label:'Pole s množstvím', placeholder:'např. qty'},
+    {key:'priceField', label:'Pole s cenou za kus', placeholder:'např. price'}
+  ]},
+  custom_push: { label:'ERP / vlastní systém přes webhook (K2, Helios, SAP, Money S3/S5…)', pushOnly:true, fields:[] }
 };
 const CARRIER_TYPES = {
   zasilkovna: { label:'Zásilkovna', fields:[{key:'apiKey', label:'API klíč', type:'password'}] },
@@ -3651,15 +3678,97 @@ async function fetchWooCommerceOrders(cred){
     weightKg: 0
   }));
 }
+async function fetchWixOrders(cred){
+  const res = await fetch('https://www.wixapis.com/ecom/v1/orders/search', {
+    method:'POST',
+    headers: { 'Authorization': cred.apiKey, 'wix-site-id': cred.siteId, 'Content-Type':'application/json' },
+    body: JSON.stringify({ search:{ filter:{ status:{ '$eq':'APPROVED' } } } })
+  });
+  if(!res.ok) throw new Error(`Wix odpovědělo chybou ${res.status}.`);
+  const data = await res.json();
+  return (data.orders||[]).map(o=>({
+    externalId: String(o.id), number: 'WIX-'+(o.number||o.id),
+    email: (o.buyerInfo&&o.buyerInfo.email)||'',
+    lineItems: (o.lineItems||[]).map(li=>({
+      sku: (li.catalogReference&&li.catalogReference.catalogItemId)||li.sku||'',
+      title: (li.productName&&li.productName.original)||li.name||'',
+      qty: li.quantity||1, price: parseFloat((li.price&&li.price.amount)||li.price)||0
+    })),
+    weightKg: 0
+  }));
+}
+async function fetchBigCommerceOrders(cred){
+  const res = await fetch(`https://api.bigcommerce.com/stores/${cred.storeHash}/v2/orders?status_id=11&limit=50`, {
+    headers: { 'X-Auth-Token': cred.accessToken, 'Accept':'application/json' }
+  });
+  if(!res.ok) throw new Error(`BigCommerce odpovědělo chybou ${res.status}.`);
+  const orders = await res.json();
+  const results = [];
+  for(const o of (Array.isArray(orders)?orders:[])){
+    let items = [];
+    try{
+      const piRes = await fetch(`https://api.bigcommerce.com/stores/${cred.storeHash}/v2/orders/${o.id}/products`, { headers:{ 'X-Auth-Token':cred.accessToken,'Accept':'application/json' } });
+      if(piRes.ok) items = await piRes.json();
+    }catch(e){}
+    results.push({
+      externalId: String(o.id), number: 'BC-'+o.id,
+      email: (o.billing_address&&o.billing_address.email)||'',
+      lineItems: (items||[]).map(li=>({ sku: li.sku, title: li.name, qty: parseInt(li.quantity)||1, price: parseFloat(li.price_inc_tax)||0 })),
+      weightKg: 0
+    });
+  }
+  return results;
+}
+async function fetchOpenCartOrders(cred){
+  const base = (cred.storeUrl||'').replace(/\/$/,'');
+  const res = await fetch(`${base}/index.php?route=api/order&key=${encodeURIComponent(cred.apiKey)}`, { headers:{'Content-Type':'application/json'} });
+  if(!res.ok) throw new Error(`OpenCart odpovědělo chybou ${res.status} (přesná cesta API se liší podle verze/rozšíření — možná bude potřeba upravit).`);
+  const data = await res.json();
+  const list = data.orders || data.data || (Array.isArray(data)?data:[]);
+  return list.map(o=>({
+    externalId: String(o.order_id||o.id), number: 'OC-'+(o.order_id||o.id),
+    email: o.email||'',
+    lineItems: (o.products||o.items||[]).map(li=>({ sku: li.model||li.sku||'', title: li.name||'', qty: parseInt(li.quantity)||1, price: parseFloat(li.price)||0 })),
+    weightKg: 0
+  }));
+}
+function getByPath(obj, path){
+  if(!path) return undefined;
+  return path.split('.').reduce((o,k)=> (o==null?undefined:o[k]), obj);
+}
+async function fetchCustomApiOrders(cred){
+  if(!cred.apiUrl) throw new Error('Doplň URL, kam se má appka dotazovat.');
+  const headers = {};
+  if(cred.authHeaderName && cred.authHeaderValue) headers[cred.authHeaderName] = cred.authHeaderValue;
+  const res = await fetch(cred.apiUrl, { headers });
+  if(!res.ok) throw new Error(`Vlastní API odpovědělo chybou ${res.status}.`);
+  const data = await res.json();
+  const list = cred.ordersPath ? (getByPath(data, cred.ordersPath)||[]) : (Array.isArray(data)?data:[]);
+  return list.map(o=>({
+    externalId: String(getByPath(o, cred.externalIdField) ?? ''),
+    number: String(getByPath(o, cred.numberField) ?? getByPath(o, cred.externalIdField) ?? ''),
+    email: getByPath(o, cred.emailField) || '',
+    lineItems: (cred.itemsPath ? (getByPath(o, cred.itemsPath)||[]) : []).map(li=>({
+      sku: getByPath(li, cred.skuField) || '', title: getByPath(li, cred.titleField) || '',
+      qty: parseFloat(getByPath(li, cred.qtyField))||1, price: parseFloat(getByPath(li, cred.priceField))||0
+    })),
+    weightKg: 0
+  })).filter(o=>o.externalId);
+}
 async function fetchEshopOrders(eshop){
   if(eshop.platform==='shopify') return fetchShopifyOrders(eshop.credentials);
   if(eshop.platform==='shoptet') return fetchShoptetOrders(eshop.credentials);
   if(eshop.platform==='woocommerce') return fetchWooCommerceOrders(eshop.credentials);
+  if(eshop.platform==='wix') return fetchWixOrders(eshop.credentials);
+  if(eshop.platform==='bigcommerce') return fetchBigCommerceOrders(eshop.credentials);
+  if(eshop.platform==='opencart') return fetchOpenCartOrders(eshop.credentials);
+  if(eshop.platform==='custom_api') return fetchCustomApiOrders(eshop.credentials);
   throw new Error('Neznámá platforma e-shopu.');
 }
 async function pollEshopOrders(eshopId, silent){
   const eshop = state.integrations.eshops.find(e=>e.id===eshopId);
   if(!eshop || !eshop.active) return;
+  if((ESHOP_PLATFORMS[eshop.platform]||{}).pushOnly) return; // tenhle typ appka sama nedotazuje, jen přijímá webhook
   try{
     const orders = await fetchEshopOrders(eshop);
     let imported = 0;
@@ -3693,7 +3802,7 @@ function startEshopPolling(){
   Object.values(window._pollTimers).forEach(t=>clearInterval(t));
   window._pollTimers = {};
   (state.integrations.eshops||[]).forEach(e=>{
-    if(!e.active) return;
+    if(!e.active || (ESHOP_PLATFORMS[e.platform]||{}).pushOnly) return;
     window._pollTimers[e.id] = setInterval(()=>pollEshopOrders(e.id, true), (state.integrations.pollIntervalSec||60)*1000);
     pollEshopOrders(e.id, true); // hned při spuštění appky zkontrolovat, ať nečekáš na první interval
   });
@@ -3824,6 +3933,11 @@ function renderIntegrationsSection(){
         webhook URL — po nasazení přiložené malé serverové funkce do vašeho Supabase projektu (návod je v balíčku, cos dostal/a ke
         stažení) appka objednávku uvidí do pár vteřin od jejího vzniku.
       </p>
+      <p style="font-size:12.5px;color:var(--ink-soft);">
+        Firemní systémy jako K2, Helios, SAP nebo Money S3/S5 obvykle běží uvnitř firemní sítě a appka se k nim zvenku nedostane —
+        pro ně přidej typ <strong>„ERP / vlastní systém přes webhook"</strong>, appka pak jen čeká, až jí data pošlete vy (návod
+        k tomu je také v balíčku se serverovou funkcí).
+      </p>
       <div class="field" style="max-width:260px;">
         <label>Jak často kontrolovat nové objednávky (přímé dotazování)</label>
         <select id="poll-interval-select">
@@ -3847,7 +3961,40 @@ function renderIntegrationsSection(){
 function renderEshopCard(e){
   const platform = ESHOP_PLATFORMS[e.platform];
   const st = e.lastSyncStatus;
-  const webhookUrl = `${SUPABASE_URL}/functions/v1/order-webhook?tenant=${encodeURIComponent(state.tenantId)}&platform=${e.platform}`;
+  const webhookUrl = `${SUPABASE_URL}/functions/v1/order-webhook?tenant=${encodeURIComponent(state.tenantId)}&platform=${e.platform==='custom_push'?'custom':e.platform}`;
+  if(platform && platform.pushOnly){
+    return `
+      <div class="form-card">
+        <div class="section-title" style="margin-top:0;padding-top:0;border-top:none;display:flex;justify-content:space-between;align-items:center;">
+          <span>${platform.label} — ${escapeHtml(e.name||'')}</span>
+          <label style="font-size:12.5px;font-weight:400;display:flex;align-items:center;gap:6px;">
+            <input type="checkbox" data-action="toggle-eshop-active" data-id="${e.id}" ${e.active?'checked':''}> aktivní
+          </label>
+        </div>
+        <form class="eshop-form" data-id="${e.id}">
+          <div class="field"><label>Název (jen pro tebe)</label><input name="name" value="${escapeAttr(e.name||'')}"></div>
+          <div class="formfoot" style="margin-top:6px;justify-content:flex-start;gap:10px;">
+            <button type="submit" class="btn secondary small">Uložit</button>
+            <button type="button" class="btn danger small" data-action="delete-eshop" data-id="${e.id}">Smazat</button>
+          </div>
+        </form>
+        <p style="font-size:12.5px;color:var(--ink-soft);margin-top:0;">
+          Tenhle typ appka sama nekontroluje (K2/Helios/SAP/Money a podobné systémy obvykle běží uvnitř firemní sítě, appka
+          se k nim zvenku nedostane). Místo toho appka jen <strong>čeká, až jí data pošle vaše strana</strong> — malý skript
+          nebo export uvnitř vašeho systému zavolá URL níž a pošle objednávku ve formátu, který appka čeká.
+        </p>
+        <div class="mini-label">Webhook URL, kam má váš systém posílat objednávky</div>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <input type="text" readonly value="${escapeAttr(webhookUrl)}" style="flex:1;font-family:'IBM Plex Mono',monospace;font-size:11.5px;background:var(--paper);" onclick="this.select()">
+          <button type="button" class="btn secondary small" data-action="copy-webhook-url" data-url="${escapeAttr(webhookUrl)}">Kopírovat</button>
+        </div>
+        <p style="font-size:11px;color:var(--ink-soft);margin:6px 0 0 0;">
+          Očekávaný formát POST požadavku (JSON): <code>{"external_id":"…", "number":"…", "email":"…", "line_items":[{"sku":"…","title":"…","qty":1,"price":100}]}</code>.
+          Přesný formát a příklad je popsaný v README u serverové funkce order-webhook.
+        </p>
+      </div>
+    `;
+  }
   return `
     <div class="form-card">
       <div class="section-title" style="margin-top:0;padding-top:0;border-top:none;display:flex;justify-content:space-between;align-items:center;">
