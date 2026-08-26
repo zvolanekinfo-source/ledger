@@ -1365,7 +1365,9 @@ async function loadAll(){
       if(c.key==='margin') c.visible = false;
       if(c.key==='manufacturer') c.visible = false;
       if(c.key==='warehouseName') c.visible = false;
-      if(c.key==='location' && c.width<260) c.width = 260;
+      if(c.key==='location' && c.width>220) c.width = 220;
+      if(c.key==='purchasePrice' && c.width<100) c.width = 100;
+      if(c.key==='salePrice' && c.width<100) c.width = 100;
       if(c.key==='number' && c.width<130) c.width = 130;
       if(c.key==='ean' && c.width<130) c.width = 130;
       if(c.key==='internalCode' && c.width<130) c.width = 130;
@@ -4846,12 +4848,12 @@ const DEFAULT_PRODUCT_COLUMNS = [
   {key:'category', label:'Kategorie', width:105, visible:true},
   {key:'manufacturer', label:'Výrobce', width:100, visible:false},
   {key:'supplier', label:'Dodavatel', width:110, visible:true},
-  {key:'purchasePrice', label:'Nákup', width:80, visible:true},
-  {key:'salePrice', label:'Prodej', width:80, visible:true},
+  {key:'purchasePrice', label:'Nákup', width:100, visible:true},
+  {key:'salePrice', label:'Prodej', width:100, visible:true},
   {key:'margin', label:'Marže', width:65, visible:false},
   {key:'stock', label:'Množství', width:100, visible:true},
   {key:'warehouseName', label:'Sklad (název)', width:130, visible:false},
-  {key:'location', label:'Umístění', width:260, visible:true},
+  {key:'location', label:'Umístění', width:220, visible:true},
   {key:'expiry', label:'Expirace', width:120, visible:true},
 ];
 const PRODUCT_UNITS = ['ks','kg','g','l','ml','m','balení','hod'];
