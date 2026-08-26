@@ -520,7 +520,7 @@
   .stock-row{display:flex;gap:18px;flex-wrap:wrap;background:var(--paper);border:1px solid var(--line);border-radius:6px;padding:14px 16px;margin-bottom:14px;}
   .stock-row .sr-item .sr-label{font-size:10.5px;text-transform:uppercase;letter-spacing:.6px;color:var(--ink-soft);}
   .stock-row .sr-item .sr-value{font-family:'IBM Plex Mono',monospace;font-weight:700;font-size:19px;}
-  .movement-row{display:grid;grid-template-columns:125px 95px minmax(0,1fr) 110px 100px 56px;gap:10px;padding:8px 4px;border-bottom:1px solid var(--line);font-size:12.5px;align-items:center;}
+  .movement-row{display:grid;grid-template-columns:115px 90px minmax(0,1fr) 95px 90px 95px 56px;gap:10px;padding:8px 4px;border-bottom:1px solid var(--line);font-size:12.5px;align-items:center;}
   .movement-row > div{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
   .movement-row:last-child{border-bottom:none;}
   .movement-row .mv-qty{white-space:nowrap;}
@@ -675,6 +675,7 @@ let state = {
   editingRecurringId: null,
   recurringFormItems: [],
   warehouses: [],
+  categories: [],
   editingWarehouseId: null,
   viewingWarehouseId: null,
   orders: [],
@@ -1309,6 +1310,7 @@ async function loadAll(){
   try{ const r = await window.storage.get('recurring-invoices', true); state.recurringInvoices = r ? JSON.parse(r.value) : []; }catch(e){ state.recurringInvoices = []; }
   try{ const r = await window.storage.get('warehouses', true); state.warehouses = r ? JSON.parse(r.value) : []; }catch(e){ state.warehouses = []; }
   if(!state.warehouses.length){ state.warehouses = [{ id: uid(), name:'Hlavní sklad', address:'', isDefault:true }]; }
+  try{ const r = await window.storage.get('categories', true); state.categories = r ? JSON.parse(r.value) : []; }catch(e){ state.categories = []; }
   try{ const r = await window.storage.get('orders', true); state.orders = r ? JSON.parse(r.value) : []; }catch(e){ state.orders = []; }
   try{
     const r = await window.storage.get('integrations', true);
@@ -1333,6 +1335,11 @@ async function loadAll(){
   if(neededSecretMigration){ try{ await saveIntegrations(); }catch(e){} }
   state.suppliers = state.suppliers.map(s=>({ attachments:[], ...s }));
   try{ const r = await window.storage.get('products', true); state.products = r ? JSON.parse(r.value) : []; }catch(e){ state.products = []; }
+  if(!state.categories.length){
+    // migrace ze starších produktů, které měly kategorii jen jako volný text
+    const existingNames = [...new Set(state.products.map(p=>p.category).filter(Boolean))];
+    if(existingNames.length) state.categories = existingNames.map(name=>({ id: uid(), name }));
+  }
   try{ const r = await window.storage.get('product-settings', true); state.productSettings = r ? JSON.parse(r.value) : { prefix:'PRD-', nextNumber:1, padding:6 }; }catch(e){ state.productSettings = { prefix:'PRD-', nextNumber:1, padding:6 }; }
   try{ const r = await window.storage.get('inventory-settings', true); state.inventorySettings = r ? JSON.parse(r.value) : { valuationMethod:'average' }; }catch(e){ state.inventorySettings = { valuationMethod:'average' }; }
   try{ const r = await window.storage.get('product-columns', true); state.productColumns = r ? JSON.parse(r.value) : null; }catch(e){ state.productColumns = null; }
@@ -1372,6 +1379,7 @@ async function saveSuppliers(){ await storageSet('suppliers', JSON.stringify(sta
 async function saveReceivedInvoices(){ await storageSet('received-invoices', JSON.stringify(state.receivedInvoices), true); saveSnapshotBackup(); }
 async function saveRecurringInvoices(){ await storageSet('recurring-invoices', JSON.stringify(state.recurringInvoices), true); saveSnapshotBackup(); }
 async function saveWarehouses(){ await storageSet('warehouses', JSON.stringify(state.warehouses), true); saveSnapshotBackup(); }
+async function saveCategories(){ await storageSet('categories', JSON.stringify(state.categories), true); saveSnapshotBackup(); }
 async function saveOrders(){ await storageSet('orders', JSON.stringify(state.orders), true); saveSnapshotBackup(); }
 async function saveIntegrations(){ await storageSet('integrations', JSON.stringify(state.integrations), true); }
 async function saveProducts(){ await storageSet('products', JSON.stringify(state.products), true); saveSnapshotBackup(); }
@@ -4835,7 +4843,7 @@ const DEFAULT_PRODUCT_COLUMNS = [
 ];
 const PRODUCT_UNITS = ['ks','kg','g','l','ml','m','balení','hod'];
 
-function blankLocation(){ return { warehouse:'', rack:'', shelf:'', spot:'' }; }
+function blankLocation(){ return { rack:'', shelf:'', spot:'' }; }
 function formatLocation(loc){
   if(!loc) return '';
   if(typeof loc === 'string') return loc;
@@ -4848,19 +4856,18 @@ function formatLocation(loc){
 }
 function gatherLocationField(fd){
   return {
-    warehouse: (fd.get('loc-warehouse')||'').trim(),
     rack: (fd.get('loc-rack')||'').trim(),
     shelf: (fd.get('loc-shelf')||'').trim(),
     spot: (fd.get('loc-spot')||'').trim()
   };
 }
-function locationFieldGroup(loc){
+function locationFieldGroup(loc, warehouseId){
   loc = loc || blankLocation();
   return `
     <div class="field">
       <label>Umístění na skladě</label>
       <div class="field-row" style="grid-template-columns:repeat(4,1fr);margin-bottom:0;">
-        <div class="field"><input name="loc-warehouse" placeholder="Sklad" value="${escapeAttr(loc.warehouse||'')}"></div>
+        <div class="field"><select name="warehouseId">${warehouseOptions(warehouseId||(defaultWarehouse()||{}).id)}</select></div>
         <div class="field"><input name="loc-rack" placeholder="Regál" value="${escapeAttr(loc.rack||'')}"></div>
         <div class="field"><input name="loc-shelf" placeholder="Police" value="${escapeAttr(loc.shelf||'')}"></div>
         <div class="field"><input name="loc-spot" placeholder="Místo" value="${escapeAttr(loc.spot||'')}"></div>
@@ -4872,6 +4879,7 @@ function blankProduct(){
   return {
     id: uid(), number:'', ean:'', internalCode:'', name:'', description:'',
     category:'', manufacturer:'', supplierId:'', unit:'ks', vatRate:21, vatRatePurchase:21, note:'',
+    composition:'', dimensions:{width:0,height:0,depth:0}, packageDimensions:{width:0,height:0,depth:0}, unitsPerPallet:0,
     purchasePrice:0, salePrice:0, costs:0,
     warehouseId: (defaultWarehouse()||{}).id || '',
     stockCurrent:0, stockReserved:0, stockMin:0, location:blankLocation(), barcodeType:'EAN13',
@@ -6513,8 +6521,22 @@ function viewProducts(){
       <div style="display:flex;gap:10px;">
         <button class="btn secondary" data-action="goto-bulk-import-products">⇧ Import (CSV/Excel)</button>
         <button class="btn secondary" data-action="export-products">⬇ Export</button>
+        <button class="btn secondary" data-action="toggle-categories-manage">🏷️ Kategorie</button>
         <button class="btn" data-action="new-product">+ Přidat produkt</button>
       </div>
+    </div>
+    <div class="client-detail-box" id="categories-manage-box" style="display:none;">
+      <div class="mini-label" style="margin-top:0;">Správa kategorií (${state.categories.length})</div>
+      <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px;">
+        ${state.categories.length ? state.categories.map(c=>`
+          <span class="chip" style="display:inline-flex;align-items:center;gap:6px;">
+            ${escapeHtml(c.name)}
+            <button type="button" class="btn-link" data-action="rename-category" data-id="${c.id}" style="font-size:11px;">✎</button>
+            <button type="button" class="btn-link" data-action="delete-category" data-id="${c.id}" style="font-size:11px;color:var(--red);">✕</button>
+          </span>
+        `).join('') : `<p style="font-size:12.5px;color:var(--ink-soft);margin:0;">Zatím žádné kategorie.</p>`}
+      </div>
+      <button type="button" class="btn secondary small" data-action="add-category">+ Přidat kategorii</button>
     </div>
 
     <div class="filter-presets no-print">
@@ -6672,7 +6694,7 @@ function viewProductForm(){
         <p style="font-size:11px;color:var(--ink-soft);margin:8px 0 0 0;">Tisk kódu, tisk informací a jejich uložení najdeš v seznamu Produkty po označení produktu.</p>
       </div>
       <div class="mini-label" style="margin-top:18px;">Umístění a pohyby na skladě (patří k tomuto kódu)</div>
-      ${locationFieldGroup(p.location)}
+      ${locationFieldGroup(p.location, p.warehouseId)}
       ${editing ? `
         <button type="button" class="btn secondary small" data-action="toggle-stock-movement-panel">+ Skladový pohyb</button>
         <div id="stock-movement-panel" class="client-detail-box" style="display:none;margin-top:10px;">
@@ -6705,7 +6727,7 @@ function viewProductForm(){
         <div class="mini-label" style="margin-top:18px;">Historie pohybů</div>
         ${(p.movements||[]).length ? `
           <div class="movement-row" style="font-weight:600;color:var(--ink-soft);font-size:11px;text-transform:uppercase;">
-            <div>Datum</div><div>Typ</div><div>Poznámka</div><div>Kdo</div><div>Množství</div><div></div>
+            <div>Datum</div><div>Typ</div><div>Poznámka</div><div>Kdo</div><div>Množství</div><div>Trvanlivost</div><div></div>
           </div>
           ${[...p.movements].reverse().slice(0,50).map(m=>`
             <div class="movement-row">
@@ -6714,6 +6736,7 @@ function viewProductForm(){
               <div>${escapeHtml(m.reason||m.note||'—')}</div>
               <div>${escapeHtml(m.user||'—')}</div>
               <div class="mv-qty ${m.qty>=0?'pos':'neg'}">${m.qty>=0?'+':''}${m.qty} → ${m.resultingStock}</div>
+              <div>${m.expiryAtTime||'—'}</div>
               <div class="actions-cell no-print">
                 <button type="button" class="iconbtn" data-action="edit-movement" data-id="${p.id}" data-mid="${m.id}" title="Upravit"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg></button>
                 <button type="button" class="iconbtn" data-action="delete-movement" data-id="${p.id}" data-mid="${m.id}" title="Smazat"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
@@ -6723,9 +6746,11 @@ function viewProductForm(){
         ` : `<p style="font-size:12.5px;color:var(--ink-soft);">Zatím žádné skladové pohyby.</p>`}
       ` : ''}
       <div class="field-row">
-        <div class="field"><label>Kategorie</label><input name="category" list="product-category-options" value="${escapeAttr(p.category||'')}">
-          <datalist id="product-category-options">${[...new Set(state.products.map(x=>x.category).filter(Boolean))].map(c=>`<option value="${escapeAttr(c)}">`).join('')}</datalist>
-        </div>
+        <div class="field"><label>Kategorie</label><select name="category" id="product-category-select">
+          <option value="">— bez kategorie —</option>
+          ${state.categories.map(c=>`<option value="${escapeAttr(c.name)}" ${p.category===c.name?'selected':''}>${escapeHtml(c.name)}</option>`).join('')}
+          <option value="__new__">+ Nová kategorie…</option>
+        </select></div>
         <div class="field"><label>Výrobce</label><input name="manufacturer" list="product-manufacturer-options" value="${escapeAttr(p.manufacturer||'')}">
           <datalist id="product-manufacturer-options">${[...new Set(state.products.map(x=>x.manufacturer).filter(Boolean))].map(m=>`<option value="${escapeAttr(m)}">`).join('')}</datalist>
         </div>
@@ -6739,11 +6764,21 @@ function viewProductForm(){
           ${PRODUCT_UNITS.map(u=>`<option value="${u}" ${(p.unit||'ks')===u?'selected':''}>${u}</option>`).join('')}
         </select></div>
       </div>
-      <div class="field-row">
-        <div class="field"><label>Sklad</label><select name="warehouseId">${warehouseOptions(p.warehouseId||(defaultWarehouse()||{}).id)}</select></div>
-        <div class="field"><label>Datum expirace</label><input type="date" name="expiryDate" value="${p.expiryDate||''}"></div>
-      </div>
       <div class="field"><label>Poznámka</label><textarea name="note">${escapeHtml(p.note||'')}</textarea></div>
+      <div class="field"><label>Složení</label><textarea name="composition" placeholder="např. seznam ingrediencí/materiálů">${escapeHtml(p.composition||'')}</textarea></div>
+
+      <div class="section-title">Rozměry a balení</div>
+      <div class="field-row" style="grid-template-columns:repeat(3,1fr);">
+        <div class="field"><label>Rozměry produktu — šířka (cm)</label><input type="number" step="0.1" min="0" name="dimWidth" value="${(p.dimensions&&p.dimensions.width)||''}"></div>
+        <div class="field"><label>Výška (cm)</label><input type="number" step="0.1" min="0" name="dimHeight" value="${(p.dimensions&&p.dimensions.height)||''}"></div>
+        <div class="field"><label>Hloubka (cm)</label><input type="number" step="0.1" min="0" name="dimDepth" value="${(p.dimensions&&p.dimensions.depth)||''}"></div>
+      </div>
+      <div class="field-row" style="grid-template-columns:repeat(3,1fr);">
+        <div class="field"><label>Rozměry balení — šířka (cm)</label><input type="number" step="0.1" min="0" name="pkgWidth" value="${(p.packageDimensions&&p.packageDimensions.width)||''}"></div>
+        <div class="field"><label>Výška (cm)</label><input type="number" step="0.1" min="0" name="pkgHeight" value="${(p.packageDimensions&&p.packageDimensions.height)||''}"></div>
+        <div class="field"><label>Hloubka (cm)</label><input type="number" step="0.1" min="0" name="pkgDepth" value="${(p.packageDimensions&&p.packageDimensions.depth)||''}"></div>
+      </div>
+      <div class="field" style="max-width:260px;"><label>Kusů na paletě</label><input type="number" step="1" min="0" name="unitsPerPallet" value="${p.unitsPerPallet||''}"></div>
 
       <div class="section-title">Ceny</div>
       <div class="field-row">
@@ -6807,6 +6842,26 @@ function setupProductForm(){
   const form = document.getElementById('product-form');
   if(!form) return;
   setupProductPhotoDropzone();
+
+  const categorySelect = document.getElementById('product-category-select');
+  if(categorySelect){
+    categorySelect.addEventListener('change', async ()=>{
+      if(categorySelect.value !== '__new__') return;
+      const name = prompt('Název nové kategorie:');
+      if(!name || !name.trim()){ categorySelect.value = ''; return; }
+      const trimmed = name.trim();
+      let cat = state.categories.find(c=>c.name.toLowerCase()===trimmed.toLowerCase());
+      if(!cat){
+        cat = { id: uid(), name: trimmed };
+        state.categories.push(cat);
+        try{ await saveCategories(); }catch(err){ alert('Uložení kategorie se nepovedlo.'); }
+      }
+      const opt = document.createElement('option');
+      opt.value = cat.name; opt.textContent = cat.name;
+      categorySelect.insertBefore(opt, categorySelect.querySelector('option[value="__new__"]'));
+      categorySelect.value = cat.name;
+    });
+  }
 
   if(state.pendingEditMovementId){
     const p = state.editingProductId ? productById(state.editingProductId) : null;
@@ -6962,7 +7017,11 @@ async function onSubmitProduct(e){
     stockCurrent: existing ? existing.stockCurrent : (parseFloat(fd.get('stockCurrent'))||0),
     stockReserved: existing ? (existing.stockReserved||0) : 0,
     stockMin: parseFloat(fd.get('stockMin'))||0, location: gatherLocationField(fd),
-    expiryDate: fd.get('expiryDate')||'', photo, link: fd.get('link')||'',
+    expiryDate: existing ? existing.expiryDate : '', photo, link: fd.get('link')||'',
+    composition: fd.get('composition')||'',
+    dimensions: { width: parseFloat(fd.get('dimWidth'))||0, height: parseFloat(fd.get('dimHeight'))||0, depth: parseFloat(fd.get('dimDepth'))||0 },
+    packageDimensions: { width: parseFloat(fd.get('pkgWidth'))||0, height: parseFloat(fd.get('pkgHeight'))||0, depth: parseFloat(fd.get('pkgDepth'))||0 },
+    unitsPerPallet: parseFloat(fd.get('unitsPerPallet'))||0,
     barcodeType: fd.get('barcodeType') || 'EAN13',
     archived: existing ? !!existing.archived : false,
     createdAt: existing ? existing.createdAt : new Date().toISOString(),
@@ -9361,6 +9420,41 @@ document.addEventListener('click', async (e)=>{
     render();
   }
   /* --- Sklady --- */
+  /* --- Kategorie produktů --- */
+  else if(action==='toggle-categories-manage'){
+    const box = document.getElementById('categories-manage-box');
+    if(box) box.style.display = box.style.display==='none' ? '' : 'none';
+  }
+  else if(action==='add-category'){
+    const name = prompt('Název nové kategorie:');
+    if(!name || !name.trim()) return;
+    const trimmed = name.trim();
+    if(state.categories.some(c=>c.name.toLowerCase()===trimmed.toLowerCase())){ alert('Tahle kategorie už existuje.'); return; }
+    state.categories.push({ id: uid(), name: trimmed });
+    try{ await saveCategories(); }catch(err){ alert('Uložení se nepovedlo.'); }
+    render();
+  }
+  else if(action==='rename-category'){
+    const cat = state.categories.find(c=>c.id===id);
+    if(!cat) return;
+    const name = prompt('Nový název kategorie:', cat.name);
+    if(!name || !name.trim() || name.trim()===cat.name) return;
+    const oldName = cat.name;
+    cat.name = name.trim();
+    state.products.forEach(p=>{ if(p.category===oldName) p.category = cat.name; });
+    try{ await saveCategories(); await saveProducts(); }catch(err){ alert('Uložení se nepovedlo.'); }
+    render();
+  }
+  else if(action==='delete-category'){
+    const cat = state.categories.find(c=>c.id===id);
+    if(!cat) return;
+    const usedCount = state.products.filter(p=>p.category===cat.name).length;
+    if(!confirm(`Smazat kategorii „${cat.name}"?${usedCount?` Používá ji ${usedCount} produktů — u nich zůstane kategorie prázdná.`:''}`)) return;
+    state.categories = state.categories.filter(c=>c.id!==id);
+    state.products.forEach(p=>{ if(p.category===cat.name) p.category=''; });
+    try{ await saveCategories(); await saveProducts(); }catch(err){ alert('Uložení se nepovedlo.'); }
+    render();
+  }
   else if(action==='new-warehouse'){ state.editingWarehouseId=null; state.view='warehouse-form'; render(); }
   else if(action==='view-warehouse'){ state.viewingWarehouseId=id; state.view='warehouse-detail'; render(); }
   else if(action==='edit-warehouse'){ state.editingWarehouseId=id; state.view='warehouse-form'; render(); }
