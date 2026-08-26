@@ -7300,7 +7300,6 @@ function setupStockScan(){
       if(e.target!==input && !list.contains(e.target)) list.classList.remove('open');
     });
   }
-  input.focus();
 }
 function viewStock(){
   // Když je jen jeden sklad, nemá smysl nutit uživatele ho vybírat.
@@ -7372,8 +7371,9 @@ function viewStock(){
   const compactSwitcherHtml = `
     <div class="form-card" style="flex:1;min-width:320px;margin-bottom:0;padding:14px 18px;">
       <div style="display:flex;align-items:center;gap:12px;">
+        <button type="button" class="btn secondary" data-action="back-to-warehouse-list">← Zpět na sklady</button>
         <span style="font-size:12.5px;color:var(--ink-soft);white-space:nowrap;">Přepnout sklad:</span>
-        <select id="stock-warehouse-switch" style="max-width:260px;">
+        <select id="stock-warehouse-switch" style="max-width:220px;">
           ${state.warehouses.map(wh=>`<option value="${wh.id}" ${wh.id===w.id?'selected':''}>${escapeHtml(wh.name)}${wh.isDefault?' ★':''}</option>`).join('')}
         </select>
       </div>
@@ -7385,7 +7385,6 @@ function viewStock(){
       <div>
         <h1>Sklad</h1>
         <p class="desc">Pracuješ se skladem <strong>${escapeHtml(w.name)}</strong>${w.address?(' · '+escapeHtml(w.address)):''}.</p>
-        <button type="button" class="btn-link" data-action="back-to-warehouse-list" style="font-size:11.5px;">Zpět</button>
       </div>
     </div>
 
