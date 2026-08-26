@@ -4929,7 +4929,7 @@ function blankProduct(){
   return {
     id: uid(), number:'', ean:'', internalCode:'', name:'', description:'',
     category:'', manufacturer:'', supplierId:'', unit:'ks', vatRate:21, vatRatePurchase:21, note:'',
-    composition:'', dimensionUnit:'cm', dimensions:{width:0,height:0,depth:0}, packageDimensions:{width:0,height:0,depth:0}, unitsPerPallet:0,
+    composition:'', dimensionUnit:'cm', dimensions:{width:0,height:0,depth:0}, packageDimensions:{width:0,height:0,depth:0}, unitsPerPallet:0, unitsPerBox:0,
     nutrition:{ per:'100g', energyKj:null, energyKcal:null, fat:null, saturatedFat:null, carbs:null, sugars:null, fiber:null, protein:null, salt:null },
     purchasePrice:0, salePrice:0, costs:0,
     warehouseId: (defaultWarehouse()||{}).id || '',
@@ -5649,15 +5649,31 @@ function setupRecurringForm(){
 }
 
 /* ---------- SKLADY (multi-sklad) ---------- */
-function blankWarehouse(){ return { id: uid(), name:'', address:'', isDefault:false, capacityValue:0, capacityUnit:'', currentUsage:0 }; }
+function blankWarehouse(){ return { id: uid(), name:'', address:'', isDefault:false, capacityValue:0, capacityUnitType:'palety', capacityUnitCustomLabel:'', currentUsage:0 }; }
 function warehouseById(id){ return state.warehouses.find(w=>w.id===id); }
 function defaultWarehouse(){ return state.warehouses.find(w=>w.isDefault) || state.warehouses[0]; }
 function warehouseOptions(selectedId){
   return state.warehouses.map(w=>`<option value="${w.id}" ${selectedId===w.id?'selected':''}>${escapeHtml(w.name)}${w.isDefault?' (výchozí)':''}</option>`).join('');
 }
+const WAREHOUSE_CAPACITY_UNITS = { palety:'Palety', boxy:'Boxy', jine:'Vlastní jednotka' };
+function warehouseCapacityUnitLabel(w){
+  if(w.capacityUnitType==='jine') return w.capacityUnitCustomLabel||'jednotky';
+  return WAREHOUSE_CAPACITY_UNITS[w.capacityUnitType]||'jednotky';
+}
+function computeWarehouseUsage(w){
+  // Palety/boxy appka počítá sama z aktuálního skladu produktů v tomhle skladu
+  // (podle "kusů na paletě"/"kusů v boxu" u produktu) — u vlastní jednotky se
+  // hodnota zadává ručně, protože appka neví, co ta jednotka znamená.
+  if(w.capacityUnitType==='jine') return w.currentUsage||0;
+  const key = w.capacityUnitType==='boxy' ? 'unitsPerBox' : 'unitsPerPallet';
+  return state.products
+    .filter(p=>p.warehouseId===w.id && !p.archived && (p[key]||0)>0)
+    .reduce((s,p)=> s + (p.stockCurrent||0)/p[key], 0);
+}
 function viewWarehouseForm(){
   const editing = state.editingWarehouseId ? warehouseById(state.editingWarehouseId) : null;
   const w = editing || blankWarehouse();
+  const unitType = w.capacityUnitType||'palety';
   return `
     <div class="pagehead"><div><h1>${editing?'Upravit sklad':'Nový sklad'}</h1></div></div>
     <form id="warehouse-form" class="form-card">
@@ -5667,12 +5683,22 @@ function viewWarehouseForm(){
         <input type="checkbox" name="isDefault" ${w.isDefault?'checked':''}> Výchozí sklad pro nové produkty
       </label>
       <div class="section-title">Kapacita skladu</div>
-      <p style="font-size:12.5px;color:var(--ink-soft);margin-top:-6px;">Volitelné — zadej v jakékoli jednotce, která ti dává smysl (palety, m², regály, ks…).</p>
+      <p style="font-size:12.5px;color:var(--ink-soft);margin-top:-6px;">Volitelné. U palet a boxů appka sama spočítá, kolik je aktuálně obsazeno, podle „kusů na paletě"/„kusů v boxu" u jednotlivých produktů v tomhle skladu.</p>
       <div class="field-row">
         <div class="field"><label>Maximální kapacita</label><input name="capacityValue" type="number" step="0.01" min="0" value="${w.capacityValue||''}" placeholder="např. 100"></div>
-        <div class="field"><label>Jednotka</label><input name="capacityUnit" value="${escapeAttr(w.capacityUnit||'')}" placeholder="např. palety, m², regály…"></div>
+        <div class="field"><label>Jednotka</label><select name="capacityUnitType" id="warehouse-capacity-unit-type">
+          ${Object.entries(WAREHOUSE_CAPACITY_UNITS).map(([v,l])=>`<option value="${v}" ${unitType===v?'selected':''}>${l}</option>`).join('')}
+        </select></div>
       </div>
-      <div class="field"><label>Aktuální využití (volitelné, ve stejné jednotce)</label><input name="currentUsage" type="number" step="0.01" min="0" value="${w.currentUsage||''}" placeholder="např. 62"></div>
+      <div id="warehouse-custom-unit-box" style="display:${unitType==='jine'?'':'none'};">
+        <div class="field-row">
+          <div class="field"><label>Název vlastní jednotky</label><input name="capacityUnitCustomLabel" value="${escapeAttr(w.capacityUnitCustomLabel||'')}" placeholder="např. m², regály…"></div>
+          <div class="field"><label>Aktuální využití (ručně, ve stejné jednotce)</label><input name="currentUsage" type="number" step="0.01" min="0" value="${w.currentUsage||''}" placeholder="např. 62"></div>
+        </div>
+      </div>
+      <div id="warehouse-auto-unit-note" style="display:${unitType==='jine'?'none':''};font-size:12.5px;color:var(--ink-soft);margin:-6px 0 14px 0;">
+        Aktuální využití appka dopočítá sama po uložení (viz karta skladu) — nemusíš nic zadávat ručně.
+      </div>
       <div class="formfoot" style="justify-content:space-between;">
         <button type="button" class="btn secondary" data-action="nav" data-view="stock">Zrušit</button>
         <button type="submit" class="btn">${editing?'Uložit změny':'Uložit sklad'}</button>
@@ -5687,7 +5713,8 @@ async function onSubmitWarehouse(e){
   const fields = {
     name:(fd.get('name')||'').trim(), address:fd.get('address')||'', isDefault,
     capacityValue: parseFloat(fd.get('capacityValue'))||0,
-    capacityUnit: (fd.get('capacityUnit')||'').trim(),
+    capacityUnitType: fd.get('capacityUnitType')||'palety',
+    capacityUnitCustomLabel: (fd.get('capacityUnitCustomLabel')||'').trim(),
     currentUsage: parseFloat(fd.get('currentUsage'))||0
   };
   const editing = state.editingWarehouseId ? warehouseById(state.editingWarehouseId) : null;
@@ -5707,7 +5734,8 @@ function viewWarehouseDetail(){
   const stockValue = products.reduce((s,p)=>s+(p.stockCurrent||0)*(p.purchasePrice||0), 0);
   const saleValue = products.reduce((s,p)=>s+(p.stockCurrent||0)*(p.salePrice||0), 0);
   const totalUnits = products.reduce((s,p)=>s+(p.stockCurrent||0), 0);
-  const pct = w.capacityValue>0 ? Math.min(100, Math.round((w.currentUsage||0)/w.capacityValue*100)) : null;
+  const usage = computeWarehouseUsage(w);
+  const pct = w.capacityValue>0 ? Math.min(100, Math.round(usage/w.capacityValue*100)) : null;
   return `
     <div class="pagehead">
       <div><h1>${escapeHtml(w.name)}</h1><p class="desc">${escapeHtml(w.address||'')}</p></div>
@@ -5728,7 +5756,7 @@ function viewWarehouseDetail(){
       <div style="background:var(--paper);border-radius:20px;height:12px;overflow:hidden;margin-bottom:8px;">
         <div style="background:${pct>=90?'var(--red)':pct>=70?'var(--amber)':'var(--accent)'};height:100%;width:${pct}%;"></div>
       </div>
-      <p style="font-size:13px;color:var(--ink-soft);margin:0;">${fmt(w.currentUsage||0)} / ${fmt(w.capacityValue)} ${escapeHtml(w.capacityUnit||'')} využito (${pct} %)</p>
+      <p style="font-size:13px;color:var(--ink-soft);margin:0;">${fmt(usage)} / ${fmt(w.capacityValue)} ${escapeHtml(warehouseCapacityUnitLabel(w))} využito (${pct} %)${w.capacityUnitType!=='jine'?' — dopočítáno automaticky podle skladem':''}</p>
     </div>
     ` : ''}
     <div class="section-title" style="margin-top:0;">Produkty v tomto skladu (${products.length})</div>
@@ -6737,6 +6765,7 @@ function viewProductForm(){
   const photo = editing ? p.photo : (state.currentProductDraftPhoto || p.photo);
   const margin = productMargin(p);
   const status = stockStatus(p);
+  const hasNutritionData = !!(p.nutrition && Object.keys(p.nutrition).some(k=>k!=='per' && p.nutrition[k]!=null));
   return `
     <div class="pagehead"><div><h1>${editing?'Upravit produkt':'Nový produkt'}</h1></div></div>
     <form id="product-form" class="form-card">
@@ -6854,25 +6883,33 @@ function viewProductForm(){
         <div class="field"><label>Výška</label><input type="number" step="0.1" min="0" name="pkgHeight" value="${(p.packageDimensions&&p.packageDimensions.height)||''}"></div>
         <div class="field"><label>Hloubka</label><input type="number" step="0.1" min="0" name="pkgDepth" value="${(p.packageDimensions&&p.packageDimensions.depth)||''}"></div>
       </div>
-      <div class="field" style="max-width:260px;"><label>Kusů na paletě</label><input type="number" step="1" min="0" name="unitsPerPallet" value="${p.unitsPerPallet||''}"></div>
+      <div class="field-row">
+        <div class="field"><label>Kusů na paletě</label><input type="number" step="1" min="0" name="unitsPerPallet" value="${p.unitsPerPallet||''}"></div>
+        <div class="field"><label>Kusů v boxu</label><input type="number" step="1" min="0" name="unitsPerBox" value="${p.unitsPerBox||''}"></div>
+      </div>
 
       <div class="section-title">Nutriční údaje</div>
-      <p style="font-size:12.5px;color:var(--ink-soft);margin-top:-6px;">Vyplní se automaticky při „Dohledat podle EAN" (pokud je produkt v databázi), nebo napiš ručně. Na 100 g/100 ml.</p>
-      <table class="items-table" style="max-width:520px;">
-        <tbody>
-          ${[
-            ['energyKj','Energie (kJ)'],['energyKcal','Energie (kcal)'],
-            ['fat','Tuky (g)'],['saturatedFat','z toho nasycené (g)'],
-            ['carbs','Sacharidy (g)'],['sugars','z toho cukry (g)'],
-            ['fiber','Vláknina (g)'],['protein','Bílkoviny (g)'],['salt','Sůl (g)']
-          ].map(([key,label])=>`
-            <tr>
-              <td style="padding:6px 10px;font-size:13px;">${label}</td>
-              <td style="padding:6px 10px;width:120px;"><input type="number" step="0.01" min="0" name="nutri-${key}" value="${(p.nutrition&&p.nutrition[key]!=null)?p.nutrition[key]:''}" style="width:100%;padding:6px 8px;border:1px solid var(--line);border-radius:var(--radius);"></td>
-            </tr>
-          `).join('')}
-        </tbody>
-      </table>
+      <label style="display:flex;align-items:center;gap:8px;font-size:14px;margin:0 0 12px 0;">
+        <input type="checkbox" id="has-nutrition-checkbox" ${hasNutritionData?'checked':''}> Tento produkt má nutriční údaje
+      </label>
+      <div id="nutrition-fields-box" style="display:${hasNutritionData?'block':'none'};">
+        <p style="font-size:12.5px;color:var(--ink-soft);margin-top:-6px;">Vyplní se automaticky při „Dohledat podle EAN" (pokud je produkt v databázi), nebo napiš ručně. Na 100 g/100 ml.</p>
+        <table class="items-table" style="max-width:520px;">
+          <tbody>
+            ${[
+              ['energyKj','Energie (kJ)'],['energyKcal','Energie (kcal)'],
+              ['fat','Tuky (g)'],['saturatedFat','z toho nasycené (g)'],
+              ['carbs','Sacharidy (g)'],['sugars','z toho cukry (g)'],
+              ['fiber','Vláknina (g)'],['protein','Bílkoviny (g)'],['salt','Sůl (g)']
+            ].map(([key,label])=>`
+              <tr>
+                <td style="padding:6px 10px;font-size:13px;">${label}</td>
+                <td style="padding:6px 10px;width:120px;"><input type="number" step="0.01" min="0" name="nutri-${key}" value="${(p.nutrition&&p.nutrition[key]!=null)?p.nutrition[key]:''}" style="width:100%;padding:6px 8px;border:1px solid var(--line);border-radius:var(--radius);"></td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>
 
       <div class="section-title">Ceny</div>
       <div class="field-row">
@@ -6936,6 +6973,14 @@ function setupProductForm(){
   const form = document.getElementById('product-form');
   if(!form) return;
   setupProductPhotoDropzone();
+
+  const nutritionCheckbox = document.getElementById('has-nutrition-checkbox');
+  const nutritionBox = document.getElementById('nutrition-fields-box');
+  if(nutritionCheckbox && nutritionBox){
+    nutritionCheckbox.addEventListener('change', ()=>{
+      nutritionBox.style.display = nutritionCheckbox.checked ? 'block' : 'none';
+    });
+  }
 
   const categorySelect = document.getElementById('product-category-select');
   if(categorySelect){
@@ -7081,6 +7126,13 @@ function setupProductForm(){
           }
           if(found.nutrition){
             const nu = found.nutrition;
+            const anyValue = Object.keys(nu).some(k=>k!=='per' && nu[k]!=null);
+            if(anyValue){
+              const nutritionCheckbox = document.getElementById('has-nutrition-checkbox');
+              const nutritionBox = document.getElementById('nutrition-fields-box');
+              if(nutritionCheckbox) nutritionCheckbox.checked = true;
+              if(nutritionBox) nutritionBox.style.display = 'block';
+            }
             Object.keys(nu).forEach(k=>{
               if(k==='per' || nu[k]===null) return;
               const el2 = document.querySelector(`[name="nutri-${k}"]`);
@@ -7138,6 +7190,7 @@ async function onSubmitProduct(e){
     dimensions: { width: parseFloat(fd.get('dimWidth'))||0, height: parseFloat(fd.get('dimHeight'))||0, depth: parseFloat(fd.get('dimDepth'))||0 },
     packageDimensions: { width: parseFloat(fd.get('pkgWidth'))||0, height: parseFloat(fd.get('pkgHeight'))||0, depth: parseFloat(fd.get('pkgDepth'))||0 },
     unitsPerPallet: parseFloat(fd.get('unitsPerPallet'))||0,
+    unitsPerBox: parseFloat(fd.get('unitsPerBox'))||0,
     nutrition: {
       per: '100g',
       energyKj: fd.get('nutri-energyKj')!=='' ? parseFloat(fd.get('nutri-energyKj')) : null,
@@ -7292,7 +7345,8 @@ function viewStock(){
       </div>
       <div style="display:flex;flex-wrap:wrap;gap:10px;">
         ${state.warehouses.map(w=>{
-          const pct = w.capacityValue>0 ? Math.min(100, Math.round((w.currentUsage||0)/w.capacityValue*100)) : null;
+          const usage = computeWarehouseUsage(w);
+          const pct = w.capacityValue>0 ? Math.min(100, Math.round(usage/w.capacityValue*100)) : null;
           return `
           <div class="card rowlink" data-action="view-warehouse" data-id="${w.id}" style="min-width:220px;flex:1;cursor:pointer;">
             <div class="label">${escapeHtml(w.name)}${w.isDefault?' <span style="color:var(--accent);">★</span>':''}</div>
@@ -7301,7 +7355,7 @@ function viewStock(){
               <div style="background:var(--paper);border-radius:20px;height:6px;overflow:hidden;margin-bottom:4px;">
                 <div style="background:${pct>=90?'var(--red)':pct>=70?'var(--amber)':'var(--accent)'};height:100%;width:${pct}%;"></div>
               </div>
-              <div style="font-size:11px;color:var(--ink-soft);margin-bottom:8px;">${fmt(w.currentUsage||0)} / ${fmt(w.capacityValue)} ${escapeHtml(w.capacityUnit||'')} (${pct} %)</div>
+              <div style="font-size:11px;color:var(--ink-soft);margin-bottom:8px;">${fmt(usage)} / ${fmt(w.capacityValue)} ${escapeHtml(warehouseCapacityUnitLabel(w))} (${pct} %)</div>
             ` : ''}
             <div class="no-print" style="display:flex;gap:6px;flex-wrap:wrap;">
               <button type="button" class="btn-link" data-action="edit-warehouse" data-id="${w.id}">Upravit</button>
@@ -8010,7 +8064,19 @@ function afterRender(){
   const recurringForm = document.getElementById('recurring-form');
   if(recurringForm){ recurringForm.addEventListener('submit', onSubmitRecurring); setupRecurringForm(); }
   const warehouseForm = document.getElementById('warehouse-form');
-  if(warehouseForm){ warehouseForm.addEventListener('submit', onSubmitWarehouse); }
+  if(warehouseForm){
+    warehouseForm.addEventListener('submit', onSubmitWarehouse);
+    const capacityUnitTypeSelect = document.getElementById('warehouse-capacity-unit-type');
+    if(capacityUnitTypeSelect){
+      capacityUnitTypeSelect.addEventListener('change', ()=>{
+        const isCustom = capacityUnitTypeSelect.value==='jine';
+        const customBox = document.getElementById('warehouse-custom-unit-box');
+        const autoNote = document.getElementById('warehouse-auto-unit-note');
+        if(customBox) customBox.style.display = isCustom ? '' : 'none';
+        if(autoNote) autoNote.style.display = isCustom ? 'none' : '';
+      });
+    }
+  }
   if(state.view==='settings') setupIntegrationsSection();
   const orderForm = document.getElementById('order-form');
   if(orderForm){ orderForm.addEventListener('submit', onSubmitOrder); setupOrderForm(); }
