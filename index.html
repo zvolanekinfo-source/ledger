@@ -1363,6 +1363,8 @@ async function loadAll(){
       const def = DEFAULT_PRODUCT_COLUMNS.find(d=>d.key===c.key);
       if(def) c.label = def.label; // popisky sloupců udržujeme aktuální, i pro už uložené nastavení
       if(c.key==='margin') c.visible = false;
+      if(c.key==='manufacturer') c.visible = false;
+      if(c.key==='warehouseName') c.visible = false;
       if(c.key==='location' && c.width<260) c.width = 260;
       if(c.key==='number' && c.width<130) c.width = 130;
       if(c.key==='ean' && c.width<130) c.width = 130;
@@ -4842,13 +4844,13 @@ const DEFAULT_PRODUCT_COLUMNS = [
   {key:'internalCode', label:'Č. produktu', width:130, visible:true},
   {key:'ean', label:'EAN', width:130, visible:true},
   {key:'category', label:'Kategorie', width:105, visible:true},
-  {key:'manufacturer', label:'Výrobce', width:100, visible:true},
+  {key:'manufacturer', label:'Výrobce', width:100, visible:false},
   {key:'supplier', label:'Dodavatel', width:110, visible:true},
   {key:'purchasePrice', label:'Nákup', width:80, visible:true},
   {key:'salePrice', label:'Prodej', width:80, visible:true},
   {key:'margin', label:'Marže', width:65, visible:false},
-  {key:'stock', label:'Sklad. množství', width:100, visible:true},
-  {key:'warehouseName', label:'Sklad (název)', width:130, visible:true},
+  {key:'stock', label:'Množství', width:100, visible:true},
+  {key:'warehouseName', label:'Sklad (název)', width:130, visible:false},
   {key:'location', label:'Umístění', width:260, visible:true},
   {key:'expiry', label:'Expirace', width:120, visible:true},
 ];
@@ -6572,7 +6574,7 @@ function filteredSortedProducts(){
     if(f.category && p.category!==f.category) return false;
     if(f.supplierId && p.supplierId!==f.supplierId) return false;
     if(f.manufacturer && p.manufacturer!==f.manufacturer) return false;
-    if(f.expiry){
+    if(f.expiry && f.expiry!=='sort-asc' && f.expiry!=='sort-desc'){
       const days = daysUntil(p.expiryDate);
       if(days==null) return false;
       const limit = parseInt(f.expiry,10);
@@ -6580,15 +6582,17 @@ function filteredSortedProducts(){
     }
     return true;
   });
-  const {key,dir} = state.productSort;
-  const mul = dir==='asc'?1:-1;
+  let sortKey = state.productSort.key, sortDir = state.productSort.dir;
+  if(f.expiry==='sort-asc'){ sortKey='expiry'; sortDir='asc'; }
+  else if(f.expiry==='sort-desc'){ sortKey='expiry'; sortDir='desc'; }
+  const mul = sortDir==='asc'?1:-1;
   list.sort((a,b)=>{
     let av, bv;
-    if(key==='supplier'){ av=(supplierById(a.supplierId)||{}).name||''; bv=(supplierById(b.supplierId)||{}).name||''; }
-    else if(key==='margin'){ av=productMargin(a).marginPct; bv=productMargin(b).marginPct; }
-    else if(key==='stock'){ av=stockAvailable(a); bv=stockAvailable(b); }
-    else if(key==='expiry'){ av=a.expiryDate||'9999'; bv=b.expiryDate||'9999'; }
-    else { av=a[key]; bv=b[key]; }
+    if(sortKey==='supplier'){ av=(supplierById(a.supplierId)||{}).name||''; bv=(supplierById(b.supplierId)||{}).name||''; }
+    else if(sortKey==='margin'){ av=productMargin(a).marginPct; bv=productMargin(b).marginPct; }
+    else if(sortKey==='stock'){ av=stockAvailable(a); bv=stockAvailable(b); }
+    else if(sortKey==='expiry'){ av=a.expiryDate||'9999'; bv=b.expiryDate||'9999'; }
+    else { av=a[sortKey]; bv=b[sortKey]; }
     if(typeof av==='number' && typeof bv==='number') return (av-bv)*mul;
     return String(av||'').localeCompare(String(bv||''),'cs')*mul;
   });
@@ -6745,12 +6749,15 @@ function viewProducts(){
         </select></div>
       </div>
       <div class="filter-row" style="margin-top:14px;">
-        <div class="field"><label>Expirace do</label><select id="pf-expiry">
+        <div class="field"><label>Expirace</label><select id="pf-expiry">
           <option value="">Nefiltrovat</option>
-          <option value="7" ${state.productFilters.expiry==='7'?'selected':''}>7 dní</option>
-          <option value="30" ${state.productFilters.expiry==='30'?'selected':''}>30 dní</option>
-          <option value="60" ${state.productFilters.expiry==='60'?'selected':''}>60 dní</option>
-          <option value="90" ${state.productFilters.expiry==='90'?'selected':''}>90 dní</option>
+          <option value="sort-asc" ${state.productFilters.expiry==='sort-asc'?'selected':''}>Od nejbližší</option>
+          <option value="sort-desc" ${state.productFilters.expiry==='sort-desc'?'selected':''}>Od nejdelší</option>
+          <option value="7" ${state.productFilters.expiry==='7'?'selected':''}>Do 7 dní</option>
+          <option value="30" ${state.productFilters.expiry==='30'?'selected':''}>Do 30 dní</option>
+          <option value="60" ${state.productFilters.expiry==='60'?'selected':''}>Do 60 dní</option>
+          <option value="90" ${state.productFilters.expiry==='90'?'selected':''}>Do 90 dní</option>
+          <option value="365" ${state.productFilters.expiry==='365'?'selected':''}>Do 1 roku</option>
         </select></div>
         <div class="field"><label>Zobrazit</label><select id="pf-archived">
           <option value="" ${state.productFilters.archived===''?'selected':''}>Aktivní</option>
