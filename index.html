@@ -4916,10 +4916,16 @@ function renderStockMovementPanel(p){
         </select></div>
         <div class="field"><label>Trvanlivost této dávky</label><input type="date" id="sm-expiry"></div>
       </div>
+      <div class="mini-label" style="margin-top:14px;">Ceny této dávky</div>
       <div class="field-row">
-        <div class="field"><label>Nákupní cena této dávky (s DPH)</label><input type="number" step="0.01" id="sm-price" placeholder="${p?p.purchasePrice||0:0}"></div>
+        <div class="field"><label>Nákupní cena za kus (s DPH)</label><input type="number" step="0.01" id="sm-price" placeholder="${p?p.purchasePrice||0:0}"></div>
         <div class="field"><label>Sazba DPH (nákup)</label><input type="number" step="0.1" id="sm-vat" placeholder="${p?(p.vatRatePurchase??21):21}"></div>
       </div>
+      <div class="field-row">
+        <div class="field"><label>Prodejní cena za kus (bez DPH)</label><input type="number" step="0.01" id="sm-sale-price" placeholder="${p?p.salePrice||0:0}"></div>
+        <div class="field"><label>Sazba DPH (prodej)</label><input type="number" step="0.1" id="sm-sale-vat" placeholder="${p?(p.vatRate??21):21}"></div>
+      </div>
+      <div class="field" style="max-width:260px;"><label>Náklady na dávku (doprava, balení…)</label><input type="number" step="0.01" id="sm-costs" placeholder="${p?p.costs||0:0}"></div>
       <div class="mini-label" style="margin-top:14px;">Kam se tahle dávka uskladní</div>
       <div class="field-row" style="grid-template-columns:repeat(4,1fr);">
         <div class="field"><select id="sm-warehouse">${warehouseOptions(p?p.warehouseId:null)}</select></div>
@@ -6841,11 +6847,6 @@ function viewProductForm(){
         <div id="product-number-barcode-error" style="display:none;font-size:11.5px;color:var(--red);margin-top:6px;">Zadané číslo není platný EAN-13 — obrázek zobrazen jako Code 128.</div>
         <p style="font-size:11px;color:var(--ink-soft);margin:8px 0 0 0;">Tisk kódu, tisk informací a jejich uložení najdeš v seznamu Produkty po označení produktu.</p>
       </div>
-      <div class="mini-label" style="margin-top:18px;">Aktuální umístění na skladě</div>
-      <p style="font-size:13px;color:var(--ink-soft);margin:0 0 14px 0;">
-        ${p.warehouseId ? escapeHtml((warehouseById(p.warehouseId)||{}).name||'') : '—'}${formatLocation(p.location)?(' · '+escapeHtml(formatLocation(p.location))):''}
-        <br><span style="font-size:11.5px;">Mění se přes záložku Sklad → Skladový pohyb (naskladnění/vyskladnění) — samotný produkt je jen katalog.</span>
-      </p>
       ${editing ? `
         ${renderStockMovementPanel(p)}
         <div class="mini-label" style="margin-top:18px;">Historie pohybů</div>
@@ -6933,24 +6934,17 @@ function viewProductForm(){
         </table>
       </div>
 
-      <div class="section-title">Prodejní cena</div>
-      <div class="field-row">
-        <div class="field"><label>Prodejní cena (bez DPH)</label><input type="number" step="0.01" name="salePrice" id="pp-sale" value="${p.salePrice||0}"></div>
-        <div class="field"><label>Sazba DPH (prodejní)</label>
-          <input type="number" step="0.1" min="0" max="100" name="vatRate" id="pp-vat-sale" list="product-vat-options" value="${p.vatRate??21}">
-          <datalist id="product-vat-options">${VAT_RATES.map(r=>`<option value="${r}">`).join('')}</datalist>
-        </div>
-      </div>
+      <div class="section-title">Ceny</div>
       ${editing ? `
       <div class="margin-box" id="margin-box">
-        <div class="mb-item"><div class="mb-label">Aktuální nákupní cena (s DPH)</div><div class="mb-value" style="font-size:14px;">${fmt(p.purchasePrice||0)} Kč</div></div>
-        <div class="mb-item"><div class="mb-label">Prodejní cena s DPH</div><div class="mb-value" id="mb-sale-vat" style="font-size:14px;">${fmt((p.salePrice||0)*(1+(p.vatRate??21)/100))} Kč</div></div>
-        <div class="mb-item"><div class="mb-label">Zisk čistý (bez DPH)</div><div class="mb-value" id="mb-profit">${fmt(margin.profit)} Kč</div></div>
-        <div class="mb-item"><div class="mb-label">Marže</div><div class="mb-value" id="mb-margin">${margin.marginPct.toFixed(1)}%</div></div>
-        <div class="mb-item"><div class="mb-label">Obchodní přirážka</div><div class="mb-value" id="mb-markup">${margin.markupPct.toFixed(1)}%</div></div>
+        <div class="mb-item"><div class="mb-label">Nákupní cena (s DPH)</div><div class="mb-value" style="font-size:14px;">${fmt(p.purchasePrice||0)} Kč</div></div>
+        <div class="mb-item"><div class="mb-label">Prodejní cena (s DPH)</div><div class="mb-value" style="font-size:14px;">${fmt((p.salePrice||0)*(1+(p.vatRate??21)/100))} Kč</div></div>
+        <div class="mb-item"><div class="mb-label">Zisk čistý (bez DPH)</div><div class="mb-value">${fmt(margin.profit)} Kč</div></div>
+        <div class="mb-item"><div class="mb-label">Marže</div><div class="mb-value">${margin.marginPct.toFixed(1)}%</div></div>
+        <div class="mb-item"><div class="mb-label">Obchodní přirážka</div><div class="mb-value">${margin.markupPct.toFixed(1)}%</div></div>
       </div>
-      <p style="font-size:11px;color:var(--ink-soft);margin:6px 0 0 0;">Nákupní cena, DPH při nákupu a náklady se nastavují u konkrétní dávky v Sklad → Skladový pohyb — tam se promítnou i sem.</p>
-      ` : `<p style="font-size:12px;color:var(--ink-soft);margin:6px 0 0 0;">Nákupní cenu a marži uvidíš tady po prvním naskladnění (Sklad → Skladový pohyb).</p>`}
+      <p style="font-size:11px;color:var(--ink-soft);margin:6px 0 0 0;">Všechny ceny (nákupní i prodejní), DPH a náklady se nastavují u konkrétní dávky v Sklad → Skladový pohyb — tady je jen přehled aktuálních hodnot.</p>
+      ` : `<p style="font-size:12px;color:var(--ink-soft);margin:6px 0 0 0;">Ceny nastavíš po prvním naskladnění (Sklad → Skladový pohyb).</p>`}
 
       <div class="section-title">Sklad</div>
       ${editing ? `
@@ -7020,31 +7014,6 @@ function setupProductForm(){
     state.pendingEditMovementId = null;
     if(m) openMovementEditPanel(m);
   }
-
-  const saleEl = document.getElementById('pp-sale');
-  const vatSaleEl = document.getElementById('pp-vat-sale');
-  const fixedPurchasePrice = (state.editingProductId ? (productById(state.editingProductId)||{}).purchasePrice : 0) || 0;
-  const fixedVatPurchase = (state.editingProductId ? (productById(state.editingProductId)||{}).vatRatePurchase : 21) ?? 21;
-  const fixedCosts = (state.editingProductId ? (productById(state.editingProductId)||{}).costs : 0) || 0;
-  function updateMargin(){
-    const sale = parseFloat(saleEl.value)||0;
-    const vatSale = parseFloat(vatSaleEl && vatSaleEl.value)||0;
-    const purchaseExVat = fixedVatPurchase>0 ? fixedPurchasePrice/(1+fixedVatPurchase/100) : fixedPurchasePrice;
-    const totalCost = purchaseExVat + fixedCosts;
-    const profit = sale - totalCost;
-    const marginPct = sale>0 ? (profit/sale*100) : 0;
-    const markupPct = totalCost>0 ? (profit/totalCost*100) : 0;
-    const saleVatEl = document.getElementById('mb-sale-vat');
-    const profitEl = document.getElementById('mb-profit');
-    const marginEl = document.getElementById('mb-margin');
-    const markupEl = document.getElementById('mb-markup');
-    if(saleVatEl) saleVatEl.textContent = fmt(sale*(1+vatSale/100))+' Kč';
-    if(profitEl) profitEl.textContent = fmt(profit)+' Kč';
-    if(marginEl) marginEl.textContent = marginPct.toFixed(1)+'%';
-    if(markupEl) markupEl.textContent = markupPct.toFixed(1)+'%';
-  }
-  if(saleEl){ saleEl.addEventListener('input', updateMargin); }
-  if(vatSaleEl) vatSaleEl.addEventListener('input', updateMargin);
 
   function drawProductNumberBarcode(){
     const svg = document.getElementById('product-number-barcode-svg');
@@ -7189,8 +7158,8 @@ async function onSubmitProduct(e){
     category: fd.get('category')||'', manufacturer: fd.get('manufacturer')||'',
     supplierId: fd.get('supplierId')||'', unit: fd.get('unit')||'ks',
     warehouseId: existing ? existing.warehouseId : ((defaultWarehouse()||{}).id||''),
-    vatRate: parseFloat(fd.get('vatRate'))||0, vatRatePurchase: existing ? (existing.vatRatePurchase??21) : 21, note: fd.get('note')||'',
-    purchasePrice: existing ? (existing.purchasePrice||0) : 0, salePrice: parseFloat(fd.get('salePrice'))||0, costs: existing ? (existing.costs||0) : 0,
+    vatRate: existing ? (existing.vatRate??21) : 21, vatRatePurchase: existing ? (existing.vatRatePurchase??21) : 21, note: fd.get('note')||'',
+    purchasePrice: existing ? (existing.purchasePrice||0) : 0, salePrice: existing ? (existing.salePrice||0) : 0, costs: existing ? (existing.costs||0) : 0,
     stockCurrent: existing ? existing.stockCurrent : (parseFloat(fd.get('stockCurrent'))||0),
     stockReserved: existing ? (existing.stockReserved||0) : 0,
     stockMin: parseFloat(fd.get('stockMin'))||0, location: existing ? existing.location : blankLocation(),
@@ -7380,12 +7349,12 @@ function viewStock(){
       </div>
     </div>
 
-    <div class="form-card" style="margin-bottom:24px;border:2px solid var(--accent-soft);">
-      <div class="section-title" style="margin-top:0;padding-top:0;border-top:none;">📦 Naskladnit / vyskladnit</div>
-      <p style="font-size:13px;color:var(--ink-soft);margin-top:-6px;">Začni tady — vyber produkt a appka ti hned ukáže formulář na zápis pohybu. Dodavatel, cena, trvanlivost i umístění se zapisují k téhle konkrétní dávce.</p>
-      <div class="field combo-field" style="max-width:520px;">
-        <label style="font-weight:600;">🔍 Který produkt naskladňuješ/vyskladňuješ?</label>
-        <input type="text" id="stock-movement-product-input" class="search-input" placeholder="Začni psát název, EAN nebo SKU…" autocomplete="off" style="width:100%;max-width:none;font-size:15px;padding:12px 14px;" value="${state.stockMovementProductId?escapeAttr((productById(state.stockMovementProductId)||{}).name||''):''}">
+    <div class="form-card" style="margin-bottom:24px;">
+      <div class="section-title" style="margin-top:0;padding-top:0;border-top:none;">Skladový pohyb</div>
+      <p style="font-size:12.5px;color:var(--ink-soft);margin-top:-6px;">Vyber produkt — appka zobrazí formulář na zápis pohybu. Dodavatel, ceny, trvanlivost i umístění patří vždy k téhle konkrétní dávce.</p>
+      <div class="field combo-field" style="max-width:460px;">
+        <label>Produkt</label>
+        <input type="text" id="stock-movement-product-input" placeholder="Hledej podle názvu, EAN nebo SKU…" autocomplete="off" value="${state.stockMovementProductId?escapeAttr((productById(state.stockMovementProductId)||{}).name||''):''}">
         <div class="combo-list" id="stock-movement-product-list"></div>
       </div>
       ${state.stockMovementProductId ? (function(){
@@ -9979,6 +9948,9 @@ document.addEventListener('click', async (e)=>{
     const newExpiry = document.getElementById('sm-expiry').value;
     const newPriceRaw = document.getElementById('sm-price').value;
     const newVatRaw = document.getElementById('sm-vat').value;
+    const newSalePriceRaw = (document.getElementById('sm-sale-price')||{}).value ?? '';
+    const newSaleVatRaw = (document.getElementById('sm-sale-vat')||{}).value ?? '';
+    const newCostsRaw = (document.getElementById('sm-costs')||{}).value ?? '';
     const newSupplierId = (document.getElementById('sm-supplier')||{}).value || '';
     const newWarehouseId = (document.getElementById('sm-warehouse')||{}).value || '';
     const newRack = ((document.getElementById('sm-rack')||{}).value||'').trim();
@@ -9989,6 +9961,9 @@ document.addEventListener('click', async (e)=>{
     if(newExpiry){ p.expiryDate = newExpiry; changedParts.push('trvanlivost '+newExpiry); }
     if(newPriceRaw!==''){ p.purchasePrice = parseFloat(newPriceRaw)||0; changedParts.push('nákupní cena '+fmt(p.purchasePrice)+' Kč'); }
     if(newVatRaw!==''){ p.vatRatePurchase = parseFloat(newVatRaw)||0; changedParts.push('DPH nákup '+p.vatRatePurchase+'%'); }
+    if(newSalePriceRaw!==''){ p.salePrice = parseFloat(newSalePriceRaw)||0; changedParts.push('prodejní cena '+fmt(p.salePrice)+' Kč'); }
+    if(newSaleVatRaw!==''){ p.vatRate = parseFloat(newSaleVatRaw)||0; changedParts.push('DPH prodej '+p.vatRate+'%'); }
+    if(newCostsRaw!==''){ p.costs = parseFloat(newCostsRaw)||0; changedParts.push('náklady '+fmt(p.costs)+' Kč'); }
     if(newSupplierId){ p.supplierId = newSupplierId; changedParts.push('dodavatel '+((supplierById(newSupplierId)||{}).name||'')); }
     const newLocation = { rack: newRack, shelf: newShelf, spot: newSpot };
     if(newWarehouseId && newWarehouseId!==p.warehouseId){ p.warehouseId = newWarehouseId; changedParts.push('sklad '+((warehouseById(newWarehouseId)||{}).name||'')); }
@@ -9996,6 +9971,9 @@ document.addEventListener('click', async (e)=>{
     const fullReason = [note, changedParts.length?('aktualizováno: '+changedParts.join(', ')):''].filter(Boolean).join(' — ') || type;
     const movementExpiry = newExpiry || p.expiryDate || '';
     const movementVat = newVatRaw!=='' ? (parseFloat(newVatRaw)||0) : (p.vatRatePurchase??21);
+    const movementSalePrice = newSalePriceRaw!=='' ? (parseFloat(newSalePriceRaw)||0) : (p.salePrice||0);
+    const movementSaleVat = newSaleVatRaw!=='' ? (parseFloat(newSaleVatRaw)||0) : (p.vatRate??21);
+    const movementCosts = newCostsRaw!=='' ? (parseFloat(newCostsRaw)||0) : (p.costs||0);
     const movementSupplierId = newSupplierId || p.supplierId || '';
     const movementWarehouseId = newWarehouseId || p.warehouseId || '';
     const movementLocation = (newRack||newShelf||newSpot) ? newLocation : (p.location||blankLocation());
@@ -10005,6 +9983,7 @@ document.addEventListener('click', async (e)=>{
       if(!m){ alert('Pohyb nebyl nalezen.'); return; }
       m.type = type; m.qty = qty; m.reason = fullReason; m.unitCost = p.purchasePrice||0;
       m.expiryAtTime = movementExpiry; m.vatAtTime = movementVat;
+      m.salePrice = movementSalePrice; m.saleVat = movementSaleVat; m.costs = movementCosts;
       m.supplierId = movementSupplierId; m.warehouseId = movementWarehouseId; m.location = movementLocation;
       recomputeMovementsChain(p);
       if((p.stockCurrent||0) < 0 && !confirm(`Po úpravě klesne sklad do záporných hodnot (${p.stockCurrent}). Pokračovat a uložit?`)) return;
@@ -10012,7 +9991,7 @@ document.addEventListener('click', async (e)=>{
       const resulting = (p.stockCurrent||0) + qty;
       if(resulting < 0 && !confirm(`Sklad produktu „${p.name}“ klesne do záporných hodnot (${resulting}). Pokračovat?`)) return;
       p.stockCurrent = resulting;
-      p.movements.push({ id: uid(), type, qty, reason: fullReason, note:'', date: new Date().toISOString(), user: state.currentUser, resultingStock: resulting, unitCost: p.purchasePrice||0, expiryAtTime: movementExpiry, vatAtTime: movementVat, supplierId: movementSupplierId, warehouseId: movementWarehouseId, location: movementLocation });
+      p.movements.push({ id: uid(), type, qty, reason: fullReason, note:'', date: new Date().toISOString(), user: state.currentUser, resultingStock: resulting, unitCost: p.purchasePrice||0, expiryAtTime: movementExpiry, vatAtTime: movementVat, salePrice: movementSalePrice, saleVat: movementSaleVat, costs: movementCosts, supplierId: movementSupplierId, warehouseId: movementWarehouseId, location: movementLocation });
     }
     try{ await saveProducts(); }catch(err){ alert('Uložení se nepovedlo, zkus to prosím znovu.'); return; }
     if(state.view==='stock'){ state.stockMovementProductId = null; }
