@@ -6666,7 +6666,7 @@ function viewProducts(){
         <button class="btn secondary" data-action="goto-bulk-import-products">⇧ Import (CSV/Excel)</button>
         <button class="btn secondary" data-action="export-products">⬇ Export</button>
         <button class="btn secondary" data-action="toggle-categories-manage">Kategorie</button>
-        <button class="btn" data-action="new-product">+ Přidat produkt</button>
+        <button class="btn" data-action="new-product">+ Zalistovat produkt</button>
       </div>
     </div>
     <div class="client-detail-box" id="categories-manage-box" style="display:none;">
@@ -6769,7 +6769,7 @@ function viewProducts(){
       </div>
     </div>
 
-    ${list.length ? renderProductTable(list) : emptyState(all.length?'Žádný produkt neodpovídá filtru':'Žádné produkty', all.length?'Zkus upravit filtry.':'Přidej první produkt tlačítkem „+ Přidat produkt“.')}
+    ${list.length ? renderProductTable(list) : emptyState(all.length?'Žádný produkt neodpovídá filtru':'Žádné produkty', all.length?'Zkus upravit filtry.':'Zalistuj první produkt tlačítkem „+ Zalistovat produkt“.')}
     <p style="font-size:11.5px;color:var(--ink-soft);margin-top:14px;">Klávesové zkratky: <b>N</b> nový produkt · <b>Delete</b> smazat vybrané · <b>Esc</b> zrušit výběr · pravé tlačítko myši = kontextové menu · dvojklik = otevřít.</p>
   `;
 }
@@ -6789,7 +6789,7 @@ function viewProductForm(){
   const status = stockStatus(p);
   const hasNutritionData = !!(p.nutrition && Object.keys(p.nutrition).some(k=>k!=='per' && p.nutrition[k]!=null));
   return `
-    <div class="pagehead"><div><h1>${editing?'Upravit produkt':'Nový produkt'}</h1></div></div>
+    <div class="pagehead"><div><h1>${editing?'Upravit produkt':'Zalistovat produkt'}</h1></div></div>
     <form id="product-form" class="form-card">
 
       <div class="section-title" style="margin-top:0;padding-top:0;border-top:none;">Rychlé přidání podle EAN</div>
@@ -6933,34 +6933,24 @@ function viewProductForm(){
         </table>
       </div>
 
-      <div class="section-title">Ceny</div>
+      <div class="section-title">Prodejní cena</div>
       <div class="field-row">
-        <div class="field">
-          <label>Nákupní cena (s DPH)</label><input type="number" step="0.01" name="purchasePrice" id="pp-purchase" value="${p.purchasePrice||0}">
-          <p style="font-size:11px;color:var(--ink-soft);margin:4px 0 0 0;">Zadej cenu tak, jak je na dokladu od dodavatele — tedy s DPH.</p>
-        </div>
         <div class="field"><label>Prodejní cena (bez DPH)</label><input type="number" step="0.01" name="salePrice" id="pp-sale" value="${p.salePrice||0}"></div>
-      </div>
-      <div class="field-row">
-        <div class="field"><label>Sazba DPH (nákupní)</label>
-          <input type="number" step="0.1" min="0" max="100" name="vatRatePurchase" list="product-vat-options" value="${p.vatRatePurchase??21}">
-        </div>
         <div class="field"><label>Sazba DPH (prodejní)</label>
-          <input type="number" step="0.1" min="0" max="100" name="vatRate" list="product-vat-options" value="${p.vatRate??21}">
+          <input type="number" step="0.1" min="0" max="100" name="vatRate" id="pp-vat-sale" list="product-vat-options" value="${p.vatRate??21}">
           <datalist id="product-vat-options">${VAT_RATES.map(r=>`<option value="${r}">`).join('')}</datalist>
         </div>
       </div>
-      <div class="field-row">
-        <div class="field"><label>Náklady (doprava, balení…)</label><input type="number" step="0.01" name="costs" id="pp-costs" value="${p.costs||0}"></div>
-        <div class="field"></div>
-      </div>
+      ${editing ? `
       <div class="margin-box" id="margin-box">
-        <div class="mb-item"><div class="mb-label">Nákupní cena bez DPH</div><div class="mb-value" id="mb-purchase-vat" style="font-size:14px;">${fmt(exVat(p.purchasePrice||0, p.vatRatePurchase??21))} Kč</div></div>
+        <div class="mb-item"><div class="mb-label">Aktuální nákupní cena (s DPH)</div><div class="mb-value" style="font-size:14px;">${fmt(p.purchasePrice||0)} Kč</div></div>
         <div class="mb-item"><div class="mb-label">Prodejní cena s DPH</div><div class="mb-value" id="mb-sale-vat" style="font-size:14px;">${fmt((p.salePrice||0)*(1+(p.vatRate??21)/100))} Kč</div></div>
         <div class="mb-item"><div class="mb-label">Zisk čistý (bez DPH)</div><div class="mb-value" id="mb-profit">${fmt(margin.profit)} Kč</div></div>
         <div class="mb-item"><div class="mb-label">Marže</div><div class="mb-value" id="mb-margin">${margin.marginPct.toFixed(1)}%</div></div>
         <div class="mb-item"><div class="mb-label">Obchodní přirážka</div><div class="mb-value" id="mb-markup">${margin.markupPct.toFixed(1)}%</div></div>
       </div>
+      <p style="font-size:11px;color:var(--ink-soft);margin:6px 0 0 0;">Nákupní cena, DPH při nákupu a náklady se nastavují u konkrétní dávky v Sklad → Skladový pohyb — tam se promítnou i sem.</p>
+      ` : `<p style="font-size:12px;color:var(--ink-soft);margin:6px 0 0 0;">Nákupní cenu a marži uvidíš tady po prvním naskladnění (Sklad → Skladový pohyb).</p>`}
 
       <div class="section-title">Sklad</div>
       ${editing ? `
@@ -7031,31 +7021,29 @@ function setupProductForm(){
     if(m) openMovementEditPanel(m);
   }
 
-  const purchaseEl = document.getElementById('pp-purchase');
   const saleEl = document.getElementById('pp-sale');
-  const costsEl = document.getElementById('pp-costs');
-  const vatPurchaseEl = form.querySelector('input[name="vatRatePurchase"]');
-  const vatSaleEl = form.querySelector('input[name="vatRate"]');
+  const vatSaleEl = document.getElementById('pp-vat-sale');
+  const fixedPurchasePrice = (state.editingProductId ? (productById(state.editingProductId)||{}).purchasePrice : 0) || 0;
+  const fixedVatPurchase = (state.editingProductId ? (productById(state.editingProductId)||{}).vatRatePurchase : 21) ?? 21;
+  const fixedCosts = (state.editingProductId ? (productById(state.editingProductId)||{}).costs : 0) || 0;
   function updateMargin(){
-    const purchaseGross = parseFloat(purchaseEl.value)||0;
     const sale = parseFloat(saleEl.value)||0;
-    const costs = parseFloat(costsEl && costsEl.value)||0;
-    const vatPurchase = parseFloat(vatPurchaseEl && vatPurchaseEl.value)||0;
     const vatSale = parseFloat(vatSaleEl && vatSaleEl.value)||0;
-    const purchaseExVat = vatPurchase>0 ? purchaseGross/(1+vatPurchase/100) : purchaseGross;
-    const totalCost = purchaseExVat + costs;
+    const purchaseExVat = fixedVatPurchase>0 ? fixedPurchasePrice/(1+fixedVatPurchase/100) : fixedPurchasePrice;
+    const totalCost = purchaseExVat + fixedCosts;
     const profit = sale - totalCost;
     const marginPct = sale>0 ? (profit/sale*100) : 0;
     const markupPct = totalCost>0 ? (profit/totalCost*100) : 0;
-    document.getElementById('mb-purchase-vat').textContent = fmt(purchaseExVat)+' Kč';
-    document.getElementById('mb-sale-vat').textContent = fmt(sale*(1+vatSale/100))+' Kč';
-    document.getElementById('mb-profit').textContent = fmt(profit)+' Kč';
-    document.getElementById('mb-margin').textContent = marginPct.toFixed(1)+'%';
-    document.getElementById('mb-markup').textContent = markupPct.toFixed(1)+'%';
+    const saleVatEl = document.getElementById('mb-sale-vat');
+    const profitEl = document.getElementById('mb-profit');
+    const marginEl = document.getElementById('mb-margin');
+    const markupEl = document.getElementById('mb-markup');
+    if(saleVatEl) saleVatEl.textContent = fmt(sale*(1+vatSale/100))+' Kč';
+    if(profitEl) profitEl.textContent = fmt(profit)+' Kč';
+    if(marginEl) marginEl.textContent = marginPct.toFixed(1)+'%';
+    if(markupEl) markupEl.textContent = markupPct.toFixed(1)+'%';
   }
-  if(purchaseEl){ purchaseEl.addEventListener('input', updateMargin); saleEl.addEventListener('input', updateMargin); }
-  if(costsEl) costsEl.addEventListener('input', updateMargin);
-  if(vatPurchaseEl) vatPurchaseEl.addEventListener('input', updateMargin);
+  if(saleEl){ saleEl.addEventListener('input', updateMargin); }
   if(vatSaleEl) vatSaleEl.addEventListener('input', updateMargin);
 
   function drawProductNumberBarcode(){
@@ -7201,8 +7189,8 @@ async function onSubmitProduct(e){
     category: fd.get('category')||'', manufacturer: fd.get('manufacturer')||'',
     supplierId: fd.get('supplierId')||'', unit: fd.get('unit')||'ks',
     warehouseId: existing ? existing.warehouseId : ((defaultWarehouse()||{}).id||''),
-    vatRate: parseFloat(fd.get('vatRate'))||0, vatRatePurchase: parseFloat(fd.get('vatRatePurchase'))||0, note: fd.get('note')||'',
-    purchasePrice: parseFloat(fd.get('purchasePrice'))||0, salePrice: parseFloat(fd.get('salePrice'))||0, costs: parseFloat(fd.get('costs'))||0,
+    vatRate: parseFloat(fd.get('vatRate'))||0, vatRatePurchase: existing ? (existing.vatRatePurchase??21) : 21, note: fd.get('note')||'',
+    purchasePrice: existing ? (existing.purchasePrice||0) : 0, salePrice: parseFloat(fd.get('salePrice'))||0, costs: existing ? (existing.costs||0) : 0,
     stockCurrent: existing ? existing.stockCurrent : (parseFloat(fd.get('stockCurrent'))||0),
     stockReserved: existing ? (existing.stockReserved||0) : 0,
     stockMin: parseFloat(fd.get('stockMin'))||0, location: existing ? existing.location : blankLocation(),
@@ -7392,19 +7380,26 @@ function viewStock(){
       </div>
     </div>
 
-    <div class="form-card" style="margin-bottom:24px;">
-      <div class="section-title" style="margin-top:0;padding-top:0;border-top:none;">Skladový pohyb — naskladnění / vyskladnění</div>
-      <p style="font-size:12.5px;color:var(--ink-soft);margin-top:-6px;">Vyber produkt a zapiš pohyb — dodavatel, cena, trvanlivost a umístění se vždy vztahují k téhle konkrétní dávce.</p>
-      <div class="field combo-field" style="max-width:460px;">
-        <label>Produkt</label>
-        <input type="text" id="stock-movement-product-input" placeholder="Hledej podle názvu, EAN nebo SKU…" autocomplete="off" value="${state.stockMovementProductId?escapeAttr((productById(state.stockMovementProductId)||{}).name||''):''}">
+    <div class="form-card" style="margin-bottom:24px;border:2px solid var(--accent-soft);">
+      <div class="section-title" style="margin-top:0;padding-top:0;border-top:none;">📦 Naskladnit / vyskladnit</div>
+      <p style="font-size:13px;color:var(--ink-soft);margin-top:-6px;">Začni tady — vyber produkt a appka ti hned ukáže formulář na zápis pohybu. Dodavatel, cena, trvanlivost i umístění se zapisují k téhle konkrétní dávce.</p>
+      <div class="field combo-field" style="max-width:520px;">
+        <label style="font-weight:600;">🔍 Který produkt naskladňuješ/vyskladňuješ?</label>
+        <input type="text" id="stock-movement-product-input" class="search-input" placeholder="Začni psát název, EAN nebo SKU…" autocomplete="off" style="width:100%;max-width:none;font-size:15px;padding:12px 14px;" value="${state.stockMovementProductId?escapeAttr((productById(state.stockMovementProductId)||{}).name||''):''}">
         <div class="combo-list" id="stock-movement-product-list"></div>
       </div>
       ${state.stockMovementProductId ? (function(){
         const sp = productById(state.stockMovementProductId);
         if(!sp) return '';
         return `
-          <p style="font-size:13px;margin:10px 0;">Aktuálně skladem: <strong>${sp.stockCurrent||0} ${escapeHtml(sp.unit||'ks')}</strong> · ${sp.warehouseId?escapeHtml((warehouseById(sp.warehouseId)||{}).name||''):'—'}${formatLocation(sp.location)?(' · '+escapeHtml(formatLocation(sp.location))):''}</p>
+          <div style="background:var(--paper);border-radius:var(--radius);padding:12px 16px;margin:14px 0 0 0;display:flex;align-items:center;gap:14px;">
+            ${sp.photo?`<img src="${sp.photo}" style="width:44px;height:44px;object-fit:cover;border-radius:6px;">`:''}
+            <div>
+              <div style="font-weight:600;font-size:14px;">${escapeHtml(sp.name)}</div>
+              <div style="font-size:12.5px;color:var(--ink-soft);">Aktuálně skladem: <strong>${sp.stockCurrent||0} ${escapeHtml(sp.unit||'ks')}</strong> · ${sp.warehouseId?escapeHtml((warehouseById(sp.warehouseId)||{}).name||''):'—'}${formatLocation(sp.location)?(' · '+escapeHtml(formatLocation(sp.location))):''}</div>
+            </div>
+            <button type="button" class="btn-link" data-action="clear-stock-movement-product" style="margin-left:auto;">Vybrat jiný produkt</button>
+          </div>
           ${renderStockMovementPanel(sp).replace('style="display:none;margin-top:10px;"','style="display:block;margin-top:10px;"').replace('Nový skladový pohyb','Nový skladový pohyb — '+escapeHtml(sp.name))}
         `;
       })() : ''}
@@ -9702,6 +9697,7 @@ document.addEventListener('click', async (e)=>{
   }
   else if(action==='new-warehouse'){ state.editingWarehouseId=null; state.view='warehouse-form'; render(); }
   else if(action==='view-warehouse'){ state.viewingWarehouseId=id; state.view='warehouse-detail'; render(); }
+  else if(action==='clear-stock-movement-product'){ state.stockMovementProductId=null; render(); }
   else if(action==='edit-warehouse'){ state.editingWarehouseId=id; state.view='warehouse-form'; render(); }
   else if(action==='delete-warehouse'){
     if(state.warehouses.length<=1){ alert('Musí zůstat alespoň jeden sklad.'); return; }
