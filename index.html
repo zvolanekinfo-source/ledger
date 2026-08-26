@@ -7369,11 +7369,11 @@ function viewStock(){
 
   // Sklad je už vybraný — místo velkých karet jen kompaktní přepínač nahoře.
   const compactSwitcherHtml = `
-    <div class="form-card" style="margin-bottom:0;padding:14px 18px;">
+    <div class="form-card" style="margin-bottom:0;">
       <div style="display:flex;align-items:center;gap:12px;">
-        <button type="button" class="btn secondary" data-action="back-to-warehouse-list" style="white-space:nowrap;">← Zpět na sklady</button>
+        <button type="button" class="btn secondary" data-action="back-to-warehouse-list" style="white-space:nowrap;padding:8px 14px;font-size:13.5px;">← Zpět na sklady</button>
         <span style="font-size:12.5px;color:var(--ink-soft);white-space:nowrap;">Přepnout sklad:</span>
-        <select id="stock-warehouse-switch" style="flex:1;padding:10px 12px;border:1px solid var(--line);border-radius:var(--radius);font-size:14px;">
+        <select id="stock-warehouse-switch" style="flex:1;padding:8px 10px;border:1px solid var(--line);border-radius:var(--radius);font-size:13.5px;">
           ${state.warehouses.map(wh=>`<option value="${wh.id}" ${wh.id===w.id?'selected':''}>${escapeHtml(wh.name)}${wh.isDefault?' ★':''}</option>`).join('')}
         </select>
       </div>
@@ -7390,7 +7390,7 @@ function viewStock(){
 
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:24px;">
       ${compactSwitcherHtml}
-      <div class="form-card" style="margin-bottom:0;padding:14px 18px;">
+      <div class="form-card" style="margin-bottom:0;">
         <div class="combo-field">
           <input type="text" id="stock-scan-input" class="search-input" placeholder="Najít produkt — napiš název, EAN nebo kód…" autocomplete="off" style="max-width:none;width:100%;">
           <div class="combo-list" id="stock-scan-list"></div>
