@@ -5698,7 +5698,7 @@ function viewWarehouseForm(){
       <div class="field"><label>Název skladu</label><input name="name" value="${escapeAttr(w.name)}" placeholder="např. Hlavní sklad, Provozovna Brno…" required></div>
       <div class="field"><label>Adresa</label><input name="address" value="${escapeAttr(w.address||'')}"></div>
       <label style="display:flex;align-items:center;gap:8px;font-size:14px;margin:6px 0 14px 0;">
-        <input type="checkbox" name="isDefault" ${w.isDefault?'checked':''}> Výchozí sklad pro nové produkty
+        <input type="checkbox" name="isDefault" ${w.isDefault?'checked':''}> Výchozí sklad pro nové produkty (★) — automaticky se přiřadí každému nově zalistovanému produktu
       </label>
       <div class="section-title">Kapacita skladu</div>
       <p style="font-size:12.5px;color:var(--ink-soft);margin-top:-6px;">Volitelné. U palet a boxů program sama spočítá, kolik je aktuálně obsazeno, podle „kusů na paletě"/„kusů v boxu" u jednotlivých produktů v tomhle skladu.</p>
@@ -5721,6 +5721,12 @@ function viewWarehouseForm(){
         <button type="button" class="btn secondary" data-action="nav" data-view="stock">Zrušit</button>
         <button type="submit" class="btn">${editing?'Uložit změny':'Uložit sklad'}</button>
       </div>
+      ${editing && state.warehouses.length>1 ? `
+      <div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--line);">
+        <button type="button" class="btn danger small" data-action="delete-warehouse" data-id="${w.id}">Smazat tento sklad</button>
+        <p style="font-size:11.5px;color:var(--ink-soft);margin:6px 0 0 0;">Produkty v něm zůstanou, jen bez přiřazeného skladu.</p>
+      </div>
+      ` : ''}
     </form>
   `;
 }
@@ -7277,8 +7283,8 @@ function viewStock(){
           const pct = wh.capacityValue>0 ? Math.min(100, Math.round(usage/wh.capacityValue*100)) : null;
           const isActive = w && w.id===wh.id;
           return `
-          <div class="card rowlink" data-action="select-stock-warehouse" data-id="${wh.id}" style="min-width:220px;flex:1;cursor:pointer;${isActive?'border:2px solid var(--accent);box-shadow:0 0 0 3px var(--accent-soft);':''}">
-            <div class="label">${escapeHtml(wh.name)}${wh.isDefault?' <span style="color:var(--accent);">★</span>':''}${isActive?' <span style="color:var(--accent);font-weight:700;">· aktivní</span>':''}</div>
+          <div class="card" style="min-width:220px;flex:1;${isActive?'border:2px solid var(--accent);box-shadow:0 0 0 3px var(--accent-soft);':''}">
+            <div class="label">${escapeHtml(wh.name)}${wh.isDefault?' <span style="color:var(--accent);" title="Výchozí sklad pro nové produkty">★</span>':''}${isActive?' <span style="color:var(--accent);font-weight:700;">· aktivní</span>':''}</div>
             <div style="font-size:12.5px;color:var(--ink-soft);margin-bottom:8px;">${escapeHtml(wh.address||'—')} · ${state.products.filter(p=>p.warehouseId===wh.id && !p.archived).length} produktů</div>
             ${pct!==null ? `
               <div style="background:var(--paper);border-radius:20px;height:6px;overflow:hidden;margin-bottom:4px;">
@@ -7289,10 +7295,9 @@ function viewStock(){
                 · <span style="font-weight:600;color:${(wh.capacityValue-usage)<=0?'var(--red)':(pct>=70?'var(--amber)':'var(--accent)')};">zbývá ${wh.capacityUnitType!=='jine'?fmtWhole(Math.max(0,wh.capacityValue-usage)):fmt(Math.max(0,wh.capacityValue-usage))}</span>
               </div>
             ` : ''}
-            <div class="no-print" style="display:flex;gap:6px;flex-wrap:wrap;">
-              <button type="button" class="btn-link" data-action="edit-warehouse" data-id="${wh.id}">Upravit</button>
-              ${!wh.isDefault?`<button type="button" class="btn-link" data-action="set-default-warehouse" data-id="${wh.id}">Nastavit jako výchozí</button>`:''}
-              ${state.warehouses.length>1?`<button type="button" class="btn-link" data-action="delete-warehouse" data-id="${wh.id}" style="color:var(--red);">Smazat</button>`:''}
+            <div class="no-print" style="display:flex;gap:8px;margin-top:10px;">
+              <button type="button" class="btn ${isActive?'secondary':''} small" data-action="select-stock-warehouse" data-id="${wh.id}" style="flex:1;">${isActive?'Vybráno ✓':'Vybrat sklad'}</button>
+              <button type="button" class="btn secondary small" data-action="edit-warehouse" data-id="${wh.id}">Upravit</button>
             </div>
           </div>
         `;}).join('')}
@@ -9682,6 +9687,8 @@ document.addEventListener('click', async (e)=>{
     state.warehouses = state.warehouses.filter(w=>w.id!==id);
     if(!state.warehouses.some(w=>w.isDefault) && state.warehouses[0]) state.warehouses[0].isDefault = true;
     if(state.stockWarehouseId===id) state.stockWarehouseId = null;
+    if(state.editingWarehouseId===id) state.editingWarehouseId = null;
+    state.view = 'stock';
     try{ await saveWarehouses(); }catch(err){ alert('Smazání se nepovedlo.'); }
     render();
   }
