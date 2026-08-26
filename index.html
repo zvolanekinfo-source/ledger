@@ -684,6 +684,7 @@ let state = {
   editingWarehouseId: null,
   viewingWarehouseId: null,
   stockMovementProductId: null,
+  newMovementPanelOpen: false,
   orders: [],
   editingOrderId: null,
   orderFormItems: [],
@@ -886,8 +887,8 @@ async function signOutRemote(){
 
 /* ---------- ZAPOMENUTÉ HESLO ----------
    Standardní Supabase flow: pošleme e-mail s odkazem, který uživatele
-   přivede zpátky do appky s tokenem v URL (#access_token=...&type=recovery).
-   Appka to pozná, ověření tím proběhlo kliknutím na odkaz v e-mailu (jiné
+   přivede zpátky do programu s tokenem v URL (#access_token=...&type=recovery).
+   Program to pozná, ověření tím proběhlo kliknutím na odkaz v e-mailu (jiné
    ověření se neděje) a rovnou nabídne nastavení nového hesla. Po uložení je
    token použit i k rovnovou přihlášení, takže žádný další krok není potřeba. */
 async function requestPasswordReset(email){
@@ -1229,7 +1230,7 @@ async function loadTeam(){
 }
 async function loadMyMemberships(){
   // Zjistí, ke kolika různým firmám (tenantům) je tenhle přihlášený člověk přiřazený —
-  // jeden e-mail/login může patřit k víc firmám zároveň (appka je pro víc firem najednou).
+  // jeden e-mail/login může patřit k víc firmám zároveň (program je pro víc firem najednou).
   try{
     const res = await sbRequest(`/team_members?user_id=eq.${encodeURIComponent(session.user.id)}&select=tenant_id,role&order=created_at.asc`);
     const rows = await res.json();
@@ -1336,7 +1337,7 @@ async function loadAll(){
       }
     }
   }catch(e){}
-  // starší uložené e-shopy nemusí mít vlastní tajný klíč pro webhook — dopočítat, ať appka nikdy neřeší globální sdílený klíč
+  // starší uložené e-shopy nemusí mít vlastní tajný klíč pro webhook — dopočítat, ať program nikdy neřeší globální sdílený klíč
   let neededSecretMigration = false;
   (state.integrations.eshops||[]).forEach(e=>{ if(!e.webhookSecret){ e.webhookSecret = generateWebhookSecret(); neededSecretMigration = true; } });
   if(neededSecretMigration){ try{ await saveIntegrations(); }catch(e){} }
@@ -1679,7 +1680,7 @@ function renderWidgetCashFlow(){
     bodyHtml: pricesHiddenForMe() ? `<p style="color:var(--ink-soft);font-size:13px;margin:0;">Cash flow je pro tebe skryté.</p>` : `
       ${(overdue.inflow||overdue.outflow) ? `<div style="background:var(--red-soft);color:var(--red);padding:8px 14px;border-radius:var(--radius);font-size:12.5px;font-weight:600;margin-bottom:14px;">Po splatnosti: ${overdue.inflow>0?`čeká se na příjem ${fmt(overdue.inflow)} Kč`:''}${overdue.inflow>0&&overdue.outflow>0?' · ':''}${overdue.outflow>0?`dlužíš ${fmt(overdue.outflow)} Kč`:''}</div>` : ''}
       ${buildCashFlowChart(buckets)}
-      <p style="font-size:11px;color:var(--ink-soft);margin:10px 0 0 0;">Založeno na splatnostech nezaplacených faktur a přijatých faktur + plánovaných opakovaných fakturách. Nejde o skutečný bankovní zůstatek, appka nezná tvůj aktuální stav účtu.</p>
+      <p style="font-size:11px;color:var(--ink-soft);margin:10px 0 0 0;">Založeno na splatnostech nezaplacených faktur a přijatých faktur + plánovaných opakovaných fakturách. Nejde o skutečný bankovní zůstatek, program nezná tvůj aktuální stav účtu.</p>
     `,
     sheetRows
   };
@@ -3642,7 +3643,7 @@ function renderPermissionEditor(u){
         <button type="button" class="btn secondary small" data-action="save-permissions" data-userid="${u.id}">Uložit oprávnění</button>
         <span class="perm-save-status" style="font-size:12.5px;color:var(--accent);"></span>
       </div>
-      <p style="font-size:11.5px;color:var(--ink-soft);margin:10px 0 0 0;">Projeví se, až se „${escapeHtml(u.name)}“ příště přihlásí (nebo appku obnoví). Jako admin u sebe žádné omezení nikdy neuvidíš — admin má vždy přístup ke všemu.</p>
+      <p style="font-size:11.5px;color:var(--ink-soft);margin:10px 0 0 0;">Projeví se, až se „${escapeHtml(u.name)}“ příště přihlásí (nebo program obnoví). Jako admin u sebe žádné omezení nikdy neuvidíš — admin má vždy přístup ke všemu.</p>
     </div>
   `;
 }
@@ -3823,7 +3824,7 @@ function getByPath(obj, path){
   return path.split('.').reduce((o,k)=> (o==null?undefined:o[k]), obj);
 }
 async function fetchCustomApiOrders(cred){
-  if(!cred.apiUrl) throw new Error('Doplň URL, kam se má appka dotazovat.');
+  if(!cred.apiUrl) throw new Error('Doplň URL, kam se má program dotazovat.');
   const headers = {};
   if(cred.authHeaderName && cred.authHeaderValue) headers[cred.authHeaderName] = cred.authHeaderValue;
   const res = await fetch(cred.apiUrl, { headers });
@@ -3854,7 +3855,7 @@ async function fetchEshopOrders(eshop){
 async function pollEshopOrders(eshopId, silent){
   const eshop = state.integrations.eshops.find(e=>e.id===eshopId);
   if(!eshop || !eshop.active) return;
-  if((ESHOP_PLATFORMS[eshop.platform]||{}).pushOnly) return; // tenhle typ appka sama nedotazuje, jen přijímá webhook
+  if((ESHOP_PLATFORMS[eshop.platform]||{}).pushOnly) return; // tenhle typ program sama nedotazuje, jen přijímá webhook
   try{
     const orders = await fetchEshopOrders(eshop);
     let imported = 0;
@@ -3890,7 +3891,7 @@ function startEshopPolling(){
   (state.integrations.eshops||[]).forEach(e=>{
     if(!e.active || (ESHOP_PLATFORMS[e.platform]||{}).pushOnly) return;
     window._pollTimers[e.id] = setInterval(()=>pollEshopOrders(e.id, true), (state.integrations.pollIntervalSec||60)*1000);
-    pollEshopOrders(e.id, true); // hned při spuštění appky zkontrolovat, ať nečekáš na první interval
+    pollEshopOrders(e.id, true); // hned při spuštění programu zkontrolovat, ať nečekáš na první interval
   });
   // Fronta z webhooku (viz Nastavení → Integrace, tlačítko "Nastavit okamžité doručení webhookem")
   // se kontroluje vždy, nezávisle na tom, jestli má uživatel aktivní přímé dotazování e-shopu —
@@ -3924,7 +3925,7 @@ async function pollIncomingOrdersQueue(silent){
         }
       }
       // označit jako zpracované i v případě, že se nepodařilo spárovat položky —
-      // ať appka pořád nezkouší tu samou nespárovanou objednávku dokola
+      // ať program pořád nezkouší tu samou nespárovanou objednávku dokola
       await sbRequest(`/incoming_orders?id=eq.${row.id}`, { method:'PATCH', body: JSON.stringify({ processed:true }) }).catch(()=>{});
     }
     if(imported){ await saveOrders(); if(state.view==='orders') render(); }
@@ -3952,19 +3953,19 @@ async function createZasilkovnaShipment(o, cred){
   const res = await fetch('https://www.zasilkovna.cz/api/rest/createPacket', {
     method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload)
   });
-  if(!res.ok) throw new Error(`Zásilkovna odpovědělo chybou ${res.status} (pravděpodobně CORS blokace přímého volání z appky).`);
+  if(!res.ok) throw new Error(`Zásilkovna odpovědělo chybou ${res.status} (pravděpodobně CORS blokace přímého volání z programu).`);
   return await res.json();
 }
 async function createDpdShipment(o, cred){
   // DPD API je určené výhradně pro server-to-server komunikaci — nejde bezpečně ani technicky
-  // zavolat přímo z prohlížeče appky (CORS).
-  throw new Error('DPD API nejde bezpečně zavolat přímo z appky v prohlížeči (vyžaduje server).');
+  // zavolat přímo z prohlížeče programu (CORS).
+  throw new Error('DPD API nejde bezpečně zavolat přímo z programu v prohlížeči (vyžaduje server).');
 }
 async function createPplShipment(o, cred){
-  throw new Error('PPL API nejde bezpečně zavolat přímo z appky v prohlížeči (vyžaduje server).');
+  throw new Error('PPL API nejde bezpečně zavolat přímo z programu v prohlížeči (vyžaduje server).');
 }
 async function createGlsShipment(o, cred){
-  throw new Error('GLS API nejde bezpečně zavolat přímo z appky v prohlížeči (vyžaduje server).');
+  throw new Error('GLS API nejde bezpečně zavolat přímo z programu v prohlížeči (vyžaduje server).');
 }
 async function createCarrierShipment(carrier, o){
   if(carrier.type==='zasilkovna') return createZasilkovnaShipment(o, carrier.credentials);
@@ -4000,7 +4001,7 @@ async function autoProcessShipping(o){
     o.shippingCarrier = carrier.type;
     await saveOrders().catch(()=>{});
     state.integrationTestStatus = state.integrationTestStatus || {};
-    state.integrationTestStatus['auto-ship'] = { ok:false, message: `Automatické vytvoření zásilky u ${carrier.name} se nepovedlo: ${err.message||''} Doplň sledovací číslo ručně a vytiskni appkou vygenerovaný štítek.` };
+    state.integrationTestStatus['auto-ship'] = { ok:false, message: `Automatické vytvoření zásilky u ${carrier.name} se nepovedlo: ${err.message||''} Doplň sledovací číslo ručně a vytiskni programem vygenerovaný štítek.` };
   }
 }
 
@@ -4010,18 +4011,18 @@ function renderIntegrationsSection(){
   return `
     <div class="form-card">
       <p style="font-size:12.5px;color:var(--ink-soft);margin-top:0;">
-        Appka bez dalšího nastavení volá API e-shopů přímo z prohlížeče a <strong>pravidelně sama kontroluje nové objednávky</strong>,
+        Program bez dalšího nastavení volá API e-shopů přímo z prohlížeče a <strong>pravidelně sama kontroluje nové objednávky</strong>,
         dokud ji máš otevřenou (interval nastavíš níž). U API, která volání z prohlížeče blokují (typicky Shopify a přepravci jako
-        DPD), appka chybu hned ukáže a bezpečně přepne na ruční zadání, takže nikdy nic nerozbije.
+        DPD), program chybu hned ukáže a bezpečně přepne na ruční zadání, takže nikdy nic nerozbije.
       </p>
       <p style="font-size:12.5px;color:var(--ink-soft);">
         Chceš, aby se objednávka objevila <strong>prakticky okamžitě</strong>, ne až při další kontrole? U každého e-shopu níž najdeš
         webhook URL — po nasazení přiložené malé serverové funkce do vašeho Supabase projektu (návod je v balíčku, cos dostal/a ke
-        stažení) appka objednávku uvidí do pár vteřin od jejího vzniku.
+        stažení) program objednávku uvidí do pár vteřin od jejího vzniku.
       </p>
       <p style="font-size:12.5px;color:var(--ink-soft);">
-        Firemní systémy jako K2, Helios, SAP nebo Money S3/S5 obvykle běží uvnitř firemní sítě a appka se k nim zvenku nedostane —
-        pro ně přidej typ <strong>„ERP / vlastní systém přes webhook"</strong>, appka pak jen čeká, až jí data pošlete vy (návod
+        Firemní systémy jako K2, Helios, SAP nebo Money S3/S5 obvykle běží uvnitř firemní sítě a program se k nim zvenku nedostane —
+        pro ně přidej typ <strong>„ERP / vlastní systém přes webhook"</strong>, program pak jen čeká, až jí data pošlete vy (návod
         k tomu je také v balíčku se serverovou funkcí).
       </p>
       <div class="field" style="max-width:260px;">
@@ -4039,7 +4040,7 @@ function renderIntegrationsSection(){
     <button type="button" class="btn secondary small" data-action="add-eshop">+ Přidat e-shop</button>
 
     <div class="section-title" style="margin-top:26px;">Dopravci</div>
-    <p style="font-size:12.5px;color:var(--ink-soft);margin-top:-8px;">Appka vybírá dopravce automaticky podle pořadí a pravidel (váha, typ doručení) — první, který na objednávku sedí, se použije.</p>
+    <p style="font-size:12.5px;color:var(--ink-soft);margin-top:-8px;">Program vybírá dopravce automaticky podle pořadí a pravidel (váha, typ doručení) — první, který na objednávku sedí, se použije.</p>
     ${(it.carriers||[]).map((c,idx)=>renderCarrierCard(c,idx)).join('') || `<p style="font-size:13px;color:var(--ink-soft);">Zatím žádný dopravce.</p>`}
     <button type="button" class="btn secondary small" data-action="add-carrier">+ Přidat dopravce</button>
   `;
@@ -4065,16 +4066,16 @@ function renderEshopCard(e){
           </div>
         </form>
         <p style="font-size:12.5px;color:var(--ink-soft);margin-top:0;">
-          Tenhle typ appka sama nekontroluje (K2/Helios/SAP/Money a podobné systémy obvykle běží uvnitř firemní sítě, appka
-          se k nim zvenku nedostane). Místo toho appka jen <strong>čeká, až jí data pošle vaše strana</strong> — malý skript
-          nebo export uvnitř vašeho systému zavolá URL níž a pošle objednávku ve formátu, který appka čeká.
+          Tenhle typ program sama nekontroluje (K2/Helios/SAP/Money a podobné systémy obvykle běží uvnitř firemní sítě, program
+          se k nim zvenku nedostane). Místo toho program jen <strong>čeká, až jí data pošle vaše strana</strong> — malý skript
+          nebo export uvnitř vašeho systému zavolá URL níž a pošle objednávku ve formátu, který program čeká.
         </p>
         <div class="mini-label">Webhook URL, kam má váš systém posílat objednávky</div>
         <div style="display:flex;gap:8px;align-items:center;">
           <input type="text" readonly value="${escapeAttr(webhookUrl)}" style="flex:1;font-family:'IBM Plex Mono',monospace;font-size:11.5px;background:var(--paper);" onclick="this.select()">
           <button type="button" class="btn secondary small" data-action="copy-webhook-url" data-url="${escapeAttr(webhookUrl)}">Kopírovat</button>
         </div>
-        <div class="mini-label">Tajný klíč — vygenerovala appka, jen pro tenhle systém. Pošli ho v hlavičce X-Custom-Secret</div>
+        <div class="mini-label">Tajný klíč — vygenerovala program, jen pro tenhle systém. Pošli ho v hlavičce X-Custom-Secret</div>
         <div style="display:flex;gap:8px;align-items:center;">
           <input type="text" readonly value="${escapeAttr(e.webhookSecret||'')}" style="flex:1;font-family:'IBM Plex Mono',monospace;font-size:11.5px;background:var(--paper);" onclick="this.select()">
           <button type="button" class="btn secondary small" data-action="copy-webhook-url" data-url="${escapeAttr(e.webhookSecret||'')}">Kopírovat</button>
@@ -4087,7 +4088,7 @@ function renderEshopCard(e){
       </div>
     `;
   }
-  const usesOwnSecret = e.platform==='shopify'; // Shopify si signing secret generuje samo, appka ho jen přijme a uloží
+  const usesOwnSecret = e.platform==='shopify'; // Shopify si signing secret generuje samo, program ho jen přijme a uloží
   return `
     <div class="form-card">
       <div class="section-title" style="margin-top:0;padding-top:0;border-top:none;display:flex;justify-content:space-between;align-items:center;">
@@ -4118,9 +4119,9 @@ function renderEshopCard(e){
         <input type="text" readonly value="${escapeAttr(webhookUrl)}" style="flex:1;font-family:'IBM Plex Mono',monospace;font-size:11.5px;background:var(--paper);" onclick="this.select()">
         <button type="button" class="btn secondary small" data-action="copy-webhook-url" data-url="${escapeAttr(webhookUrl)}">Kopírovat</button>
       </div>
-      <p style="font-size:11px;color:var(--ink-soft);margin:6px 0 0 0;">Tuhle URL vlož do webhooků v ${platform?platform.label:e.platform} — návod je v souboru, který appka poslala pro nasazení serverové funkce.</p>
+      <p style="font-size:11px;color:var(--ink-soft);margin:6px 0 0 0;">Tuhle URL vlož do webhooků v ${platform?platform.label:e.platform} — návod je v souboru, který program poslala pro nasazení serverové funkce.</p>
       ${(!usesOwnSecret && e.platform==='woocommerce') ? `
-      <div class="mini-label">Webhook secret — appka ho vygenerovala, vlož ho do nastavení webhooku ve WooCommerce jako "Secret"</div>
+      <div class="mini-label">Webhook secret — program ho vygenerovala, vlož ho do nastavení webhooku ve WooCommerce jako "Secret"</div>
       <div style="display:flex;gap:8px;align-items:center;">
         <input type="text" readonly value="${escapeAttr(e.webhookSecret||'')}" style="flex:1;font-family:'IBM Plex Mono',monospace;font-size:11.5px;background:var(--paper);" onclick="this.select()">
         <button type="button" class="btn secondary small" data-action="copy-webhook-url" data-url="${escapeAttr(e.webhookSecret||'')}">Kopírovat</button>
@@ -4300,7 +4301,7 @@ function viewSettings(){
         ${isCurrentUserAdmin()
           ? 'Jako admin můžeš kolegu přidat rovnou i s heslem, spravovat jméno, roli i přihlašovací údaje kohokoli v týmu (i svoje vlastní jméno) a v případě potřeby jeho účet i trvale smazat (ne jen zrušit přístup).'
           : 'Noví kolegové se zaregistrují sami přes záložku „Registrace" na přihlašovací obrazovce, nebo je (i s heslem) může rovnou přidat kolega s rolí admin. Jméno, roli i přihlašovací údaje ostatních spravuje jen admin.'}
-        Appka hesla nikdy neukládá ani nevidí — o vše se stará Supabase Auth.
+        Program hesla nikdy neukládá ani nevidí — o vše se stará Supabase Auth.
       </p>
     </div>
 
@@ -4709,10 +4710,10 @@ function viewBulkImport(){
       ${step==='upload' ? `
         <p style="font-size:13px;color:var(--ink-soft);">
           Podporované formáty: .xlsx, .xls, .csv. ${isProducts
-            ? 'Nahraj export produktů — appka podle EAN a SKU sama pozná duplicity a přeskočí je.'
+            ? 'Nahraj export produktů — program podle EAN a SKU sama pozná duplicity a přeskočí je.'
             : isContacts
-            ? 'Nahraj export kontaktů/odběratelů — appka je buď spáruje s existujícími (podle IČO nebo jména), nebo založí nové.'
-            : 'Nahraj export faktur (ideálně s údaji o odběrateli u každého řádku — appka odběratele buď spáruje s existujícím, nebo založí nového).'}
+            ? 'Nahraj export kontaktů/odběratelů — program je buď spáruje s existujícími (podle IČO nebo jména), nebo založí nové.'
+            : 'Nahraj export faktur (ideálně s údaji o odběrateli u každého řádku — program odběratele buď spáruje s existujícím, nebo založí nového).'}
         </p>
         <div class="formfoot" style="margin-top:14px;">
           <button type="button" class="btn" data-action="trigger-bulk-file">Vybrat soubor</button>
@@ -4722,7 +4723,7 @@ function viewBulkImport(){
       ` : ''}
       ${step==='mapping' ? `
         <p style="font-size:13px;color:var(--ink-soft);">
-          Soubor <strong>${escapeHtml(bi.fileName)}</strong> — ${bi.rows.length} řádků. Appka sloupce odhadla sama, zkontroluj a případně uprav.
+          Soubor <strong>${escapeHtml(bi.fileName)}</strong> — ${bi.rows.length} řádků. Program sloupce odhadla sama, zkontroluj a případně uprav.
         </p>
         <table class="fixed-table">
           <thead><tr><th>Sloupec v souboru</th><th>Ukázka hodnoty</th><th>Co to je</th></tr></thead>
@@ -4989,7 +4990,7 @@ function productCostLayers(p){
 }
 function productUnitCost(p){
   // Efektivní nákladová cena za kus BEZ DPH — nákupní cena se zadává s DPH (jako na dokladu
-  // od dodavatele), appka si DPH sama odečte podle sazby platné v době pohybu.
+  // od dodavatele), program si DPH sama odečte podle sazby platné v době pohybu.
   const movements = p.movements||[];
   const fallback = exVat(p.purchasePrice||0, p.vatRatePurchase??21);
   if(!movements.length) return fallback;
@@ -5527,7 +5528,7 @@ function viewRecurringInvoices(){
       <div><h1>Opakované faktury</h1><p class="desc">${list.length} šablon${dueCount?` · ${dueCount} čeká na vygenerování`:''}</p></div>
       <button class="btn" data-action="new-recurring">+ Nová šablona</button>
     </div>
-    <p style="font-size:12.5px;color:var(--ink-soft);margin:-10px 0 20px 0;">Appka generuje faktury, když si tuhle stránku otevřeš (ne přesně o půlnoci na pozadí) — šablony, kterým už nastal termín, jsou označené a stačí kliknout na „Vygenerovat".</p>
+    <p style="font-size:12.5px;color:var(--ink-soft);margin:-10px 0 20px 0;">Program generuje faktury, když si tuhle stránku otevřeš (ne přesně o půlnoci na pozadí) — šablony, kterým už nastal termín, jsou označené a stačí kliknout na „Vygenerovat".</p>
     ${list.length ? `
     <div class="table-scroll">
     <table class="fixed-table">
@@ -5676,9 +5677,9 @@ function warehouseCapacityUnitLabel(w){
   return WAREHOUSE_CAPACITY_UNITS[w.capacityUnitType]||'jednotky';
 }
 function computeWarehouseUsage(w){
-  // Palety/boxy appka počítá sama z aktuálního skladu produktů v tomhle skladu
+  // Palety/boxy program počítá sama z aktuálního skladu produktů v tomhle skladu
   // (podle "kusů na paletě"/"kusů v boxu" u produktu) — u vlastní jednotky se
-  // hodnota zadává ručně, protože appka neví, co ta jednotka znamená.
+  // hodnota zadává ručně, protože program neví, co ta jednotka znamená.
   // Každý produkt se počítá zvlášť a zaokrouhluje se NAHORU (1,5 palety = 2 palety,
   // protože rozdělaná paleta pořád zabírá celé místo — jakmile se to nevejde na
   // jednu, hned je potřeba další).
@@ -5701,7 +5702,7 @@ function viewWarehouseForm(){
         <input type="checkbox" name="isDefault" ${w.isDefault?'checked':''}> Výchozí sklad pro nové produkty
       </label>
       <div class="section-title">Kapacita skladu</div>
-      <p style="font-size:12.5px;color:var(--ink-soft);margin-top:-6px;">Volitelné. U palet a boxů appka sama spočítá, kolik je aktuálně obsazeno, podle „kusů na paletě"/„kusů v boxu" u jednotlivých produktů v tomhle skladu.</p>
+      <p style="font-size:12.5px;color:var(--ink-soft);margin-top:-6px;">Volitelné. U palet a boxů program sama spočítá, kolik je aktuálně obsazeno, podle „kusů na paletě"/„kusů v boxu" u jednotlivých produktů v tomhle skladu.</p>
       <div class="field-row">
         <div class="field"><label>Maximální kapacita</label><input name="capacityValue" type="number" step="0.01" min="0" value="${w.capacityValue||''}" placeholder="např. 100"></div>
         <div class="field"><label>Jednotka</label><select name="capacityUnitType" id="warehouse-capacity-unit-type">
@@ -5715,7 +5716,7 @@ function viewWarehouseForm(){
         </div>
       </div>
       <div id="warehouse-auto-unit-note" style="display:${unitType==='jine'?'none':''};font-size:12.5px;color:var(--ink-soft);margin:-6px 0 14px 0;">
-        Aktuální využití appka dopočítá sama po uložení (viz karta skladu) — nemusíš nic zadávat ručně.
+        Aktuální využití program dopočítá sama po uložení (viz karta skladu) — nemusíš nic zadávat ručně.
       </div>
       <div class="formfoot" style="justify-content:space-between;">
         <button type="button" class="btn secondary" data-action="nav" data-view="stock">Zrušit</button>
@@ -5859,7 +5860,7 @@ function viewOrders(){
         }).join('')}
       </tbody>
     </table>
-    </div>` : emptyState('Žádné objednávky', 'Vytvoř první objednávku — appka tě pak provede vychystáním, fakturou i štítkem.')}
+    </div>` : emptyState('Žádné objednávky', 'Vytvoř první objednávku — program tě pak provede vychystáním, fakturou i štítkem.')}
   `;
 }
 function viewOrderForm(){
@@ -5951,6 +5952,7 @@ function setupStockMovementPicker(){
   const input = document.getElementById('stock-movement-product-input');
   const list = document.getElementById('stock-movement-product-list');
   if(!input || !list) return;
+  if(state.newMovementPanelOpen && !state.stockMovementProductId) input.focus();
   function renderList(query){
     const q = stripDiacritics(query||'').toLowerCase().trim();
     const matches = state.products.filter(p=>{
@@ -6116,7 +6118,7 @@ function viewOrderFulfillmentShippingStage(o){
     <div class="form-card">
       <div class="section-title" style="margin-top:0;padding-top:0;border-top:none;">Automatický výběr dopravce</div>
       <p style="font-size:12.5px;color:var(--ink-soft);margin:-6px 0 14px 0;">
-        ${carrier ? `Podle nastavených pravidel appka pro tuhle objednávku vybrala <strong>${escapeHtml(carrier.name)}</strong>.` : 'Nemáš nastaveného žádného aktivního dopravce (Nastavení → Integrace) — appka vygeneruje vlastní jednoduchý štítek k nalepení.'}
+        ${carrier ? `Podle nastavených pravidel program pro tuhle objednávku vybrala <strong>${escapeHtml(carrier.name)}</strong>.` : 'Nemáš nastaveného žádného aktivního dopravce (Nastavení → Integrace) — program vygeneruje vlastní jednoduchý štítek k nalepení.'}
         ${alreadyShipped ? ' Zásilka/štítek už byly vytvořeny.' : ''}
       </p>
       <div class="field-row">
@@ -6356,7 +6358,7 @@ function viewReceivedInvoiceForm(){
       </table>
       </div>
       <button type="button" class="btn secondary small no-print" data-action="add-received-item">+ Přidat položku</button>
-      <p style="font-size:11px;color:var(--ink-soft);margin:8px 0 0 0;">Položky napojené na produkt appka po uložení automaticky naskladní (skladový pohyb „příjem“).</p>
+      <p style="font-size:11px;color:var(--ink-soft);margin:8px 0 0 0;">Položky napojené na produkt program po uložení automaticky naskladní (skladový pohyb „příjem“).</p>
 
       <div class="section-title">Souhrn</div>
       <div class="totals-box" id="received-totals-box">${renderReceivedTotalsBox()}</div>
@@ -6834,12 +6836,12 @@ function viewProductForm(){
           <input name="number" id="product-number-input" value="${escapeAttr(p.number)}" placeholder="${editing?'':escapeAttr(peekProductNumber('EAN13'))+' (auto)'}" style="flex:1;">
           <button type="button" class="btn secondary small" id="regen-number-btn">↻ Vygenerovat</button>
         </div>
-        <p style="font-size:11px;color:var(--ink-soft);margin:4px 0 0 0;">Necháš prázdné = appka vygeneruje platný EAN-13 (nejběžnější typ, funguje skoro na vše) — nikdy se nebude opakovat u jiného produktu. Můžeš si ale klidně napsat i vlastní 13místné číslo.</p>
+        <p style="font-size:11px;color:var(--ink-soft);margin:4px 0 0 0;">Necháš prázdné = program vygeneruje platný EAN-13 (nejběžnější typ, funguje skoro na vše) — nikdy se nebude opakovat u jiného produktu. Můžeš si ale klidně napsat i vlastní 13místné číslo.</p>
       </div>
       <div class="field">
         <label>Produktové číslo</label>
         <input name="internalCode" value="${escapeAttr(p.internalCode||'')}" placeholder="Vlastní/katalogové číslo produktu — zadává se ručně">
-        <p style="font-size:11px;color:var(--ink-soft);margin:4px 0 0 0;">Volitelné — appka ho nijak negeneruje ani nekontroluje.</p>
+        <p style="font-size:11px;color:var(--ink-soft);margin:4px 0 0 0;">Volitelné — program ho nijak negeneruje ani nekontroluje.</p>
       </div>
       <input type="hidden" name="barcodeType" value="EAN13">
       <div class="barcode-preview-box" style="max-width:340px;">
@@ -7350,28 +7352,33 @@ function viewStock(){
     </div>
 
     <div class="form-card" style="margin-bottom:24px;">
-      <div class="section-title" style="margin-top:0;padding-top:0;border-top:none;">Skladový pohyb</div>
-      <p style="font-size:12.5px;color:var(--ink-soft);margin-top:-6px;">Vyber produkt — appka zobrazí formulář na zápis pohybu. Dodavatel, ceny, trvanlivost i umístění patří vždy k téhle konkrétní dávce.</p>
-      <div class="field combo-field" style="max-width:460px;">
-        <label>Produkt</label>
-        <input type="text" id="stock-movement-product-input" placeholder="Hledej podle názvu, EAN nebo SKU…" autocomplete="off" value="${state.stockMovementProductId?escapeAttr((productById(state.stockMovementProductId)||{}).name||''):''}">
-        <div class="combo-list" id="stock-movement-product-list"></div>
+      <div class="section-title" style="margin-top:0;padding-top:0;border-top:none;display:flex;justify-content:space-between;align-items:center;">
+        <span>Skladový pohyb</span>
+        <button type="button" class="btn secondary small" data-action="toggle-new-movement-panel">+ Nový pohyb</button>
       </div>
-      ${state.stockMovementProductId ? (function(){
-        const sp = productById(state.stockMovementProductId);
-        if(!sp) return '';
-        return `
-          <div style="background:var(--paper);border-radius:var(--radius);padding:12px 16px;margin:14px 0 0 0;display:flex;align-items:center;gap:14px;">
-            ${sp.photo?`<img src="${sp.photo}" style="width:44px;height:44px;object-fit:cover;border-radius:6px;">`:''}
-            <div>
-              <div style="font-weight:600;font-size:14px;">${escapeHtml(sp.name)}</div>
-              <div style="font-size:12.5px;color:var(--ink-soft);">Aktuálně skladem: <strong>${sp.stockCurrent||0} ${escapeHtml(sp.unit||'ks')}</strong> · ${sp.warehouseId?escapeHtml((warehouseById(sp.warehouseId)||{}).name||''):'—'}${formatLocation(sp.location)?(' · '+escapeHtml(formatLocation(sp.location))):''}</div>
+      <div id="new-movement-panel" style="display:${state.newMovementPanelOpen?'':'none'};">
+        <p style="font-size:12.5px;color:var(--ink-soft);margin-top:0;">Vyber produkt — program zobrazí formulář na zápis pohybu. Dodavatel, ceny, trvanlivost i umístění patří vždy k téhle konkrétní dávce.</p>
+        <div class="field combo-field" style="max-width:460px;">
+          <label>Produkt</label>
+          <input type="text" id="stock-movement-product-input" placeholder="Hledej podle názvu, EAN nebo SKU…" autocomplete="off" value="${state.stockMovementProductId?escapeAttr((productById(state.stockMovementProductId)||{}).name||''):''}">
+          <div class="combo-list" id="stock-movement-product-list"></div>
+        </div>
+        ${state.stockMovementProductId ? (function(){
+          const sp = productById(state.stockMovementProductId);
+          if(!sp) return '';
+          return `
+            <div style="background:var(--paper);border-radius:var(--radius);padding:12px 16px;margin:14px 0 0 0;display:flex;align-items:center;gap:14px;">
+              ${sp.photo?`<img src="${sp.photo}" style="width:44px;height:44px;object-fit:cover;border-radius:6px;">`:''}
+              <div>
+                <div style="font-weight:600;font-size:14px;">${escapeHtml(sp.name)}</div>
+                <div style="font-size:12.5px;color:var(--ink-soft);">Aktuálně skladem: <strong>${sp.stockCurrent||0} ${escapeHtml(sp.unit||'ks')}</strong> · ${sp.warehouseId?escapeHtml((warehouseById(sp.warehouseId)||{}).name||''):'—'}${formatLocation(sp.location)?(' · '+escapeHtml(formatLocation(sp.location))):''}</div>
+              </div>
+              <button type="button" class="btn-link" data-action="clear-stock-movement-product" style="margin-left:auto;">Vybrat jiný produkt</button>
             </div>
-            <button type="button" class="btn-link" data-action="clear-stock-movement-product" style="margin-left:auto;">Vybrat jiný produkt</button>
-          </div>
-          ${renderStockMovementPanel(sp).replace('style="display:none;margin-top:10px;"','style="display:block;margin-top:10px;"').replace('Nový skladový pohyb','Nový skladový pohyb — '+escapeHtml(sp.name))}
-        `;
-      })() : ''}
+            ${renderStockMovementPanel(sp).replace('style="display:none;margin-top:10px;"','style="display:block;margin-top:10px;"').replace('Nový skladový pohyb','Nový skladový pohyb — '+escapeHtml(sp.name))}
+          `;
+        })() : ''}
+      </div>
     </div>
 
     <div class="form-card" style="margin-bottom:24px;">
@@ -8800,7 +8807,7 @@ function setupAttachmentUpload(){
       render();
     }catch(err){
       console.error(err);
-      // Uložení selhalo — vrátíme stav zpět, ať appka netváří, že se soubor přidal, když se ve skutečnosti neuložil.
+      // Uložení selhalo — vrátíme stav zpět, ať program netváří, že se soubor přidal, když se ve skutečnosti neuložil.
       if(pushedInto && meta){
         const idx = pushedInto.indexOf(meta);
         if(idx>-1) pushedInto.splice(idx,1);
@@ -9147,7 +9154,7 @@ document.addEventListener('click', async (e)=>{
     state.authView='login'; state.view='dashboard';
     render();
   }
-  else if(action==='nav'){ state.view = el.getAttribute('data-view'); state.editingInvoiceId=null; state.editingClientId=null; state.viewingClientId=null; state.newClientDraftId=null; state.newClientDraftAttachments=[]; state.editingCompanyId=null; state.newCompanyDraftId=null; state.newCompanyDraft={logo:'',signature:'',stamp:''}; state.companyNotice=''; state.formItems=[]; state.formCompanyId=null; state.selectedInvoiceIds.clear(); state.selectedClientIds.clear(); state.editingSupplierId=null; state.viewingSupplierId=null; state.newSupplierDraftId=null; state.newSupplierDraftAttachments=[]; state.editingProductId=null; state.newProductDraftId=null; state.currentProductDraftPhoto=''; state.eanLookupStatus=''; state.selectedProductIds.clear(); closeProductContextMenu(); state.productColsPanelOpen=false; state.editingReceivedInvoiceId=null; state.receivedFormItems=[]; state.viewingReceivedInvoiceId=null; state.newInvoiceDocType='invoice'; state.newInvoiceRelatedId=null; state.newInvoiceClientId=null; render(); }
+  else if(action==='nav'){ state.view = el.getAttribute('data-view'); state.editingInvoiceId=null; state.editingClientId=null; state.viewingClientId=null; state.newClientDraftId=null; state.newClientDraftAttachments=[]; state.editingCompanyId=null; state.newCompanyDraftId=null; state.newCompanyDraft={logo:'',signature:'',stamp:''}; state.companyNotice=''; state.formItems=[]; state.formCompanyId=null; state.selectedInvoiceIds.clear(); state.selectedClientIds.clear(); state.editingSupplierId=null; state.viewingSupplierId=null; state.newSupplierDraftId=null; state.newSupplierDraftAttachments=[]; state.editingProductId=null; state.newProductDraftId=null; state.currentProductDraftPhoto=''; state.eanLookupStatus=''; state.selectedProductIds.clear(); closeProductContextMenu(); state.productColsPanelOpen=false; state.editingReceivedInvoiceId=null; state.receivedFormItems=[]; state.viewingReceivedInvoiceId=null; state.newInvoiceDocType='invoice'; state.newInvoiceRelatedId=null; state.newInvoiceClientId=null; state.stockMovementProductId=null; state.newMovementPanelOpen=false; render(); }
   else if(action==='new-invoice'){ state.view='invoice-form'; state.editingInvoiceId=null; state.formItems=[]; state.formCompanyId=null; state.newInvoiceDocType='invoice'; state.newInvoiceRelatedId=null; render(); }
   else if(action==='new-credit-note'){ state.view='invoice-form'; state.editingInvoiceId=null; state.formItems=[]; state.formCompanyId=null; state.newInvoiceDocType='credit_note'; state.newInvoiceRelatedId=null; render(); }
   else if(action==='new-proforma'){ state.view='invoice-form'; state.editingInvoiceId=null; state.formItems=[]; state.formCompanyId=null; state.newInvoiceDocType='proforma'; state.newInvoiceRelatedId=null; render(); }
@@ -9588,7 +9595,7 @@ document.addEventListener('click', async (e)=>{
       if(statusEl) statusEl.innerHTML = `<div style="background:var(--accent-soft);color:var(--accent);padding:8px 12px;border-radius:var(--radius);font-size:12.5px;">✅ Zásilka vytvořena u ${escapeHtml(carrier.name)}${o.trackingNumber?(', sledovací číslo: '+escapeHtml(o.trackingNumber)):''}.</div>`;
       render();
     }catch(err){
-      if(statusEl) statusEl.innerHTML = `<div style="background:var(--red-soft);color:var(--red);padding:8px 12px;border-radius:var(--radius);font-size:12.5px;">❌ ${escapeHtml(err.message||'Vytvoření zásilky se nepovedlo.')} Appka zůstává funkční — zadej sledovací číslo ručně a použij tlačítko „Vytisknout štítek" pro vlastní štítek.</div>`;
+      if(statusEl) statusEl.innerHTML = `<div style="background:var(--red-soft);color:var(--red);padding:8px 12px;border-radius:var(--radius);font-size:12.5px;">❌ ${escapeHtml(err.message||'Vytvoření zásilky se nepovedlo.')} Program zůstává funkční — zadej sledovací číslo ručně a použij tlačítko „Vytisknout štítek" pro vlastní štítek.</div>`;
     }
   }
   else if(action==='fulfill-print-label'){ printShippingLabel(id); }
@@ -9667,6 +9674,11 @@ document.addEventListener('click', async (e)=>{
   else if(action==='new-warehouse'){ state.editingWarehouseId=null; state.view='warehouse-form'; render(); }
   else if(action==='view-warehouse'){ state.viewingWarehouseId=id; state.view='warehouse-detail'; render(); }
   else if(action==='clear-stock-movement-product'){ state.stockMovementProductId=null; render(); }
+  else if(action==='toggle-new-movement-panel'){
+    state.newMovementPanelOpen = !state.newMovementPanelOpen;
+    if(!state.newMovementPanelOpen) state.stockMovementProductId = null;
+    render();
+  }
   else if(action==='edit-warehouse'){ state.editingWarehouseId=id; state.view='warehouse-form'; render(); }
   else if(action==='delete-warehouse'){
     if(state.warehouses.length<=1){ alert('Musí zůstat alespoň jeden sklad.'); return; }
@@ -9759,7 +9771,7 @@ document.addEventListener('click', async (e)=>{
     render();
     try{
       const orders = await fetchEshopOrders(e);
-      e.lastSyncStatus = { ok:true, message:`✅ Připojeno — appka vidí ${orders.length} otevřených objednávek.` };
+      e.lastSyncStatus = { ok:true, message:`✅ Připojeno — program vidí ${orders.length} otevřených objednávek.` };
     }catch(err){
       e.lastSyncStatus = { ok:false, message:'❌ '+(err.message||'Připojení se nepovedlo — pravděpodobně kvůli CORS blokaci ze strany platformy.') };
     }
@@ -9778,7 +9790,7 @@ document.addEventListener('click', async (e)=>{
         if(!res.ok) throw new Error(`Zásilkovna odpovědělo chybou ${res.status}.`);
         c.testStatus = { ok:true, message:'✅ API klíč je platný.' };
       } else {
-        throw new Error(`${CARRIER_TYPES[c.type].label} API vyžaduje volání ze serveru (nejde otestovat přímo z appky kvůli CORS) — přístupy jsou uložené a použijí se, chybu appka bezpečně ošetří.`);
+        throw new Error(`${CARRIER_TYPES[c.type].label} API vyžaduje volání ze serveru (nejde otestovat přímo z programu kvůli CORS) — přístupy jsou uložené a použijí se, chybu program bezpečně ošetří.`);
       }
     }catch(err){
       c.testStatus = { ok:false, message:'❌ '+(err.message||'Připojení se nepovedlo.') };
