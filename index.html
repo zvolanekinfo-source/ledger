@@ -7254,14 +7254,47 @@ function renderStockScanResult(p){
 }
 function setupStockScan(){
   const input = document.getElementById('stock-scan-input');
+  const list = document.getElementById('stock-scan-list');
   const resultBox = document.getElementById('stock-scan-result');
   if(!input || !resultBox) return;
+  function renderSuggestions(query){
+    const q = stripDiacritics(query||'').toLowerCase().trim();
+    if(!q || !list){ if(list){ list.classList.remove('open'); list.innerHTML=''; } return; }
+    const matches = state.products.filter(p=>{
+      if(p.archived) return false;
+      return stripDiacritics(`${p.name||''} ${p.ean||''} ${p.number||''} ${p.internalCode||''} ${p.description||''} ${p.composition||''}`).toLowerCase().includes(q);
+    }).slice(0,20);
+    list.innerHTML = matches.length ? matches.map(p=>`
+      <div class="combo-item" data-id="${p.id}">
+        <div>${escapeHtml(p.name)}</div>
+        <div class="sub">${escapeHtml(p.number||'')}${p.ean?' · EAN '+escapeHtml(p.ean):''} · skladem ${stockAvailable(p)} ${escapeHtml(p.unit||'ks')}</div>
+      </div>
+    `).join('') : `<div class="combo-empty">Žádný produkt neodpovídá.</div>`;
+    list.classList.add('open');
+  }
   function run(){
     const val = input.value.trim();
-    resultBox.innerHTML = val ? renderStockScanResult(findProductByScanCode(val)) : '';
+    renderSuggestions(val);
+    // Přesná shoda (typicky čtečka čárových kódů) — rovnou ukázat detail.
+    const exact = val ? findProductByScanCode(val) : null;
+    if(exact) resultBox.innerHTML = renderStockScanResult(exact);
+    else if(!val) resultBox.innerHTML = '';
   }
   input.addEventListener('input', run);
+  input.addEventListener('focus', ()=> renderSuggestions(input.value));
   input.addEventListener('keydown', (e)=>{ if(e.key==='Enter') e.preventDefault(); });
+  if(list){
+    list.addEventListener('mousedown', (e)=>{
+      const item = e.target.closest('.combo-item');
+      if(!item) return;
+      const p = productById(item.getAttribute('data-id'));
+      if(p){ input.value = p.name; resultBox.innerHTML = renderStockScanResult(p); }
+      list.classList.remove('open');
+    });
+    document.addEventListener('click', (e)=>{
+      if(e.target!==input && !list.contains(e.target)) list.classList.remove('open');
+    });
+  }
   input.focus();
 }
 function viewStock(){
@@ -7271,7 +7304,7 @@ function viewStock(){
   }
   const w = state.stockWarehouseId ? warehouseById(state.stockWarehouseId) : null;
 
-  const pickerHtml = `
+  const fullPickerHtml = `
     <div class="form-card" style="margin-bottom:24px;">
       <div class="section-title" style="margin-top:0;padding-top:0;border-top:none;display:flex;justify-content:space-between;align-items:center;">
         <span>Sklady (${state.warehouses.length})</span>
@@ -7308,7 +7341,7 @@ function viewStock(){
   if(!w){
     return `
       <div class="pagehead"><div><h1>Sklad</h1><p class="desc">Nejdřív vyber sklad, se kterým chceš pracovat.</p></div></div>
-      ${pickerHtml}
+      ${fullPickerHtml}
       ${emptyState('Vyber sklad výš', 'Klikni na některý ze skladů nahoře — pak uvidíš jeho zásoby, kapacitu, pohyby i expirace.')}
     `;
   }
@@ -7330,9 +7363,22 @@ function viewStock(){
   const usage = computeWarehouseUsage(w);
   const pct = w.capacityValue>0 ? Math.min(100, Math.round(usage/w.capacityValue*100)) : null;
 
+  // Sklad je už vybraný — místo velkých karet jen kompaktní přepínač nahoře.
+  const compactSwitcherHtml = `
+    <div class="form-card" style="margin-bottom:24px;padding:14px 18px;">
+      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+        <span style="font-size:12.5px;color:var(--ink-soft);white-space:nowrap;">Přepnout sklad:</span>
+        <select id="stock-warehouse-switch" style="max-width:260px;">
+          ${state.warehouses.map(wh=>`<option value="${wh.id}" ${wh.id===w.id?'selected':''}>${escapeHtml(wh.name)}${wh.isDefault?' ★':''}</option>`).join('')}
+        </select>
+        <button type="button" class="btn-link" data-action="back-to-warehouse-list">← Zpět na seznam skladů</button>
+      </div>
+    </div>
+  `;
+
   return `
     <div class="pagehead"><div><h1>Sklad</h1><p class="desc">Pracuješ se skladem <strong>${escapeHtml(w.name)}</strong>${w.address?(' · '+escapeHtml(w.address)):''}.</p></div></div>
-    ${pickerHtml}
+    ${compactSwitcherHtml}
 
     <div class="cards" style="margin-bottom:24px;">
       <div class="card"><div class="label">Hodnota skladu</div><div class="value accent num">${fmt(stockValue)} Kč</div></div>
@@ -7358,54 +7404,59 @@ function viewStock(){
       </div>
     </div>
 
-    ${pct!==null ? `
-    <div class="form-card" style="margin-bottom:24px;">
-      <div class="section-title" style="margin-top:0;padding-top:0;border-top:none;display:flex;justify-content:space-between;align-items:baseline;">
-        <span>Kapacita skladu ${escapeHtml(w.name)}</span>
-        <span style="font-size:13px;font-weight:600;color:${(w.capacityValue-usage)<=0?'var(--red)':(pct>=70?'var(--amber)':'var(--accent)')};">
-          zbývá ${w.capacityUnitType!=='jine'?fmtWhole(Math.max(0,w.capacityValue-usage)):fmt(Math.max(0,w.capacityValue-usage))} ${escapeHtml(warehouseCapacityUnitLabel(w))}
-        </span>
-      </div>
-      <div style="background:var(--paper);border-radius:20px;height:12px;overflow:hidden;margin-bottom:8px;">
-        <div style="background:${pct>=90?'var(--red)':pct>=70?'var(--amber)':'var(--accent)'};height:100%;width:${pct}%;"></div>
-      </div>
-      <p style="font-size:13px;color:var(--ink-soft);margin:0;">${w.capacityUnitType!=='jine'?fmtWhole(usage):fmt(usage)} / ${w.capacityUnitType!=='jine'?fmtWhole(w.capacityValue):fmt(w.capacityValue)} ${escapeHtml(warehouseCapacityUnitLabel(w))} využito (${pct} %)${w.capacityUnitType!=='jine'?' — dopočítáno automaticky podle skladem':''}</p>
-    </div>
-    ` : ''}
-
-    <div class="form-card" style="margin-bottom:24px;">
-      <div class="section-title" style="margin-top:0;padding-top:0;border-top:none;display:flex;justify-content:space-between;align-items:center;">
-        <span>Skladový pohyb</span>
-        <button type="button" class="btn secondary small" data-action="toggle-new-movement-panel">+ Nový pohyb</button>
-      </div>
-      <div id="new-movement-panel" style="display:${state.newMovementPanelOpen?'':'none'};">
-        <p style="font-size:12.5px;color:var(--ink-soft);margin-top:0;">Vyber produkt — program zobrazí formulář na zápis pohybu. Dodavatel, ceny, trvanlivost i umístění patří vždy k téhle konkrétní dávce. Sklad se předvyplní na ${escapeHtml(w.name)}, jde ale změnit.</p>
-        <div class="field combo-field" style="max-width:460px;">
-          <label>Produkt</label>
-          <input type="text" id="stock-movement-product-input" placeholder="Hledej podle názvu, EAN nebo SKU…" autocomplete="off" value="${state.stockMovementProductId?escapeAttr((productById(state.stockMovementProductId)||{}).name||''):''}">
-          <div class="combo-list" id="stock-movement-product-list"></div>
+    <div style="display:flex;flex-wrap:wrap;gap:20px;align-items:flex-start;margin-bottom:24px;">
+      <div class="form-card" style="flex:1;min-width:340px;margin-bottom:0;">
+        <div class="section-title" style="margin-top:0;padding-top:0;border-top:none;display:flex;justify-content:space-between;align-items:center;">
+          <span>Skladový pohyb</span>
+          <button type="button" class="btn secondary small" data-action="toggle-new-movement-panel">+ Nový pohyb</button>
         </div>
-        ${state.stockMovementProductId ? (function(){
-          const sp = productById(state.stockMovementProductId);
-          if(!sp) return '';
-          return `
-            <div style="background:var(--paper);border-radius:var(--radius);padding:12px 16px;margin:14px 0 0 0;display:flex;align-items:center;gap:14px;">
-              ${sp.photo?`<img src="${sp.photo}" style="width:44px;height:44px;object-fit:cover;border-radius:6px;">`:''}
-              <div>
-                <div style="font-weight:600;font-size:14px;">${escapeHtml(sp.name)}</div>
-                <div style="font-size:12.5px;color:var(--ink-soft);">Aktuálně skladem: <strong>${sp.stockCurrent||0} ${escapeHtml(sp.unit||'ks')}</strong> · ${sp.warehouseId?escapeHtml((warehouseById(sp.warehouseId)||{}).name||''):'—'}${formatLocation(sp.location)?(' · '+escapeHtml(formatLocation(sp.location))):''}</div>
+        <div id="new-movement-panel" style="display:${state.newMovementPanelOpen?'':'none'};">
+          <p style="font-size:12.5px;color:var(--ink-soft);margin-top:0;">Vyber produkt — program zobrazí formulář na zápis pohybu. Sklad se předvyplní na ${escapeHtml(w.name)}, jde ale změnit.</p>
+          <div class="field combo-field" style="max-width:460px;">
+            <label>Produkt</label>
+            <input type="text" id="stock-movement-product-input" placeholder="Hledej podle názvu, EAN nebo SKU…" autocomplete="off" value="${state.stockMovementProductId?escapeAttr((productById(state.stockMovementProductId)||{}).name||''):''}">
+            <div class="combo-list" id="stock-movement-product-list"></div>
+          </div>
+          ${state.stockMovementProductId ? (function(){
+            const sp = productById(state.stockMovementProductId);
+            if(!sp) return '';
+            return `
+              <div style="background:var(--paper);border-radius:var(--radius);padding:12px 16px;margin:14px 0 0 0;display:flex;align-items:center;gap:14px;">
+                ${sp.photo?`<img src="${sp.photo}" style="width:44px;height:44px;object-fit:cover;border-radius:6px;">`:''}
+                <div>
+                  <div style="font-weight:600;font-size:14px;">${escapeHtml(sp.name)}</div>
+                  <div style="font-size:12.5px;color:var(--ink-soft);">Aktuálně skladem: <strong>${sp.stockCurrent||0} ${escapeHtml(sp.unit||'ks')}</strong> · ${sp.warehouseId?escapeHtml((warehouseById(sp.warehouseId)||{}).name||''):'—'}${formatLocation(sp.location)?(' · '+escapeHtml(formatLocation(sp.location))):''}</div>
+                </div>
+                <button type="button" class="btn-link" data-action="clear-stock-movement-product" style="margin-left:auto;">Vybrat jiný produkt</button>
               </div>
-              <button type="button" class="btn-link" data-action="clear-stock-movement-product" style="margin-left:auto;">Vybrat jiný produkt</button>
-            </div>
-            ${renderStockMovementPanel(sp, w.id).replace('style="display:none;margin-top:10px;"','style="display:block;margin-top:10px;"').replace('Nový skladový pohyb','Nový skladový pohyb — '+escapeHtml(sp.name))}
-          `;
-        })() : ''}
+              ${renderStockMovementPanel(sp, w.id).replace('style="display:none;margin-top:10px;"','style="display:block;margin-top:10px;"').replace('Nový skladový pohyb','Nový skladový pohyb — '+escapeHtml(sp.name))}
+            `;
+          })() : ''}
+        </div>
       </div>
+
+      ${pct!==null ? `
+      <div class="form-card" style="flex:1;min-width:280px;margin-bottom:0;">
+        <div class="section-title" style="margin-top:0;padding-top:0;border-top:none;display:flex;justify-content:space-between;align-items:baseline;">
+          <span>Kapacita skladu</span>
+          <span style="font-size:13px;font-weight:600;color:${(w.capacityValue-usage)<=0?'var(--red)':(pct>=70?'var(--amber)':'var(--accent)')};">
+            zbývá ${w.capacityUnitType!=='jine'?fmtWhole(Math.max(0,w.capacityValue-usage)):fmt(Math.max(0,w.capacityValue-usage))} ${escapeHtml(warehouseCapacityUnitLabel(w))}
+          </span>
+        </div>
+        <div style="background:var(--paper);border-radius:20px;height:12px;overflow:hidden;margin-bottom:8px;">
+          <div style="background:${pct>=90?'var(--red)':pct>=70?'var(--amber)':'var(--accent)'};height:100%;width:${pct}%;"></div>
+        </div>
+        <p style="font-size:13px;color:var(--ink-soft);margin:0;">${w.capacityUnitType!=='jine'?fmtWhole(usage):fmt(usage)} / ${w.capacityUnitType!=='jine'?fmtWhole(w.capacityValue):fmt(w.capacityValue)} ${escapeHtml(warehouseCapacityUnitLabel(w))} využito (${pct} %)${w.capacityUnitType!=='jine'?' — dopočítáno automaticky podle skladem':''}</p>
+      </div>
+      ` : ''}
     </div>
 
     <div class="form-card" style="margin-bottom:24px;">
-      <div class="section-title" style="margin-top:0;padding-top:0;border-top:none;">Najít produkt podle kódu</div>
-      <input type="text" id="stock-scan-input" class="search-input" placeholder="Naskenuj čtečkou nebo napiš EAN / produktový kód…" autocomplete="off" style="max-width:none;width:100%;">
+      <div class="section-title" style="margin-top:0;padding-top:0;border-top:none;">Najít produkt</div>
+      <div class="combo-field">
+        <input type="text" id="stock-scan-input" class="search-input" placeholder="Naskenuj čtečkou, nebo napiš název, EAN či kód produktu…" autocomplete="off" style="max-width:none;width:100%;">
+        <div class="combo-list" id="stock-scan-list"></div>
+      </div>
       <div id="stock-scan-result" style="margin-top:14px;"></div>
     </div>
 
@@ -8109,6 +8160,8 @@ function afterRender(){
     };
     if(valEl) valEl.addEventListener('change', applyThreshold);
     if(unitEl) unitEl.addEventListener('change', applyThreshold);
+    const switcher = document.getElementById('stock-warehouse-switch');
+    if(switcher) switcher.addEventListener('change', ()=>{ state.stockWarehouseId = switcher.value; render(); });
   }
   setupProductPicker();
   setupAresCombo();
@@ -9674,6 +9727,7 @@ document.addEventListener('click', async (e)=>{
   }
   else if(action==='new-warehouse'){ state.editingWarehouseId=null; state.view='warehouse-form'; render(); }
   else if(action==='select-stock-warehouse'){ state.stockWarehouseId=id; render(); }
+  else if(action==='back-to-warehouse-list'){ state.stockWarehouseId=null; render(); }
   else if(action==='clear-stock-movement-product'){ state.stockMovementProductId=null; render(); }
   else if(action==='toggle-new-movement-panel'){
     state.newMovementPanelOpen = !state.newMovementPanelOpen;
