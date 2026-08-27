@@ -695,7 +695,6 @@ let state = {
   recurringFormItems: [],
   warehouses: [],
   categories: [],
-  storageUnitTypes: [],
   editingStorageUnitTypeId: null,
   editingWarehouseId: null,
   stockWarehouseId: null,
@@ -1335,35 +1334,45 @@ async function loadAll(){
   try{ const r = await window.storage.get('recurring-invoices', true); state.recurringInvoices = r ? JSON.parse(r.value) : []; }catch(e){ state.recurringInvoices = []; }
   try{ const r = await window.storage.get('warehouses', true); state.warehouses = r ? JSON.parse(r.value) : []; }catch(e){ state.warehouses = []; }
   if(!state.warehouses.length){ state.warehouses = [{ id: uid(), name:'Hlavní sklad', address:'', isDefault:true }]; }
-  try{ const r = await window.storage.get('storage-unit-types', true); state.storageUnitTypes = r ? JSON.parse(r.value) : null; }catch(e){ state.storageUnitTypes = null; }
-  let paletaUnitId = null, boxUnitId = null;
-  if(!state.storageUnitTypes){
-    // první spuštění appky s tímhle systémem — založíme výchozí Paletu a Box,
-    // ať appka funguje rovnou i bez toho, že by uživatel musel cokoli zakládat sám.
-    paletaUnitId = uid(); boxUnitId = uid();
-    state.storageUnitTypes = [
-      { id: paletaUnitId, name:'Paleta', width:0, height:0, depth:0 },
-      { id: boxUnitId, name:'Box', width:0, height:0, depth:0 }
-    ];
-    let needsSave = false;
-    state.warehouses.forEach(w=>{
-      if(w.capacityUnitTypeId===undefined && w.capacityUnitType){
-        if(w.capacityUnitType==='palety') w.capacityUnitTypeId = paletaUnitId;
-        else if(w.capacityUnitType==='boxy') w.capacityUnitTypeId = boxUnitId;
-        else w.capacityUnitTypeId = null;
-        needsSave = true;
+  state.warehouses.forEach(w=>{ if(!w.storageUnitTypes) w.storageUnitTypes = []; });
+  {
+    // Skladové jednotky teď patří ke konkrétnímu skladu, ne appce jako celku.
+    let warehousesChanged = false;
+    // 1) Starší verze měla jeden sdílený seznam jednotek pro celou appku (klíč
+    //    'storage-unit-types') — pokud existuje, zkopírujeme ho (se stejnými ID,
+    //    ať zůstanou platná stávající nastavení u skladů i produktů) do každého
+    //    skladu, co ještě svoje vlastní jednotky nemá, a sdílený klíč smažeme.
+    try{
+      const r = await window.storage.get('storage-unit-types', true);
+      if(r){
+        const globalTypes = JSON.parse(r.value);
+        if(Array.isArray(globalTypes) && globalTypes.length){
+          state.warehouses.forEach(w=>{
+            if(!w.storageUnitTypes.length){ w.storageUnitTypes = JSON.parse(JSON.stringify(globalTypes)); warehousesChanged = true; }
+          });
+        }
+        await window.storage.delete('storage-unit-types', true).catch(()=>{});
       }
+    }catch(e){}
+    // 2) Ještě starší verze měla u skladu jen capacityUnitType: 'palety'/'boxy'/'jine'
+    //    bez jakýchkoli jednotek — pro takové sklady založíme Paletu a Box přímo v nich.
+    const paletaBoxByWarehouse = {};
+    state.warehouses.forEach(w=>{
+      let paleta = w.storageUnitTypes.find(u=>u.name==='Paleta');
+      let box = w.storageUnitTypes.find(u=>u.name==='Box');
+      if(w.capacityUnitTypeId===undefined && w.capacityUnitType){
+        if(!paleta){ paleta = { id: uid(), name:'Paleta', width:0, height:0, depth:0 }; w.storageUnitTypes.push(paleta); warehousesChanged = true; }
+        if(!box){ box = { id: uid(), name:'Box', width:0, height:0, depth:0 }; w.storageUnitTypes.push(box); warehousesChanged = true; }
+        if(w.capacityUnitType==='palety') w.capacityUnitTypeId = paleta.id;
+        else if(w.capacityUnitType==='boxy') w.capacityUnitTypeId = box.id;
+        else w.capacityUnitTypeId = null;
+        warehousesChanged = true;
+      }
+      paletaBoxByWarehouse[w.id] = { paletaId: paleta?paleta.id:null, boxId: box?box.id:null };
     });
-    if(needsSave) await storageSet('warehouses', JSON.stringify(state.warehouses), true);
-    await storageSet('storage-unit-types', JSON.stringify(state.storageUnitTypes), true);
-  } else {
-    const paleta = state.storageUnitTypes.find(u=>u.name==='Paleta');
-    const box = state.storageUnitTypes.find(u=>u.name==='Box');
-    paletaUnitId = paleta ? paleta.id : null;
-    boxUnitId = box ? box.id : null;
+    if(warehousesChanged) await storageSet('warehouses', JSON.stringify(state.warehouses), true);
+    state._migrationPaletaBoxByWarehouse = paletaBoxByWarehouse; // pro migraci produktů níž
   }
-  state._migrationPaletaUnitId = paletaUnitId; // dočasně pro migraci produktů níž
-  state._migrationBoxUnitId = boxUnitId;
   try{ const r = await window.storage.get('categories', true); state.categories = r ? JSON.parse(r.value) : []; }catch(e){ state.categories = []; }
   try{ const r = await window.storage.get('orders', true); state.orders = r ? JSON.parse(r.value) : []; }catch(e){ state.orders = []; }
   try{
@@ -1394,24 +1403,27 @@ async function loadAll(){
     const existingNames = [...new Set(state.products.map(p=>p.category).filter(Boolean))];
     if(existingNames.length) state.categories = existingNames.map(name=>({ id: uid(), name }));
   }
-  if(state._migrationPaletaUnitId || state._migrationBoxUnitId){
+  if(state._migrationPaletaBoxByWarehouse){
     // migrace ze starších produktů s pevnými poli "kusů na paletě"/"kusů v boxu"
-    // na nový obecný systém skladových jednotek
+    // na nový obecný systém skladových jednotek — podle jednotek toho skladu,
+    // ve kterém produkt zrovna je
     let productsChanged = false;
     state.products.forEach(p=>{
       if(!p.unitsPerStorageType) p.unitsPerStorageType = {};
-      if(p.unitsPerPallet && state._migrationPaletaUnitId && !p.unitsPerStorageType[state._migrationPaletaUnitId]){
-        p.unitsPerStorageType[state._migrationPaletaUnitId] = p.unitsPerPallet;
-        productsChanged = true;
-      }
-      if(p.unitsPerBox && state._migrationBoxUnitId && !p.unitsPerStorageType[state._migrationBoxUnitId]){
-        p.unitsPerStorageType[state._migrationBoxUnitId] = p.unitsPerBox;
-        productsChanged = true;
+      const ids = state._migrationPaletaBoxByWarehouse[p.warehouseId];
+      if(ids){
+        if(p.unitsPerPallet && ids.paletaId && !p.unitsPerStorageType[ids.paletaId]){
+          p.unitsPerStorageType[ids.paletaId] = p.unitsPerPallet;
+          productsChanged = true;
+        }
+        if(p.unitsPerBox && ids.boxId && !p.unitsPerStorageType[ids.boxId]){
+          p.unitsPerStorageType[ids.boxId] = p.unitsPerBox;
+          productsChanged = true;
+        }
       }
     });
     if(productsChanged) await storageSet('products', JSON.stringify(state.products), true);
-    delete state._migrationPaletaUnitId;
-    delete state._migrationBoxUnitId;
+    delete state._migrationPaletaBoxByWarehouse;
   }
   try{ const r = await window.storage.get('product-settings', true); state.productSettings = r ? JSON.parse(r.value) : { prefix:'PRD-', nextNumber:1, padding:6 }; }catch(e){ state.productSettings = { prefix:'PRD-', nextNumber:1, padding:6 }; }
   try{ const r = await window.storage.get('inventory-settings', true); state.inventorySettings = r ? JSON.parse(r.value) : { valuationMethod:'average' }; }catch(e){ state.inventorySettings = { valuationMethod:'average' }; }
@@ -1462,7 +1474,7 @@ async function saveReceivedInvoices(){ await storageSet('received-invoices', JSO
 async function saveRecurringInvoices(){ await storageSet('recurring-invoices', JSON.stringify(state.recurringInvoices), true); saveSnapshotBackup(); }
 async function saveWarehouses(){ await storageSet('warehouses', JSON.stringify(state.warehouses), true); saveSnapshotBackup(); }
 async function saveCategories(){ await storageSet('categories', JSON.stringify(state.categories), true); saveSnapshotBackup(); }
-async function saveStorageUnitTypes(){ await storageSet('storage-unit-types', JSON.stringify(state.storageUnitTypes), true); saveSnapshotBackup(); }
+
 async function saveOrders(){ await storageSet('orders', JSON.stringify(state.orders), true); saveSnapshotBackup(); }
 async function saveIntegrations(){ await storageSet('integrations', JSON.stringify(state.integrations), true); }
 async function saveProducts(){ await storageSet('products', JSON.stringify(state.products), true); saveSnapshotBackup(); }
@@ -1494,7 +1506,7 @@ async function saveSnapshotBackup(){
       companies: state.companies, clients: state.clients, invoices: state.invoices,
       suppliers: state.suppliers, products: state.products,
       receivedInvoices: state.receivedInvoices, recurringInvoices: state.recurringInvoices,
-      warehouses: state.warehouses, categories: state.categories, storageUnitTypes: state.storageUnitTypes, orders: state.orders,
+      warehouses: state.warehouses, categories: state.categories, orders: state.orders,
       integrations: state.integrations, productSettings: state.productSettings,
       inventorySettings: state.inventorySettings, productColumns: state.productColumns,
       expirySettings: state.expirySettings, userPermissions: state.userPermissions,
@@ -1526,7 +1538,7 @@ function exportBackupFile(){
     companies: state.companies, clients: state.clients, invoices: state.invoices,
     suppliers: state.suppliers, products: state.products,
     receivedInvoices: state.receivedInvoices, recurringInvoices: state.recurringInvoices,
-    warehouses: state.warehouses, categories: state.categories, storageUnitTypes: state.storageUnitTypes, orders: state.orders,
+    warehouses: state.warehouses, categories: state.categories, orders: state.orders,
     integrations: state.integrations, productSettings: state.productSettings,
     inventorySettings: state.inventorySettings, productColumns: state.productColumns,
     expirySettings: state.expirySettings, userPermissions: state.userPermissions,
@@ -1556,7 +1568,6 @@ async function restoreFromBackupObject(data, label){
     if(Array.isArray(data.recurringInvoices)){ state.recurringInvoices = data.recurringInvoices; await saveRecurringInvoices(); }
     if(Array.isArray(data.warehouses)){ state.warehouses = data.warehouses; await saveWarehouses(); }
     if(Array.isArray(data.categories)){ state.categories = data.categories; await saveCategories(); }
-    if(Array.isArray(data.storageUnitTypes)){ state.storageUnitTypes = data.storageUnitTypes; await saveStorageUnitTypes(); }
     if(Array.isArray(data.orders)){ state.orders = data.orders; await saveOrders(); }
     if(data.integrations){ state.integrations = data.integrations; await saveIntegrations(); }
     if(data.productSettings){ state.productSettings = data.productSettings; await saveProductSettings(); }
@@ -4466,7 +4477,7 @@ function viewSettings(){
           <option value="30" ${state.backupSettings.intervalDays===30?'selected':''}>Každý měsíc</option>
         </select>
       </div>
-      <p style="font-size:11.5px;color:var(--ink-soft);margin:-8px 0 0 0;">Nová záloha vznikne nejdřív po uplynutí tohohle intervalu od poslední — appka to hlídá sama při každém uložení.</p>
+      <p style="font-size:11.5px;color:var(--ink-soft);margin:-8px 0 0 0;">Nová záloha vznikne nejdřív po uplynutí tohohle intervalu od poslední — program to hlídá sám při každém uložení.</p>
 
       ${state.backupDates && state.backupDates.length ? `
         <div class="section-title">Automatické zálohy (${state.backupDates.length})</div>
@@ -5067,7 +5078,7 @@ function locationFieldGroup(loc, warehouseId){
     </div>
   `;
 }
-// Typy pohybů, kde je směr jednoznačný — appka pak sama nastaví správné znaménko
+// Typy pohybů, kde je směr jednoznačný — program pak sám nastaví správné znaménko
 // množství bez ohledu na to, jestli uživatel napíše číslo s mínusem, nebo bez něj.
 // U reklamace/inventury/ruční úpravy si směr určuje uživatel sám (může to jít oběma směry).
 const OUTGOING_MOVEMENT_TYPES = ['výdej','prodej'];
@@ -5093,7 +5104,7 @@ function renderStockMovementPanel(p, preferredWarehouseId){
           <option value="inventura">Inventura</option>
           <option value="ruční úprava">Ruční úprava</option>
         </select></div>
-        <div class="field"><label>Množství (stačí kladné číslo, směr appka pozná podle typu pohybu)</label><input type="number" step="1" id="sm-qty" value="1"></div>
+        <div class="field"><label>Množství (stačí kladné číslo, směr program pozná podle typu pohybu)</label><input type="number" step="1" id="sm-qty" value="1"></div>
       </div>
       <div class="field"><label>Poznámka / důvod</label><input type="text" id="sm-note" placeholder="např. dodávka od dodavatele"></div>
       <div class="mini-label" style="margin-top:14px;">Údaje této dávky (nech prázdné/„nezměnit", pokud se neliší od dosavadních):</div>
@@ -5855,16 +5866,16 @@ function setupRecurringForm(){
 }
 
 /* ---------- SKLADY (multi-sklad) ---------- */
-function blankWarehouse(){ return { id: uid(), name:'', address:'', isDefault:false, capacityValue:0, capacityUnitTypeId:null, capacityUnitCustomLabel:'', currentUsage:0 }; }
+function blankWarehouse(){ return { id: uid(), name:'', address:'', isDefault:false, capacityValue:0, capacityUnitTypeId:null, capacityUnitCustomLabel:'', currentUsage:0, storageUnitTypes:[] }; }
 function warehouseById(id){ return state.warehouses.find(w=>w.id===id); }
 function defaultWarehouse(){ return state.warehouses.find(w=>w.isDefault) || state.warehouses[0]; }
 function warehouseOptions(selectedId){
   return state.warehouses.map(w=>`<option value="${w.id}" ${selectedId===w.id?'selected':''}>${escapeHtml(w.name)}${w.isDefault?' (výchozí)':''}</option>`).join('');
 }
-function storageUnitTypeById(id){ return (state.storageUnitTypes||[]).find(u=>u.id===id); }
+function storageUnitTypeInWarehouse(w, id){ return w && (w.storageUnitTypes||[]).find(u=>u.id===id); }
 function warehouseCapacityUnitLabel(w){
   if(w.capacityUnitTypeId){
-    const t = storageUnitTypeById(w.capacityUnitTypeId);
+    const t = storageUnitTypeInWarehouse(w, w.capacityUnitTypeId);
     if(t) return t.name;
   }
   return w.capacityUnitCustomLabel || 'jednotky';
@@ -5894,12 +5905,12 @@ function viewWarehouseForm(){
         <input type="checkbox" name="isDefault" ${w.isDefault?'checked':''}> Výchozí sklad pro nové produkty (★) — automaticky se přiřadí každému nově zalistovanému produktu
       </label>
       <div class="section-title">Kapacita skladu</div>
-      <p style="font-size:12.5px;color:var(--ink-soft);margin-top:-6px;">Volitelné. Vyber skladovou jednotku (paleta, regál, přihrádka…) — program pak sám spočítá, kolik je aktuálně obsazeno, podle toho, kolik kusů produktu se do jedné takové jednotky vejde (nastavuje se u produktu). Jednotky spravuješ na stránce Sklad.</p>
+      <p style="font-size:12.5px;color:var(--ink-soft);margin-top:-6px;">Volitelné. Vyber skladovou jednotku tohoto skladu (paleta, regál, přihrádka…) — program pak sám spočítá, kolik je aktuálně obsazeno, podle toho, kolik kusů produktu se do jedné takové jednotky vejde (nastavuje se u produktu). Jednotky spravuješ níž.</p>
       <div class="field-row">
         <div class="field"><label>Maximální kapacita</label><input name="capacityValue" type="number" step="0.01" min="0" value="${w.capacityValue||''}" placeholder="např. 40"></div>
         <div class="field"><label>Skladová jednotka</label><select name="capacityUnitTypeId" id="warehouse-capacity-unit-type">
           <option value="">— ruční číslo bez jednotky —</option>
-          ${(state.storageUnitTypes||[]).map(u=>`<option value="${u.id}" ${unitTypeId===u.id?'selected':''}>${escapeHtml(u.name)}</option>`).join('')}
+          ${(w.storageUnitTypes||[]).map(u=>`<option value="${u.id}" ${unitTypeId===u.id?'selected':''}>${escapeHtml(u.name)}</option>`).join('')}
         </select></div>
       </div>
       <div id="warehouse-custom-unit-box" style="display:${unitTypeId?'none':''};">
@@ -5922,6 +5933,31 @@ function viewWarehouseForm(){
       </div>
       ` : ''}
     </form>
+    ${editing ? `
+    <div class="form-card">
+      <div class="section-title" style="margin-top:0;padding-top:0;border-top:none;display:flex;justify-content:space-between;align-items:center;">
+        <span>Skladové jednotky tohoto skladu (${(w.storageUnitTypes||[]).length})</span>
+        <button type="button" class="btn secondary small" data-action="add-storage-unit-type" data-id="${w.id}">+ Přidat jednotku</button>
+      </div>
+      <p style="font-size:12.5px;color:var(--ink-soft);margin-top:-6px;">Jednotky platí jen pro tenhle sklad — jiný sklad může mít úplně jiné. U produktů v tomhle skladu pak nastavíš, kolik kusů se do jedné jednotky vejde, a kapacita skladu se spočítá sama.</p>
+      ${(w.storageUnitTypes||[]).length ? `
+      <table class="items-table" style="max-width:640px;">
+        <thead><tr><th>Název</th><th>Šířka (cm)</th><th>Výška (cm)</th><th>Hloubka (cm)</th><th></th></tr></thead>
+        <tbody id="storage-unit-types-tbody" data-warehouse-id="${w.id}">
+          ${w.storageUnitTypes.map(u=>`
+            <tr>
+              <td><input type="text" data-unit-field="name" data-id="${u.id}" value="${escapeAttr(u.name)}" style="width:100%;padding:6px 8px;border:1px solid var(--line);border-radius:4px;"></td>
+              <td><input type="number" step="0.1" min="0" data-unit-field="width" data-id="${u.id}" value="${u.width||''}" style="width:80px;padding:6px 8px;border:1px solid var(--line);border-radius:4px;"></td>
+              <td><input type="number" step="0.1" min="0" data-unit-field="height" data-id="${u.id}" value="${u.height||''}" style="width:80px;padding:6px 8px;border:1px solid var(--line);border-radius:4px;"></td>
+              <td><input type="number" step="0.1" min="0" data-unit-field="depth" data-id="${u.id}" value="${u.depth||''}" style="width:80px;padding:6px 8px;border:1px solid var(--line);border-radius:4px;"></td>
+              <td><button type="button" class="iconbtn" data-action="delete-storage-unit-type" data-id="${u.id}" data-warehouse-id="${w.id}" title="Smazat"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+      ` : `<p style="font-size:12.5px;color:var(--ink-soft);">Zatím žádné skladové jednotky.</p>`}
+    </div>
+    ` : `<div class="form-card"><p style="font-size:12.5px;color:var(--ink-soft);margin:0;">Skladové jednotky nastavíš, jakmile sklad poprvé uložíš.</p></div>`}
   `;
 }
 async function onSubmitWarehouse(e){
@@ -6956,6 +6992,7 @@ function viewProductForm(){
   const margin = productMargin(p);
   const status = stockStatus(p);
   const hasNutritionData = !!(p.nutrition && Object.keys(p.nutrition).some(k=>k!=='per' && p.nutrition[k]!=null));
+  const productWarehouse = warehouseById(p.warehouseId) || defaultWarehouse();
   return `
     <div class="pagehead"><div><h1>${editing?'Upravit produkt':'Zalistovat produkt'}</h1></div></div>
     <form id="product-form" class="form-card">
@@ -7068,11 +7105,11 @@ function viewProductForm(){
         <div class="field"><label>Výška</label><input type="number" step="0.1" min="0" name="pkgHeight" value="${(p.packageDimensions&&p.packageDimensions.height)||''}"></div>
         <div class="field"><label>Hloubka</label><input type="number" step="0.1" min="0" name="pkgDepth" value="${(p.packageDimensions&&p.packageDimensions.depth)||''}"></div>
       </div>
-      <div class="mini-label" style="margin-top:14px;">Kolik kusů se vejde do jedné skladové jednotky (pro výpočet kapacity skladu)</div>
+      <div class="mini-label" style="margin-top:14px;">Kolik kusů se vejde do jedné skladové jednotky (pro výpočet kapacity skladu — jednotky patří skladu „${productWarehouse?escapeHtml(productWarehouse.name):''}", spravuje se v jeho nastavení)</div>
       <div class="field-row">
-        ${(state.storageUnitTypes||[]).map(u=>`
+        ${(productWarehouse&&productWarehouse.storageUnitTypes||[]).map(u=>`
           <div class="field"><label>Kusů na „${escapeHtml(u.name)}"</label><input type="number" step="1" min="0" name="unitsPerStorageType_${u.id}" value="${(p.unitsPerStorageType&&p.unitsPerStorageType[u.id])||''}"></div>
-        `).join('') || '<p style="font-size:12px;color:var(--ink-soft);">Zatím nemáš definované žádné skladové jednotky — přidej je na stránce Sklad.</p>'}
+        `).join('') || '<p style="font-size:12px;color:var(--ink-soft);">Tenhle sklad zatím nemá definované žádné skladové jednotky — přidej je v jeho nastavení (Sklad → Upravit sklad).</p>'}
       </div>
 
       <div class="section-title">Nutriční údaje</div>
@@ -7332,7 +7369,10 @@ async function onSubmitProduct(e){
     dimensionUnit: fd.get('dimensionUnit')||'cm',
     dimensions: { width: parseFloat(fd.get('dimWidth'))||0, height: parseFloat(fd.get('dimHeight'))||0, depth: parseFloat(fd.get('dimDepth'))||0 },
     packageDimensions: { width: parseFloat(fd.get('pkgWidth'))||0, height: parseFloat(fd.get('pkgHeight'))||0, depth: parseFloat(fd.get('pkgDepth'))||0 },
-    unitsPerStorageType: Object.fromEntries((state.storageUnitTypes||[]).map(u=>[u.id, parseFloat(fd.get('unitsPerStorageType_'+u.id))||0]).filter(([,v])=>v>0)),
+    unitsPerStorageType: (function(){
+      const pw = warehouseById(existing ? existing.warehouseId : ((defaultWarehouse()||{}).id)) || defaultWarehouse();
+      return Object.fromEntries(((pw&&pw.storageUnitTypes)||[]).map(u=>[u.id, parseFloat(fd.get('unitsPerStorageType_'+u.id))||0]).filter(([,v])=>v>0));
+    })(),
     nutrition: {
       per: '100g',
       energyKj: fd.get('nutri-energyKj')!=='' ? parseFloat(fd.get('nutri-energyKj')) : null,
@@ -7497,11 +7537,14 @@ function setupStockScan(){
 function setupStorageUnitTypesTable(){
   const tbody = document.getElementById('storage-unit-types-tbody');
   if(!tbody) return;
+  const warehouseId = tbody.getAttribute('data-warehouse-id');
+  const w = warehouseById(warehouseId);
+  if(!w) return;
   tbody.querySelectorAll('input[data-unit-field]').forEach(input=>{
     input.addEventListener('change', async ()=>{
       const uid_ = input.getAttribute('data-id');
       const field = input.getAttribute('data-unit-field');
-      const u = storageUnitTypeById(uid_);
+      const u = storageUnitTypeInWarehouse(w, uid_);
       if(!u) return;
       if(field==='name'){
         const trimmed = input.value.trim();
@@ -7510,7 +7553,7 @@ function setupStorageUnitTypesTable(){
       } else {
         u[field] = parseFloat(input.value)||0;
       }
-      try{ await saveStorageUnitTypes(); }catch(err){ alert('Uložení se nepovedlo.'); }
+      try{ await saveWarehouses(); }catch(err){ alert('Uložení se nepovedlo.'); }
       render();
     });
   });
@@ -7553,30 +7596,6 @@ function viewStock(){
           </div>
         `;}).join('')}
       </div>
-    </div>
-
-    <div class="form-card" style="margin-bottom:24px;">
-      <div class="section-title" style="margin-top:0;padding-top:0;border-top:none;display:flex;justify-content:space-between;align-items:center;">
-        <span>Skladové jednotky (${(state.storageUnitTypes||[]).length})</span>
-        <button type="button" class="btn secondary small" data-action="add-storage-unit-type">+ Přidat jednotku</button>
-      </div>
-      <p style="font-size:12.5px;color:var(--ink-soft);margin-top:-6px;">Definuj vlastní jednotky (paleta, regál, přihrádka, bedna…). U produktu pak nastavíš, kolik kusů se do jedné vejde — appka podle toho sama spočítá kapacitu kteréhokoli skladu, který si na tuhle jednotku nastavíš.</p>
-      ${(state.storageUnitTypes||[]).length ? `
-      <table class="items-table" style="max-width:640px;">
-        <thead><tr><th>Název</th><th>Šířka (cm)</th><th>Výška (cm)</th><th>Hloubka (cm)</th><th></th></tr></thead>
-        <tbody id="storage-unit-types-tbody">
-          ${state.storageUnitTypes.map(u=>`
-            <tr>
-              <td><input type="text" data-unit-field="name" data-id="${u.id}" value="${escapeAttr(u.name)}" style="width:100%;padding:6px 8px;border:1px solid var(--line);border-radius:4px;"></td>
-              <td><input type="number" step="0.1" min="0" data-unit-field="width" data-id="${u.id}" value="${u.width||''}" style="width:80px;padding:6px 8px;border:1px solid var(--line);border-radius:4px;"></td>
-              <td><input type="number" step="0.1" min="0" data-unit-field="height" data-id="${u.id}" value="${u.height||''}" style="width:80px;padding:6px 8px;border:1px solid var(--line);border-radius:4px;"></td>
-              <td><input type="number" step="0.1" min="0" data-unit-field="depth" data-id="${u.id}" value="${u.depth||''}" style="width:80px;padding:6px 8px;border:1px solid var(--line);border-radius:4px;"></td>
-              <td><button type="button" class="iconbtn" data-action="delete-storage-unit-type" data-id="${u.id}" title="Smazat"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></td>
-            </tr>
-          `).join('')}
-        </tbody>
-      </table>
-      ` : `<p style="font-size:12.5px;color:var(--ink-soft);">Zatím žádné skladové jednotky.</p>`}
     </div>
   `;
 
@@ -8433,7 +8452,7 @@ function afterRender(){
   if(tenantSwitcher){ tenantSwitcher.addEventListener('change', ()=> switchTenant(tenantSwitcher.value)); }
   if(state.view==='received-invoice-detail') setupReceivedInvoiceDetail();
   if(state.view==='stock') setupStockScan();
-  if(state.view==='stock') setupStorageUnitTypesTable();
+  if(state.view==='warehouse-form') setupStorageUnitTypesTable();
   if(state.view==='stock'){
     const valEl = document.getElementById('expiry-threshold-value');
     const unitEl = document.getElementById('expiry-threshold-unit');
@@ -9988,25 +10007,30 @@ document.addEventListener('click', async (e)=>{
     if(box) box.style.display = box.style.display==='none' ? '' : 'none';
   }
   else if(action==='add-storage-unit-type'){
+    const w = warehouseById(id); // tady id = ID skladu
+    if(!w) return;
     const name = prompt('Název skladové jednotky (např. Paleta, Regál, Přihrádka, Bedna):');
     if(!name || !name.trim()) return;
-    state.storageUnitTypes.push({ id: uid(), name: name.trim(), width:0, height:0, depth:0 });
-    try{ await saveStorageUnitTypes(); }catch(err){ alert('Uložení se nepovedlo.'); }
+    if(!w.storageUnitTypes) w.storageUnitTypes = [];
+    w.storageUnitTypes.push({ id: uid(), name: name.trim(), width:0, height:0, depth:0 });
+    try{ await saveWarehouses(); }catch(err){ alert('Uložení se nepovedlo.'); }
     render();
   }
   else if(action==='delete-storage-unit-type'){
-    const u = storageUnitTypeById(id);
+    const warehouseId = el.getAttribute('data-warehouse-id');
+    const w = warehouseById(warehouseId);
+    if(!w) return;
+    const u = storageUnitTypeInWarehouse(w, id);
     if(!u) return;
-    const usedByWarehouses = state.warehouses.filter(w=>w.capacityUnitTypeId===id).length;
-    const usedByProducts = state.products.filter(p=>(p.unitsPerStorageType||{})[id]>0).length;
-    let msg = `Smazat jednotku „${u.name}"?`;
-    if(usedByWarehouses||usedByProducts) msg += ` Používá ji ${usedByWarehouses} skladů a ${usedByProducts} produktů — u skladů se kapacita přepne na ruční číslo.`;
+    const usedAsCapacity = w.capacityUnitTypeId===id;
+    const usedByProducts = state.products.filter(p=>p.warehouseId===w.id && (p.unitsPerStorageType||{})[id]>0).length;
+    let msg = `Smazat jednotku „${u.name}" ze skladu „${w.name}"?`;
+    if(usedAsCapacity||usedByProducts) msg += ` Používá ji ${usedByProducts} produktů${usedAsCapacity?' a je nastavená jako kapacitní jednotka tohoto skladu':''} — kapacita skladu se přepne na ruční číslo.`;
     if(!confirm(msg)) return;
-    state.storageUnitTypes = state.storageUnitTypes.filter(x=>x.id!==id);
-    state.warehouses.forEach(w=>{ if(w.capacityUnitTypeId===id) w.capacityUnitTypeId=null; });
-    state.products.forEach(p=>{ if(p.unitsPerStorageType && p.unitsPerStorageType[id]!=null) delete p.unitsPerStorageType[id]; });
+    w.storageUnitTypes = w.storageUnitTypes.filter(x=>x.id!==id);
+    if(w.capacityUnitTypeId===id) w.capacityUnitTypeId=null;
+    state.products.forEach(p=>{ if(p.warehouseId===w.id && p.unitsPerStorageType && p.unitsPerStorageType[id]!=null) delete p.unitsPerStorageType[id]; });
     try{
-      await saveStorageUnitTypes();
       await saveWarehouses();
       await saveProducts();
     }catch(err){ alert('Uložení se nepovedlo.'); }
