@@ -7685,7 +7685,7 @@ function viewStock(){
                 <div style="background:${pct>=90?'var(--red)':pct>=70?'var(--amber)':'var(--accent)'};height:100%;width:${pct}%;"></div>
               </div>
               <div style="font-size:11px;color:var(--ink-soft);margin-bottom:8px;">
-                ${wh.capacityUnitTypeId?fmtWhole(usage):fmt(usage)} / ${wh.capacityUnitTypeId?fmtWhole(wh.capacityValue):fmt(wh.capacityValue)} ${escapeHtml(warehouseCapacityUnitLabel(wh))} (${pct} %)
+                ${wh.capacityUnitTypeId?fmtWhole(usage):fmt(usage)} / ${wh.capacityUnitTypeId?fmtWhole(wh.capacityValue):fmt(wh.capacityValue)} ${escapeHtml(warehouseCapacityUnitLabel(wh))}
                 · <span style="font-weight:600;color:${(wh.capacityValue-usage)<=0?'var(--red)':(pct>=70?'var(--amber)':'var(--accent)')};">zbývá ${wh.capacityUnitTypeId?fmtWhole(Math.max(0,wh.capacityValue-usage)):fmt(Math.max(0,wh.capacityValue-usage))}</span>
               </div>
             ` : ''}
@@ -7828,7 +7828,7 @@ function viewStock(){
         <div style="background:var(--paper);border-radius:20px;height:12px;overflow:hidden;margin-bottom:8px;">
           <div style="background:${pct>=90?'var(--red)':pct>=70?'var(--amber)':'var(--accent)'};height:100%;width:${pct}%;"></div>
         </div>
-        <p style="font-size:13px;color:var(--ink-soft);margin:0 0 4px 0;">${w.capacityUnitTypeId?fmtWhole(usage):fmt(usage)} / ${w.capacityUnitTypeId?fmtWhole(w.capacityValue):fmt(w.capacityValue)} ${escapeHtml(warehouseCapacityUnitLabel(w))} využito (${pct} %)${w.capacityUnitTypeId?' — dopočítáno automaticky podle skladem':''}</p>
+        <p style="font-size:13px;color:var(--ink-soft);margin:0 0 4px 0;">${w.capacityUnitTypeId?fmtWhole(usage):fmt(usage)} / ${w.capacityUnitTypeId?fmtWhole(w.capacityValue):fmt(w.capacityValue)} ${escapeHtml(warehouseCapacityUnitLabel(w))} využito${w.capacityUnitTypeId?' — dopočítáno automaticky podle skladem':''}</p>
         <p style="font-size:13px;font-weight:600;margin:0;color:${(w.capacityValue-usage)<=0?'var(--red)':(pct>=70?'var(--amber)':'var(--accent)')};">
           zbývá ${w.capacityUnitTypeId?fmtWhole(Math.max(0,w.capacityValue-usage)):fmt(Math.max(0,w.capacityValue-usage))} ${escapeHtml(warehouseCapacityUnitLabel(w))}
         </p>
