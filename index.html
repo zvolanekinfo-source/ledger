@@ -5952,11 +5952,28 @@ function viewWarehouseForm(){
         <button type="button" class="btn secondary small" data-action="add-storage-unit-type" data-id="${w.id}">+ Přidat jednotku</button>
       </div>
       <p style="font-size:12.5px;color:var(--ink-soft);margin-top:-6px;">Jednotky platí jen pro tenhle sklad — jiný sklad může mít úplně jiné. U produktů v tomhle skladu pak nastavíš, kolik kusů se na/do jedné jednotky vejde, a kapacita skladu se spočítá sama. Program sám pozná podle názvu, jestli se zboží skládá NA jednotku (paleta) nebo DO ní (box, přihrádka...) — u palety navíc rovnou doplní standardní rozměr euro palety (120 × 80 cm).</p>
-      ${(w.storageUnitTypes||[]).length ? `
+      ${(w.storageUnitTypes||[]).length ? (function(){
+        const paleta = w.storageUnitTypes.find(isPalletLikeUnit);
+        return `
       <table class="items-table" style="max-width:720px;">
         <thead><tr><th>Název</th><th>Šířka (cm)</th><th>Výška (cm)</th><th>Hloubka (cm)</th><th></th></tr></thead>
         <tbody id="storage-unit-types-tbody" data-warehouse-id="${w.id}">
-          ${w.storageUnitTypes.map(u=>`
+          ${w.storageUnitTypes.map(u=>{
+            let fitNote = '';
+            if(!isPalletLikeUnit(u) && paleta && paleta.width && paleta.depth && u.width && u.depth){
+              const shortSide = Math.min(paleta.width, paleta.depth);
+              const longSide = Math.max(paleta.width, paleta.depth);
+              const across = Math.floor(u.width / shortSide);
+              const fitsDepth = u.depth >= longSide;
+              const acrossCount = fitsDepth ? across : 0;
+              if(acrossCount>0){
+                const high = (u.height && paleta.height) ? Math.max(1, Math.floor(u.height/paleta.height)) : 1;
+                fitNote = `<div style="grid-column:1/-1;font-size:11.5px;color:var(--ink-soft);padding:2px 8px 8px 8px;">≈ ${acrossCount} palet(y) vedle sebe${high>1?` × ${high} na výšku`:''} (kratší stranou palety ${fmt(shortSide)} cm podél šířky) → cca ${acrossCount*high} palet do jedné(ho) „${escapeHtml(u.name)}"</div>`;
+              } else if(u.width || u.depth){
+                fitNote = `<div style="grid-column:1/-1;font-size:11.5px;color:var(--red);padding:2px 8px 8px 8px;">Paleta se svou delší stranou (${fmt(longSide)} cm) do hloubky „${escapeHtml(u.name)}" (${fmt(u.depth)} cm) nevejde.</div>`;
+              }
+            }
+            return `
             <tr>
               <td><input type="text" data-unit-field="name" data-id="${u.id}" value="${escapeAttr(u.name)}" style="width:100%;padding:6px 8px;border:1px solid var(--line);border-radius:4px;"></td>
               <td><input type="number" step="0.1" min="0" data-unit-field="width" data-id="${u.id}" value="${u.width||''}" style="width:80px;padding:6px 8px;border:1px solid var(--line);border-radius:4px;"></td>
@@ -5964,10 +5981,11 @@ function viewWarehouseForm(){
               <td><input type="number" step="0.1" min="0" data-unit-field="depth" data-id="${u.id}" value="${u.depth||''}" style="width:80px;padding:6px 8px;border:1px solid var(--line);border-radius:4px;"></td>
               <td><button type="button" class="iconbtn" data-action="delete-storage-unit-type" data-id="${u.id}" data-warehouse-id="${w.id}" title="Smazat"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></td>
             </tr>
-          `).join('')}
+            ${fitNote ? `<tr><td colspan="5" style="padding:0;border:none;">${fitNote}</td></tr>` : ''}
+          `;}).join('')}
         </tbody>
       </table>
-      ` : `<p style="font-size:12.5px;color:var(--ink-soft);">Zatím žádné skladové jednotky.</p>`}
+      `;})() : `<p style="font-size:12.5px;color:var(--ink-soft);">Zatím žádné skladové jednotky.</p>`}
     </div>
     ` : `<div class="form-card"><p style="font-size:12.5px;color:var(--ink-soft);margin:0;">Skladové jednotky nastavíš, jakmile sklad poprvé uložíš.</p></div>`}
   `;
@@ -7119,9 +7137,15 @@ function viewProductForm(){
       </div>
       <div class="mini-label" style="margin-top:14px;">Kolik kusů se vejde do jedné skladové jednotky (pro výpočet kapacity skladu — jednotky patří skladu „${productWarehouse?escapeHtml(productWarehouse.name):''}", spravuje se v jeho nastavení)</div>
       <div class="field-row">
-        ${(productWarehouse&&productWarehouse.storageUnitTypes||[]).map(u=>`
-          <div class="field"><label>Kusů ${isPalletLikeUnit(u)?'na':'do'} „${escapeHtml(u.name)}"</label><input type="number" step="1" min="0" name="unitsPerStorageType_${u.id}" value="${(p.unitsPerStorageType&&p.unitsPerStorageType[u.id])||''}"></div>
-        `).join('') || '<p style="font-size:12px;color:var(--ink-soft);">Tenhle sklad zatím nemá definované žádné skladové jednotky — přidej je v jeho nastavení (Sklad → Upravit sklad).</p>'}
+        ${(productWarehouse&&productWarehouse.storageUnitTypes||[]).map(u=>{
+          const isPallet = isPalletLikeUnit(u);
+          return `
+          <div class="field">
+            <label>Kusů ${isPallet?'na':'do'} „${escapeHtml(u.name)}"</label>
+            <input type="number" step="1" min="0" name="unitsPerStorageType_${u.id}" ${isPallet?`class="pallet-units-input" data-pallet-unit-id="${u.id}"`:''} value="${(p.unitsPerStorageType&&p.unitsPerStorageType[u.id])||''}">
+            ${isPallet ? `<div id="pallet-height-note-${u.id}" style="font-size:11px;color:var(--ink-soft);margin-top:4px;"></div>` : ''}
+          </div>
+        `;}).join('') || '<p style="font-size:12px;color:var(--ink-soft);">Tenhle sklad zatím nemá definované žádné skladové jednotky — přidej je v jeho nastavení (Sklad → Upravit sklad).</p>'}
       </div>
 
       <div class="section-title">Nutriční údaje</div>
@@ -7192,6 +7216,43 @@ function setupProductForm(){
   const form = document.getElementById('product-form');
   if(!form) return;
   setupProductPhotoDropzone();
+
+  function updatePalletHeightEstimates(){
+    const existingP = state.editingProductId ? productById(state.editingProductId) : null;
+    const pw = warehouseById(existingP ? existingP.warehouseId : null) || defaultWarehouse();
+    if(!pw) return;
+    const pkgWidth = parseFloat((form.querySelector('[name="pkgWidth"]')||{}).value)||0;
+    const pkgHeight = parseFloat((form.querySelector('[name="pkgHeight"]')||{}).value)||0;
+    const pkgDepth = parseFloat((form.querySelector('[name="pkgDepth"]')||{}).value)||0;
+    (pw.storageUnitTypes||[]).filter(isPalletLikeUnit).forEach(u=>{
+      const noteEl = document.getElementById('pallet-height-note-'+u.id);
+      const qtyInput = form.querySelector(`[name="unitsPerStorageType_${u.id}"]`);
+      if(!noteEl || !qtyInput) return;
+      const unitsPerPallet = parseFloat(qtyInput.value)||0;
+      if(!unitsPerPallet || !pkgWidth || !pkgDepth || !pkgHeight || !u.width || !u.depth){
+        noteEl.textContent = '';
+        return;
+      }
+      const perLayer = Math.floor(u.width/pkgWidth) * Math.floor(u.depth/pkgDepth);
+      if(perLayer<=0){
+        noteEl.style.color = 'var(--red)';
+        noteEl.textContent = 'Balení se na paletu podle rozměrů nevejde — zkontroluj rozměry balení a palety.';
+        return;
+      }
+      const layers = Math.ceil(unitsPerPallet/perLayer);
+      const totalHeight = (u.height||0) + layers*pkgHeight;
+      noteEl.style.color = 'var(--ink-soft)';
+      noteEl.textContent = `≈ ${perLayer} balení na vrstvu × ${layers} vrstev → výška naložené palety ≈ ${fmt(totalHeight)} cm`;
+    });
+  }
+  ['pkgWidth','pkgHeight','pkgDepth'].forEach(n=>{
+    const el = form.querySelector(`[name="${n}"]`);
+    if(el) el.addEventListener('input', updatePalletHeightEstimates);
+  });
+  form.querySelectorAll('.pallet-units-input').forEach(el=>{
+    el.addEventListener('input', updatePalletHeightEstimates);
+  });
+  updatePalletHeightEstimates();
 
   const nutritionCheckbox = document.getElementById('has-nutrition-checkbox');
   const nutritionBox = document.getElementById('nutrition-fields-box');
