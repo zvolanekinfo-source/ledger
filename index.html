@@ -7484,13 +7484,13 @@ function viewStock(){
     ` : ''}
     </div>
 
-    <div id="low-stock-section">
+    <div id="low-stock-section" style="margin-bottom:32px;">
       <div class="section-title" style="margin-top:0;">Nízký stav / vyprodáno</div>
       ${(low.length+out.length) ? renderProductTable([...out, ...low], {selectable:false}) : emptyState('Vše v pořádku', 'Žádný produkt v tomhle skladu není pod minimálním stavem.')}
     </div>
 
-    <div id="expiring-section">
-      <div class="section-title">Blížící se expirace</div>
+    <div id="expiring-section" style="margin-top:8px;">
+      <div class="section-title" style="margin-top:0;">Blížící se expirace</div>
       ${expiring.length ? `
       <div class="table-scroll">
       <table class="fixed-table">
