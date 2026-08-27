@@ -7417,9 +7417,9 @@ function viewStock(){
 
     <div class="cards" style="margin-bottom:24px;">
       <div class="card"><div class="label">Hodnota skladu</div><div class="value accent num">${fmt(stockValue)} Kč</div></div>
-      <div class="card rowlink" data-action="scroll-to-section" data-target="low-stock-section" style="cursor:pointer;"><div class="label">Pod minimem</div><div class="value amber">${low.length}</div></div>
-      <div class="card rowlink" data-action="scroll-to-section" data-target="low-stock-section" style="cursor:pointer;"><div class="label">Není skladem</div><div class="value red">${out.length}</div></div>
-      <div class="card rowlink" data-action="scroll-to-section" data-target="expiring-section" style="cursor:pointer;">
+      <div class="card ${low.length?'rowlink':''}" data-action="select-and-scroll" data-target="low-stock-section" data-ids="${low.map(p=>p.id).join(',')}" style="${low.length?'cursor:pointer;':''}"><div class="label">Pod minimem</div><div class="value amber">${low.length}</div></div>
+      <div class="card ${out.length?'rowlink':''}" data-action="select-and-scroll" data-target="low-stock-section" data-ids="${out.map(p=>p.id).join(',')}" style="${out.length?'cursor:pointer;':''}"><div class="label">Není skladem</div><div class="value red">${out.length}</div></div>
+      <div class="card ${expiring.length?'rowlink':''}" data-action="select-and-scroll" data-target="expiring-section" data-ids="${expiring.map(p=>p.id).join(',')}" style="${expiring.length?'cursor:pointer;':''}">
         <div class="label">Blíží se expirace (${es.value} ${unitLabel})</div>
         <div class="value amber">${expiring.length}</div>
         <div class="no-print" style="display:flex;gap:4px;flex-wrap:wrap;margin-top:8px;" onclick="event.stopPropagation()">
@@ -7486,7 +7486,7 @@ function viewStock(){
 
     <div id="low-stock-section" style="margin-bottom:32px;">
       <div class="section-title" style="margin-top:0;">Nízký stav / vyprodáno</div>
-      ${(low.length+out.length) ? renderProductTable([...out, ...low], {selectable:false}) : emptyState('Vše v pořádku', 'Žádný produkt v tomhle skladu není pod minimálním stavem.')}
+      ${(low.length+out.length) ? renderProductTable([...out, ...low]) : emptyState('Vše v pořádku', 'Žádný produkt v tomhle skladu není pod minimálním stavem.')}
     </div>
 
     <div id="expiring-section" style="margin-top:8px;">
@@ -7494,10 +7494,11 @@ function viewStock(){
       ${expiring.length ? `
       <div class="table-scroll">
       <table class="fixed-table">
-        <thead><tr><th>Produkt</th><th style="width:130px;">Expirace</th><th style="width:100px;">Zbývá dní</th><th style="width:110px;">Skladem</th><th style="width:280px;">Umístění</th><th style="width:70px;"></th></tr></thead>
+        <thead><tr><th style="width:44px;"></th><th>Produkt</th><th style="width:130px;">Expirace</th><th style="width:100px;">Zbývá dní</th><th style="width:110px;">Skladem</th><th style="width:280px;">Umístění</th><th style="width:70px;"></th></tr></thead>
         <tbody>
           ${expiring.map(p=>`
-            <tr>
+            <tr class="${state.selectedProductIds.has(p.id)?'selected':''}">
+              <td class="no-print" style="padding:0;"><span class="checkbox-hit" data-action="toggle-product-select" data-id="${p.id}"><input type="checkbox" data-action="toggle-product-select" data-id="${p.id}" ${state.selectedProductIds.has(p.id)?'checked':''}></span></td>
               <td>${escapeHtml(p.name)}</td>
               <td class="num">${p.expiryDate}</td>
               <td class="num">${daysUntil(p.expiryDate)}</td>
@@ -9755,18 +9756,18 @@ document.addEventListener('click', async (e)=>{
   }
   else if(action==='new-warehouse'){ state.editingWarehouseId=null; state.view='warehouse-form'; render(); }
   else if(action==='select-stock-warehouse'){ state.stockWarehouseId=id; render(); }
-  else if(action==='scroll-to-section'){
-    const target = document.getElementById(el.getAttribute('data-target'));
-    if(target){
-      target.scrollIntoView({ behavior:'smooth', block:'center' });
-      target.classList.add('section-flash');
-      const rows = target.querySelectorAll('tbody tr');
-      rows.forEach(r=> r.classList.add('row-flash'));
-      setTimeout(()=>{
-        target.classList.remove('section-flash');
-        rows.forEach(r=> r.classList.remove('row-flash'));
-      }, 2600);
-    }
+  else if(action==='select-and-scroll'){
+    const idsRaw = el.getAttribute('data-ids')||'';
+    const ids = idsRaw.split(',').filter(Boolean);
+    if(!ids.length) return; // 0 produktů = nic se neděje
+    state.selectedProductIds.clear();
+    ids.forEach(pid=> state.selectedProductIds.add(pid));
+    const targetId = el.getAttribute('data-target');
+    render();
+    requestAnimationFrame(()=>{
+      const target = document.getElementById(targetId);
+      if(target) target.scrollIntoView({ behavior:'smooth', block:'center' });
+    });
   }
   else if(action==='back-to-warehouse-list'){ state.stockWarehouseId=null; render(); }
   else if(action==='clear-stock-movement-product'){ state.stockMovementProductId=null; render(); }
