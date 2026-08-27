@@ -1335,6 +1335,19 @@ async function loadAll(){
   try{ const r = await window.storage.get('warehouses', true); state.warehouses = r ? JSON.parse(r.value) : []; }catch(e){ state.warehouses = []; }
   if(!state.warehouses.length){ state.warehouses = [{ id: uid(), name:'Hlavní sklad', address:'', isDefault:true }]; }
   state.warehouses.forEach(w=>{ if(!w.storageUnitTypes) w.storageUnitTypes = []; });
+  // Jednotky pojmenované "paleta" (i ze starších verzí appky) se rovnou označí
+  // jako "skládá se na ni" a doplní se jim standardní rozměr euro palety, pokud
+  // ještě rozměr nemají zadaný.
+  state.warehouses.forEach(w=>{
+    (w.storageUnitTypes||[]).forEach(u=>{
+      if(/palet/i.test(stripDiacritics(u.name||''))){
+        if(u.stackedOnTop===undefined) u.stackedOnTop = true;
+        if(!u.width && !u.height && !u.depth){ u.width=120; u.depth=80; u.height=14.4; }
+      } else if(u.stackedOnTop===undefined){
+        u.stackedOnTop = false;
+      }
+    });
+  });
   {
     // Skladové jednotky teď patří ke konkrétnímu skladu, ne appce jako celku.
     let warehousesChanged = false;
@@ -5939,10 +5952,10 @@ function viewWarehouseForm(){
         <span>Skladové jednotky tohoto skladu (${(w.storageUnitTypes||[]).length})</span>
         <button type="button" class="btn secondary small" data-action="add-storage-unit-type" data-id="${w.id}">+ Přidat jednotku</button>
       </div>
-      <p style="font-size:12.5px;color:var(--ink-soft);margin-top:-6px;">Jednotky platí jen pro tenhle sklad — jiný sklad může mít úplně jiné. U produktů v tomhle skladu pak nastavíš, kolik kusů se do jedné jednotky vejde, a kapacita skladu se spočítá sama.</p>
+      <p style="font-size:12.5px;color:var(--ink-soft);margin-top:-6px;">Jednotky platí jen pro tenhle sklad — jiný sklad může mít úplně jiné. U produktů v tomhle skladu pak nastavíš, kolik kusů se na/do jedné jednotky vejde, a kapacita skladu se spočítá sama. U jednotky typu „Paleta" appka rovnou doplní standardní rozměr euro palety (120 × 80 cm) a označí ji jako „skládá se na ni", ne dovnitř.</p>
       ${(w.storageUnitTypes||[]).length ? `
-      <table class="items-table" style="max-width:640px;">
-        <thead><tr><th>Název</th><th>Šířka (cm)</th><th>Výška (cm)</th><th>Hloubka (cm)</th><th></th></tr></thead>
+      <table class="items-table" style="max-width:720px;">
+        <thead><tr><th>Název</th><th>Šířka (cm)</th><th>Výška (cm)</th><th>Hloubka (cm)</th><th>Skládá se na ni</th><th></th></tr></thead>
         <tbody id="storage-unit-types-tbody" data-warehouse-id="${w.id}">
           ${w.storageUnitTypes.map(u=>`
             <tr>
@@ -5950,6 +5963,7 @@ function viewWarehouseForm(){
               <td><input type="number" step="0.1" min="0" data-unit-field="width" data-id="${u.id}" value="${u.width||''}" style="width:80px;padding:6px 8px;border:1px solid var(--line);border-radius:4px;"></td>
               <td><input type="number" step="0.1" min="0" data-unit-field="height" data-id="${u.id}" value="${u.height||''}" style="width:80px;padding:6px 8px;border:1px solid var(--line);border-radius:4px;"></td>
               <td><input type="number" step="0.1" min="0" data-unit-field="depth" data-id="${u.id}" value="${u.depth||''}" style="width:80px;padding:6px 8px;border:1px solid var(--line);border-radius:4px;"></td>
+              <td style="text-align:center;"><input type="checkbox" data-unit-field="stackedOnTop" data-id="${u.id}" ${u.stackedOnTop?'checked':''} title="Zaškrtni, když se zboží pokládá NA jednotku (jako paleta), ne dovnitř (jako box)"></td>
               <td><button type="button" class="iconbtn" data-action="delete-storage-unit-type" data-id="${u.id}" data-warehouse-id="${w.id}" title="Smazat"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></td>
             </tr>
           `).join('')}
@@ -7108,7 +7122,7 @@ function viewProductForm(){
       <div class="mini-label" style="margin-top:14px;">Kolik kusů se vejde do jedné skladové jednotky (pro výpočet kapacity skladu — jednotky patří skladu „${productWarehouse?escapeHtml(productWarehouse.name):''}", spravuje se v jeho nastavení)</div>
       <div class="field-row">
         ${(productWarehouse&&productWarehouse.storageUnitTypes||[]).map(u=>`
-          <div class="field"><label>Kusů na „${escapeHtml(u.name)}"</label><input type="number" step="1" min="0" name="unitsPerStorageType_${u.id}" value="${(p.unitsPerStorageType&&p.unitsPerStorageType[u.id])||''}"></div>
+          <div class="field"><label>Kusů ${u.stackedOnTop?'na':'do'} „${escapeHtml(u.name)}"</label><input type="number" step="1" min="0" name="unitsPerStorageType_${u.id}" value="${(p.unitsPerStorageType&&p.unitsPerStorageType[u.id])||''}"></div>
         `).join('') || '<p style="font-size:12px;color:var(--ink-soft);">Tenhle sklad zatím nemá definované žádné skladové jednotky — přidej je v jeho nastavení (Sklad → Upravit sklad).</p>'}
       </div>
 
@@ -7550,6 +7564,8 @@ function setupStorageUnitTypesTable(){
         const trimmed = input.value.trim();
         if(!trimmed){ input.value = u.name; return; } // název nesmí být prázdný
         u.name = trimmed;
+      } else if(field==='stackedOnTop'){
+        u.stackedOnTop = input.checked;
       } else {
         u[field] = parseFloat(input.value)||0;
       }
@@ -10012,7 +10028,15 @@ document.addEventListener('click', async (e)=>{
     const name = prompt('Název skladové jednotky (např. Paleta, Regál, Přihrádka, Bedna):');
     if(!name || !name.trim()) return;
     if(!w.storageUnitTypes) w.storageUnitTypes = [];
-    w.storageUnitTypes.push({ id: uid(), name: name.trim(), width:0, height:0, depth:0 });
+    const trimmed = name.trim();
+    const isPallet = /palet/i.test(stripDiacritics(trimmed));
+    // Euro/EPAL paleta má skoro všude stejný standardní rozměr (120×80 cm, výška
+    // podstavce cca 14,4 cm) — doplníme ho rovnou, ať to nemusí nikdo dohledávat.
+    // Zboží se navíc na paletu SKLÁDÁ (na ni), ne vkládá dovnitř jako do boxu.
+    const fields = isPallet
+      ? { width:120, depth:80, height:14.4, stackedOnTop:true }
+      : { width:0, height:0, depth:0, stackedOnTop:false };
+    w.storageUnitTypes.push({ id: uid(), name: trimmed, ...fields });
     try{ await saveWarehouses(); }catch(err){ alert('Uložení se nepovedlo.'); }
     render();
   }
