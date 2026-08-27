@@ -178,10 +178,17 @@
   input[type="date"]{accent-color:var(--ink);color-scheme:light;color:var(--ink)!important;-webkit-text-fill-color:var(--ink)!important;opacity:1;}
   .field textarea{resize:vertical;min-height:60px;}
   .section-title{font-size:12px;text-transform:uppercase;letter-spacing:1px;color:var(--ink-soft);margin:24px 0 12px 0;border-top:1px solid var(--line);padding-top:18px;}
-  .section-flash{animation:sectionFlash 1.6s ease-out;border-radius:var(--radius);}
+  .section-flash{animation:sectionFlash 2.6s ease-out;border-radius:var(--radius);}
   @keyframes sectionFlash{
-    0%{background:var(--accent-soft);box-shadow:0 0 0 4px var(--accent-soft);}
+    0%{background:var(--amber-soft);box-shadow:0 0 0 3px var(--amber);}
+    70%{background:var(--amber-soft);box-shadow:0 0 0 3px var(--amber);}
     100%{background:transparent;box-shadow:0 0 0 0 transparent;}
+  }
+  .row-flash{animation:rowFlash 2.6s ease-out;}
+  @keyframes rowFlash{
+    0%{background:var(--amber-soft) !important;}
+    70%{background:var(--amber-soft) !important;}
+    100%{background:transparent !important;}
   }
   .section-title:first-child{border-top:none;padding-top:0;margin-top:0;}
 
@@ -4895,6 +4902,17 @@ function locationFieldGroup(loc, warehouseId){
     </div>
   `;
 }
+// Typy pohybů, kde je směr jednoznačný — appka pak sama nastaví správné znaménko
+// množství bez ohledu na to, jestli uživatel napíše číslo s mínusem, nebo bez něj.
+// U reklamace/inventury/ruční úpravy si směr určuje uživatel sám (může to jít oběma směry).
+const OUTGOING_MOVEMENT_TYPES = ['výdej','prodej'];
+const INCOMING_MOVEMENT_TYPES = ['příjem','vrácení'];
+function normalizeMovementQty(type, rawQty){
+  const abs = Math.abs(rawQty);
+  if(OUTGOING_MOVEMENT_TYPES.includes(type)) return -abs;
+  if(INCOMING_MOVEMENT_TYPES.includes(type)) return abs;
+  return rawQty; // reklamace, inventura, ruční úprava — respektuje se přesně to, co uživatel napsal
+}
 function renderStockMovementPanel(p, preferredWarehouseId){
   return `
     <div id="stock-movement-panel" class="client-detail-box" style="display:none;margin-top:10px;">
@@ -4910,7 +4928,7 @@ function renderStockMovementPanel(p, preferredWarehouseId){
           <option value="inventura">Inventura</option>
           <option value="ruční úprava">Ruční úprava</option>
         </select></div>
-        <div class="field"><label>Množství (+příjem / -výdej)</label><input type="number" step="1" id="sm-qty" value="1"></div>
+        <div class="field"><label>Množství (stačí kladné číslo, směr appka pozná podle typu pohybu)</label><input type="number" step="1" id="sm-qty" value="1"></div>
       </div>
       <div class="field"><label>Poznámka / důvod</label><input type="text" id="sm-note" placeholder="např. dodávka od dodavatele"></div>
       <div class="mini-label" style="margin-top:14px;">Údaje této dávky (nech prázdné/„nezměnit", pokud se neliší od dosavadních):</div>
@@ -9740,9 +9758,14 @@ document.addEventListener('click', async (e)=>{
   else if(action==='scroll-to-section'){
     const target = document.getElementById(el.getAttribute('data-target'));
     if(target){
-      target.scrollIntoView({ behavior:'smooth', block:'start' });
+      target.scrollIntoView({ behavior:'smooth', block:'center' });
       target.classList.add('section-flash');
-      setTimeout(()=> target.classList.remove('section-flash'), 1600);
+      const rows = target.querySelectorAll('tbody tr');
+      rows.forEach(r=> r.classList.add('row-flash'));
+      setTimeout(()=>{
+        target.classList.remove('section-flash');
+        rows.forEach(r=> r.classList.remove('row-flash'));
+      }, 2600);
     }
   }
   else if(action==='back-to-warehouse-list'){ state.stockWarehouseId=null; render(); }
@@ -10031,7 +10054,7 @@ document.addEventListener('click', async (e)=>{
     if(!p) return;
     const editId = document.getElementById('sm-edit-id').value;
     const type = document.getElementById('sm-type').value;
-    const qty = parseFloat(document.getElementById('sm-qty').value);
+    const qty = normalizeMovementQty(type, parseFloat(document.getElementById('sm-qty').value));
     const note = document.getElementById('sm-note').value.trim();
     const newExpiry = document.getElementById('sm-expiry').value;
     const newPriceRaw = document.getElementById('sm-price').value;
