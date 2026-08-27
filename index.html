@@ -5901,9 +5901,34 @@ function computeWarehouseUsage(w){
   // protože rozdělaná jednotka pořád zabírá celé místo).
   // Bez navázané jednotky (čistě ruční číslo) se hodnota zadává ručně.
   if(!w.capacityUnitTypeId) return w.currentUsage||0;
+  const capacityUnit = storageUnitTypeInWarehouse(w, w.capacityUnitTypeId);
+  if(!capacityUnit) return w.currentUsage||0;
+
+  // Když je kapacitní jednotka regál, ale u produktu je vyplněné jen "kusů na paletu"
+  // (ne přímo "kusů na regál"), dopočítáme to samo přes to, kolik palet se do regálu
+  // vejde vedle sebe (podle půdorysu) — uživatel tak nemusí zadávat dvě čísla zvlášť.
+  let paletaUnit = null, palletsPerRack = 0;
+  if(isRackLikeUnit(capacityUnit)){
+    paletaUnit = w.storageUnitTypes.find(isPalletLikeUnit);
+    if(paletaUnit && paletaUnit.width && paletaUnit.depth && capacityUnit.width && capacityUnit.depth){
+      const shortSide = Math.min(paletaUnit.width, paletaUnit.depth);
+      const longSide = Math.max(paletaUnit.width, paletaUnit.depth);
+      if(capacityUnit.depth >= longSide) palletsPerRack = Math.floor(capacityUnit.width / shortSide);
+    }
+  }
+
   return state.products
-    .filter(p=>p.warehouseId===w.id && !p.archived && ((p.unitsPerStorageType||{})[w.capacityUnitTypeId]||0)>0)
-    .reduce((s,p)=> s + Math.ceil((p.stockCurrent||0)/p.unitsPerStorageType[w.capacityUnitTypeId]), 0);
+    .filter(p=>p.warehouseId===w.id && !p.archived)
+    .reduce((s,p)=>{
+      const upt = p.unitsPerStorageType||{};
+      const direct = upt[w.capacityUnitTypeId]||0;
+      if(direct>0) return s + Math.ceil((p.stockCurrent||0)/direct);
+      if(paletaUnit && palletsPerRack>0){
+        const perPallet = upt[paletaUnit.id]||0;
+        if(perPallet>0) return s + Math.ceil((p.stockCurrent||0)/(perPallet*palletsPerRack));
+      }
+      return s;
+    }, 0);
 }
 function viewWarehouseForm(){
   const editing = state.editingWarehouseId ? warehouseById(state.editingWarehouseId) : null;
@@ -7139,11 +7164,13 @@ function viewProductForm(){
       <div class="field-row">
         ${(productWarehouse&&productWarehouse.storageUnitTypes||[]).map(u=>{
           const isPallet = isPalletLikeUnit(u);
+          const isRack = isRackLikeUnit(u);
           return `
           <div class="field">
             <label>Kusů ${isPallet?'na':'do'} „${escapeHtml(u.name)}"</label>
             <input type="number" step="1" min="0" name="unitsPerStorageType_${u.id}" ${isPallet?`class="pallet-units-input" data-pallet-unit-id="${u.id}"`:''} value="${(p.unitsPerStorageType&&p.unitsPerStorageType[u.id])||''}">
             ${isPallet ? `<div id="pallet-height-note-${u.id}" style="font-size:11px;color:var(--ink-soft);margin-top:4px;"></div>` : ''}
+            ${isRack ? `<div style="font-size:11px;color:var(--ink-soft);margin-top:4px;">Nemusíš vyplňovat — pokud necháš prázdné, program to spočítá sám z „Kusů na Paletu" a z toho, kolik palet se vejde do regálu.</div>` : ''}
           </div>
         `;}).join('') || '<p style="font-size:12px;color:var(--ink-soft);">Tenhle sklad zatím nemá definované žádné skladové jednotky — přidej je v jeho nastavení (Sklad → Upravit sklad).</p>'}
       </div>
