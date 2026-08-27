@@ -5885,6 +5885,7 @@ function warehouseOptions(selectedId){
 }
 function storageUnitTypeInWarehouse(w, id){ return w && (w.storageUnitTypes||[]).find(u=>u.id===id); }
 function isPalletLikeUnit(u){ return !!(u && /palet/i.test(stripDiacritics(u.name||''))); } // zboží se na paletu SKLÁDÁ, nejde dovnitř jako u boxu
+function isRackLikeUnit(u){ return !!(u && /reg[aá]l/i.test(stripDiacritics(u.name||''))); } // jen do regálu se dávají celé palety
 function warehouseCapacityUnitLabel(w){
   if(w.capacityUnitTypeId){
     const t = storageUnitTypeInWarehouse(w, w.capacityUnitTypeId);
@@ -5951,7 +5952,7 @@ function viewWarehouseForm(){
         <span>Skladové jednotky tohoto skladu (${(w.storageUnitTypes||[]).length})</span>
         <button type="button" class="btn secondary small" data-action="add-storage-unit-type" data-id="${w.id}">+ Přidat jednotku</button>
       </div>
-      <p style="font-size:12.5px;color:var(--ink-soft);margin-top:-6px;">Jednotky platí jen pro tenhle sklad — jiný sklad může mít úplně jiné. U produktů v tomhle skladu pak nastavíš, kolik kusů se na/do jedné jednotky vejde, a kapacita skladu se spočítá sama. Program sám pozná podle názvu, jestli se zboží skládá NA jednotku (paleta) nebo DO ní (box, přihrádka...) — u palety navíc rovnou doplní standardní rozměr euro palety (120 × 80 cm).</p>
+      <p style="font-size:12.5px;color:var(--ink-soft);margin-top:-6px;">Jednotky platí jen pro tenhle sklad — jiný sklad může mít úplně jiné. U produktů v tomhle skladu pak nastavíš, kolik kusů se na/do jedné jednotky vejde, a kapacita skladu se spočítá sama. Program sám pozná podle názvu, jestli se zboží skládá NA jednotku (paleta) nebo DO ní (box, přihrádka...) — u palety navíc rovnou doplní standardní rozměr euro palety (120 × 80 cm). U jednotky s "regál" v názvu program navíc spočítá, kolik celých palet se do ní vejde vedle sebe (vždy jen jedna paleta na patro, zbytek výšky je pro zboží na ní).</p>
       ${(w.storageUnitTypes||[]).length ? (function(){
         const paleta = w.storageUnitTypes.find(isPalletLikeUnit);
         return `
@@ -5960,16 +5961,15 @@ function viewWarehouseForm(){
         <tbody id="storage-unit-types-tbody" data-warehouse-id="${w.id}">
           ${w.storageUnitTypes.map(u=>{
             let fitNote = '';
-            if(!isPalletLikeUnit(u) && paleta && paleta.width && paleta.depth && u.width && u.depth){
+            if(isRackLikeUnit(u) && paleta && paleta.width && paleta.depth && u.width && u.depth){
               const shortSide = Math.min(paleta.width, paleta.depth);
               const longSide = Math.max(paleta.width, paleta.depth);
               const across = Math.floor(u.width / shortSide);
               const fitsDepth = u.depth >= longSide;
               const acrossCount = fitsDepth ? across : 0;
               if(acrossCount>0){
-                const high = (u.height && paleta.height) ? Math.max(1, Math.floor(u.height/paleta.height)) : 1;
-                fitNote = `<div style="grid-column:1/-1;font-size:11.5px;color:var(--ink-soft);padding:2px 8px 8px 8px;">≈ ${acrossCount} palet(y) vedle sebe${high>1?` × ${high} na výšku`:''} (kratší stranou palety ${fmt(shortSide)} cm podél šířky) → cca ${acrossCount*high} palet do jedné(ho) „${escapeHtml(u.name)}"</div>`;
-              } else if(u.width || u.depth){
+                fitNote = `<div style="grid-column:1/-1;font-size:11.5px;color:var(--ink-soft);padding:2px 8px 8px 8px;">≈ ${acrossCount} palet(y) vedle sebe (kratší stranou palety ${fmt(shortSide)} cm podél šířky, vždy jen jedna paleta na patro — zbylá výška je pro zboží na paletě) → cca ${acrossCount} palet do jedné(ho) „${escapeHtml(u.name)}"</div>`;
+              } else {
                 fitNote = `<div style="grid-column:1/-1;font-size:11.5px;color:var(--red);padding:2px 8px 8px 8px;">Paleta se svou delší stranou (${fmt(longSide)} cm) do hloubky „${escapeHtml(u.name)}" (${fmt(u.depth)} cm) nevejde.</div>`;
               }
             }
