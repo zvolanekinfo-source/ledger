@@ -670,6 +670,7 @@ let state = {
   clientFilterField: 'all',
   preselectClientId: null,
   backupDates: [],
+  backupSettings: { intervalDays: 1 },
   dashboardFilter: { preset:'all', from:'', to:'', clientId:'', status:'' },
   dashboardWidgets: null,
   dashboardEditMode: false,
@@ -1316,7 +1317,7 @@ async function loadAll(){
     prefix:'', nextNumber:1, defaultDueDays:'', defaultNote:'',
     creditNotePrefix:'DOB-', creditNoteNextNumber:1,
     proformaPrefix:'ZF-', proformaNextNumber:1,
-    vsMode:'same_as_invoice', vsPrefix:'', vsNextNumber:1, defaultConstantSymbol:'',
+    vsMode:'same_as_invoice', vsPrefix:'', vsNextNumber:1, ksMode:'manual', ksPrefix:'', ksNextNumber:1,
     invoiceTerms:'',
     defaultPaymentMethod:'', invoiceAccent:'#5B8DEF',
     logo:'', signature:'', stamp:'', showLogo:true, showStamp:true, showSignature:true, showQr:true,
@@ -1399,6 +1400,7 @@ async function loadAll(){
     return merged;
   });
   state.backupDates = await loadBackupIndex();
+  state.backupSettings = await loadBackupSettings();
   state.loaded = true;
 }
 function companyById(id){ return state.companies.find(co=>co.id===id); }
@@ -1422,21 +1424,39 @@ async function saveExpirySettings(){ await storageSet('expiry-settings', JSON.st
 async function loadBackupIndex(){
   try{ const r = await window.storage.get('backup-index', true); return r ? JSON.parse(r.value) : []; }catch(e){ return []; }
 }
+async function loadBackupSettings(){
+  try{ const r = await window.storage.get('backup-settings', true); return r ? JSON.parse(r.value) : { intervalDays:1 }; }catch(e){ return { intervalDays:1 }; }
+}
+async function saveBackupSettings(){
+  await storageSet('backup-settings', JSON.stringify(state.backupSettings), true);
+}
 async function saveSnapshotBackup(){
   try{
+    const intervalDays = (state.backupSettings && state.backupSettings.intervalDays) || 1;
+    let dates = await loadBackupIndex();
+    const lastDate = dates.length ? [...dates].sort().pop() : null;
+    const daysSinceLast = lastDate ? Math.round((new Date(todayISO()) - new Date(lastDate)) / 86400000) : Infinity;
+    if(lastDate && daysSinceLast < intervalDays){ state.backupDates = dates; return; } // ještě není čas na další zálohu
     const date = todayISO();
     const payload = JSON.stringify({ savedAt: new Date().toISOString(), companies: state.companies, clients: state.clients, invoices: state.invoices, suppliers: state.suppliers, products: state.products });
     await window.storage.set('backup:'+date, payload, true);
-    let dates = await loadBackupIndex();
     if(!dates.includes(date)) dates.push(date);
     dates.sort();
-    while(dates.length > 10){
+    while(dates.length > 20){
       const old = dates.shift();
       try{ await window.storage.delete('backup:'+old, true); }catch(e){/* ignore */}
     }
     await window.storage.set('backup-index', JSON.stringify(dates), true);
     state.backupDates = dates;
   }catch(e){ console.error('Snapshot backup failed', e); }
+}
+async function deleteSnapshotBackup(date){
+  try{
+    await window.storage.delete('backup:'+date, true);
+    const dates = (state.backupDates||[]).filter(d=>d!==date);
+    await window.storage.set('backup-index', JSON.stringify(dates), true);
+    state.backupDates = dates;
+  }catch(e){ alert('Smazání zálohy se nepovedlo.'); }
 }
 
 function exportBackupFile(){
@@ -2656,7 +2676,15 @@ function computeVsKs(co, invoiceNumber){
   } else {
     vs = (invoiceNumber||'').replace(/\D/g,''); // stejný jako číslo faktury (jen číslice)
   }
-  return { variableSymbol: vs, constantSymbol: co.defaultConstantSymbol||'' };
+  let ks;
+  if(co.ksMode==='separate_sequence'){
+    ks = `${co.ksPrefix||''}${co.ksNextNumber||1}`;
+  } else if(co.ksMode==='same_as_invoice'){
+    ks = (invoiceNumber||'').replace(/\D/g,'');
+  } else {
+    ks = ''; // ruční zadání
+  }
+  return { variableSymbol: vs, constantSymbol: ks };
 }
 function blankInvoice(){
   const c = state.companies[0];
@@ -4338,19 +4366,31 @@ function viewSettings(){
       <p style="font-size:13px;color:var(--ink-soft);margin-top:0;">
         Data (odběratelé, faktury, firmy) žijí v uložišti napojeném na ledgers, ne v tomto souboru.
         Aby ses nikdy nespoléhal jen na to, doporučujeme si čas od času stáhnout zálohu na vlastní počítač —
-        navíc ledgers sám každý den, kdy něco uložíš, vytvoří automatický záložní snímek (posledních 10 dní).
+        navíc ledgers sám vytváří automatický záložní snímek podle intervalu, který si nastavíš níž.
       </p>
-      <div class="formfoot" style="margin-top:6px;">
+      <div class="formfoot" style="margin-top:6px;justify-content:flex-start;gap:10px;">
         <button type="button" class="btn secondary" data-action="export-backup">⬇ Stáhnout zálohu (.json)</button>
         <button type="button" class="btn secondary" data-action="trigger-restore-file">⬆ Obnovit ze souboru</button>
         <input type="file" id="restore-file-input" accept=".json" style="display:none;">
       </div>
+
+      <div class="section-title">Jak často zálohovat automaticky</div>
+      <div class="field" style="max-width:260px;">
+        <select id="backup-interval-select">
+          <option value="1" ${(state.backupSettings.intervalDays||1)===1?'selected':''}>Každý den</option>
+          <option value="7" ${state.backupSettings.intervalDays===7?'selected':''}>Každý týden</option>
+          <option value="30" ${state.backupSettings.intervalDays===30?'selected':''}>Každý měsíc</option>
+        </select>
+      </div>
+      <p style="font-size:11.5px;color:var(--ink-soft);margin:-8px 0 0 0;">Nová záloha vznikne nejdřív po uplynutí tohohle intervalu od poslední — appka to hlídá sama při každém uložení.</p>
+
       ${state.backupDates && state.backupDates.length ? `
-        <div class="section-title">Automatické denní zálohy</div>
+        <div class="section-title">Automatické zálohy (${state.backupDates.length})</div>
         ${[...state.backupDates].sort().reverse().map(d=>`
-          <div class="user-row">
-            <span>${escapeHtml(d)}</span>
-            <button class="iconbtn" style="text-decoration:underline;" data-action="restore-snapshot" data-date="${escapeAttr(d)}">Obnovit</button>
+          <div class="user-row" style="justify-content:flex-start;gap:16px;">
+            <span style="min-width:110px;">${escapeHtml(d)}</span>
+            <button class="btn-link" data-action="restore-snapshot" data-date="${escapeAttr(d)}">Obnovit</button>
+            <button class="btn-link" data-action="delete-snapshot" data-date="${escapeAttr(d)}" style="color:var(--red);">Smazat</button>
           </div>
         `).join('')}
       ` : `<p style="font-size:12.5px;color:var(--ink-soft);">Zatím žádné automatické zálohy — vytvoří se, jakmile poprvé něco uložíš.</p>`}
@@ -4372,7 +4412,7 @@ function viewCompanyForm(){
       prefix:'', nextNumber:1, defaultDueDays:'', defaultNote:'',
       creditNotePrefix:'DOB-', creditNoteNextNumber:1,
       proformaPrefix:'ZF-', proformaNextNumber:1,
-      vsMode:'same_as_invoice', vsPrefix:'', vsNextNumber:1, defaultConstantSymbol:'',
+      vsMode:'same_as_invoice', vsPrefix:'', vsNextNumber:1, ksMode:'manual', ksPrefix:'', ksNextNumber:1,
       invoiceTerms:'',
       defaultPaymentMethod:'', vatPayer:true,
       logo:state.newCompanyDraft.logo, signature:state.newCompanyDraft.signature, stamp:state.newCompanyDraft.stamp,
@@ -4448,7 +4488,18 @@ function companyFormMarkup(co, opts){
         <div class="field"><label>Prefix variabilního symbolu</label><input name="vsPrefix" value="${escapeAttr(co.vsPrefix||'')}" placeholder="nepovinné"></div>
         <div class="field"><label>Další pořadové číslo VS</label><input type="number" name="vsNextNumber" value="${co.vsNextNumber||1}"></div>
       </div>
-      <div class="field"><label>Výchozí konstantní symbol</label><input name="defaultConstantSymbol" value="${escapeAttr(co.defaultConstantSymbol||'')}" placeholder="např. 0308 — nepovinné, necháš prázdné = doplníš ručně na každé faktuře"></div>
+      <div class="field">
+        <label>Jak se má vyplňovat konstantní symbol</label>
+        <select name="ksMode" id="company-ks-mode">
+          <option value="same_as_invoice" ${co.ksMode==='same_as_invoice'?'selected':''}>Stejný jako číslo faktury (jen číslice)</option>
+          <option value="separate_sequence" ${co.ksMode==='separate_sequence'?'selected':''}>Vlastní číselná řada</option>
+          <option value="manual" ${(co.ksMode||'manual')==='manual'?'selected':''}>Nevyplňovat automaticky, doplním ručně</option>
+        </select>
+      </div>
+      <div id="company-ks-sequence-box" class="field-row" style="display:${co.ksMode==='separate_sequence'?'':'none'};">
+        <div class="field"><label>Prefix konstantního symbolu</label><input name="ksPrefix" value="${escapeAttr(co.ksPrefix||'')}" placeholder="nepovinné"></div>
+        <div class="field"><label>Další pořadové číslo KS</label><input type="number" name="ksNextNumber" value="${co.ksNextNumber||1}"></div>
+      </div>
       <div class="field-row">
         <div class="field"><label>Výchozí splatnost (dny)</label><input type="number" name="defaultDueDays" value="${co.defaultDueDays}"></div>
         <div class="field"><label>Výchozí forma úhrady</label>
@@ -5565,6 +5616,7 @@ async function generateInvoiceFromRecurring(tpl){
   state.invoices.push(invoice);
   co.nextNumber = (co.nextNumber||1) + 1;
   if(co.vsMode==='separate_sequence') co.vsNextNumber = (co.vsNextNumber||1) + 1;
+  if(co.ksMode==='separate_sequence') co.ksNextNumber = (co.ksNextNumber||1) + 1;
   tpl.nextRunDate = advanceRecurringDate(tpl.nextRunDate, tpl.interval);
   tpl.createdCount = (tpl.createdCount||0) + 1;
   tpl.lastGeneratedAt = new Date().toISOString();
@@ -6184,6 +6236,7 @@ async function createInvoiceFromOrder(o){
   state.invoices.push(invoice);
   co.nextNumber = (co.nextNumber||1)+1;
   if(co.vsMode==='separate_sequence') co.vsNextNumber = (co.vsNextNumber||1) + 1;
+  if(co.ksMode==='separate_sequence') co.ksNextNumber = (co.ksNextNumber||1) + 1;
   o.invoiceId = invoice.id;
   o.status = 'packed';
   await saveCompanies();
@@ -8187,9 +8240,23 @@ function afterRender(){
         if(box) box.style.display = vsModeSelect.value==='separate_sequence' ? '' : 'none';
       });
     }
+    const ksModeSelect = document.getElementById('company-ks-mode');
+    if(ksModeSelect){
+      ksModeSelect.addEventListener('change', ()=>{
+        const box = document.getElementById('company-ks-sequence-box');
+        if(box) box.style.display = ksModeSelect.value==='separate_sequence' ? '' : 'none';
+      });
+    }
   }
   const accountForm = document.getElementById('account-form');
   if(accountForm){ accountForm.addEventListener('submit', onSubmitAccount); }
+  const backupIntervalSelect = document.getElementById('backup-interval-select');
+  if(backupIntervalSelect){
+    backupIntervalSelect.addEventListener('change', async ()=>{
+      state.backupSettings.intervalDays = parseInt(backupIntervalSelect.value)||1;
+      try{ await saveBackupSettings(); }catch(err){ alert('Uložení se nepovedlo.'); }
+    });
+  }
   const receivedInvoiceForm = document.getElementById('received-invoice-form');
   if(receivedInvoiceForm) receivedInvoiceForm.addEventListener('submit', onSubmitReceivedInvoice);
   setupReceivedInvoiceForm();
@@ -9656,6 +9723,12 @@ document.addEventListener('click', async (e)=>{
   else if(action==='export-backup'){ exportBackupFile(); }
   else if(action==='trigger-restore-file'){ const fi=document.getElementById('restore-file-input'); if(fi) fi.click(); }
   else if(action==='restore-snapshot'){ const date=el.getAttribute('data-date'); await restoreFromSnapshot(date); }
+  else if(action==='delete-snapshot'){
+    const date = el.getAttribute('data-date');
+    if(!confirm(`Smazat zálohu z ${date}?`)) return;
+    await deleteSnapshotBackup(date);
+    render();
+  }
   else if(action==='upload-branding'){
     const field = el.getAttribute('data-field');
     const companyId = el.getAttribute('data-company-id');
@@ -10408,6 +10481,7 @@ async function onSubmitInvoice(e){
       else if(docType==='proforma') issuingCo.proformaNextNumber = (issuingCo.proformaNextNumber||1) + 1;
       else issuingCo.nextNumber = (issuingCo.nextNumber||1) + 1;
       if(issuingCo.vsMode==='separate_sequence') issuingCo.vsNextNumber = (issuingCo.vsNextNumber||1) + 1;
+      if(issuingCo.ksMode==='separate_sequence') issuingCo.ksNextNumber = (issuingCo.ksNextNumber||1) + 1;
     }
   }
   await saveCompanies();
@@ -10564,7 +10638,7 @@ async function onSubmitCompany(e){
     creditNotePrefix: fd.get('creditNotePrefix')||'DOB-', creditNoteNextNumber: parseInt(fd.get('creditNoteNextNumber'))||1,
     proformaPrefix: fd.get('proformaPrefix')||'ZF-', proformaNextNumber: parseInt(fd.get('proformaNextNumber'))||1,
     vsMode: fd.get('vsMode')||'same_as_invoice', vsPrefix: fd.get('vsPrefix')||'', vsNextNumber: parseInt(fd.get('vsNextNumber'))||1,
-    defaultConstantSymbol: fd.get('defaultConstantSymbol')||'',
+    ksMode: fd.get('ksMode')||'manual', ksPrefix: fd.get('ksPrefix')||'', ksNextNumber: parseInt(fd.get('ksNextNumber'))||1,
     defaultDueDays: parseInt(fd.get('defaultDueDays'))||14, defaultNote: fd.get('defaultNote'),
     invoiceTerms: fd.get('invoiceTerms'), defaultPaymentMethod: fd.get('defaultPaymentMethod'),
     inventoryValuationMethod: fd.get('inventoryValuationMethod') || 'average',
