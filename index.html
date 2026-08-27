@@ -695,6 +695,8 @@ let state = {
   recurringFormItems: [],
   warehouses: [],
   categories: [],
+  storageUnitTypes: [],
+  editingStorageUnitTypeId: null,
   editingWarehouseId: null,
   stockWarehouseId: null,
   stockMovementProductId: null,
@@ -1333,6 +1335,35 @@ async function loadAll(){
   try{ const r = await window.storage.get('recurring-invoices', true); state.recurringInvoices = r ? JSON.parse(r.value) : []; }catch(e){ state.recurringInvoices = []; }
   try{ const r = await window.storage.get('warehouses', true); state.warehouses = r ? JSON.parse(r.value) : []; }catch(e){ state.warehouses = []; }
   if(!state.warehouses.length){ state.warehouses = [{ id: uid(), name:'Hlavní sklad', address:'', isDefault:true }]; }
+  try{ const r = await window.storage.get('storage-unit-types', true); state.storageUnitTypes = r ? JSON.parse(r.value) : null; }catch(e){ state.storageUnitTypes = null; }
+  let paletaUnitId = null, boxUnitId = null;
+  if(!state.storageUnitTypes){
+    // první spuštění appky s tímhle systémem — založíme výchozí Paletu a Box,
+    // ať appka funguje rovnou i bez toho, že by uživatel musel cokoli zakládat sám.
+    paletaUnitId = uid(); boxUnitId = uid();
+    state.storageUnitTypes = [
+      { id: paletaUnitId, name:'Paleta', width:0, height:0, depth:0 },
+      { id: boxUnitId, name:'Box', width:0, height:0, depth:0 }
+    ];
+    let needsSave = false;
+    state.warehouses.forEach(w=>{
+      if(w.capacityUnitTypeId===undefined && w.capacityUnitType){
+        if(w.capacityUnitType==='palety') w.capacityUnitTypeId = paletaUnitId;
+        else if(w.capacityUnitType==='boxy') w.capacityUnitTypeId = boxUnitId;
+        else w.capacityUnitTypeId = null;
+        needsSave = true;
+      }
+    });
+    if(needsSave) await storageSet('warehouses', JSON.stringify(state.warehouses), true);
+    await storageSet('storage-unit-types', JSON.stringify(state.storageUnitTypes), true);
+  } else {
+    const paleta = state.storageUnitTypes.find(u=>u.name==='Paleta');
+    const box = state.storageUnitTypes.find(u=>u.name==='Box');
+    paletaUnitId = paleta ? paleta.id : null;
+    boxUnitId = box ? box.id : null;
+  }
+  state._migrationPaletaUnitId = paletaUnitId; // dočasně pro migraci produktů níž
+  state._migrationBoxUnitId = boxUnitId;
   try{ const r = await window.storage.get('categories', true); state.categories = r ? JSON.parse(r.value) : []; }catch(e){ state.categories = []; }
   try{ const r = await window.storage.get('orders', true); state.orders = r ? JSON.parse(r.value) : []; }catch(e){ state.orders = []; }
   try{
@@ -1362,6 +1393,25 @@ async function loadAll(){
     // migrace ze starších produktů, které měly kategorii jen jako volný text
     const existingNames = [...new Set(state.products.map(p=>p.category).filter(Boolean))];
     if(existingNames.length) state.categories = existingNames.map(name=>({ id: uid(), name }));
+  }
+  if(state._migrationPaletaUnitId || state._migrationBoxUnitId){
+    // migrace ze starších produktů s pevnými poli "kusů na paletě"/"kusů v boxu"
+    // na nový obecný systém skladových jednotek
+    let productsChanged = false;
+    state.products.forEach(p=>{
+      if(!p.unitsPerStorageType) p.unitsPerStorageType = {};
+      if(p.unitsPerPallet && state._migrationPaletaUnitId && !p.unitsPerStorageType[state._migrationPaletaUnitId]){
+        p.unitsPerStorageType[state._migrationPaletaUnitId] = p.unitsPerPallet;
+        productsChanged = true;
+      }
+      if(p.unitsPerBox && state._migrationBoxUnitId && !p.unitsPerStorageType[state._migrationBoxUnitId]){
+        p.unitsPerStorageType[state._migrationBoxUnitId] = p.unitsPerBox;
+        productsChanged = true;
+      }
+    });
+    if(productsChanged) await storageSet('products', JSON.stringify(state.products), true);
+    delete state._migrationPaletaUnitId;
+    delete state._migrationBoxUnitId;
   }
   try{ const r = await window.storage.get('product-settings', true); state.productSettings = r ? JSON.parse(r.value) : { prefix:'PRD-', nextNumber:1, padding:6 }; }catch(e){ state.productSettings = { prefix:'PRD-', nextNumber:1, padding:6 }; }
   try{ const r = await window.storage.get('inventory-settings', true); state.inventorySettings = r ? JSON.parse(r.value) : { valuationMethod:'average' }; }catch(e){ state.inventorySettings = { valuationMethod:'average' }; }
@@ -1412,6 +1462,7 @@ async function saveReceivedInvoices(){ await storageSet('received-invoices', JSO
 async function saveRecurringInvoices(){ await storageSet('recurring-invoices', JSON.stringify(state.recurringInvoices), true); saveSnapshotBackup(); }
 async function saveWarehouses(){ await storageSet('warehouses', JSON.stringify(state.warehouses), true); saveSnapshotBackup(); }
 async function saveCategories(){ await storageSet('categories', JSON.stringify(state.categories), true); saveSnapshotBackup(); }
+async function saveStorageUnitTypes(){ await storageSet('storage-unit-types', JSON.stringify(state.storageUnitTypes), true); saveSnapshotBackup(); }
 async function saveOrders(){ await storageSet('orders', JSON.stringify(state.orders), true); saveSnapshotBackup(); }
 async function saveIntegrations(){ await storageSet('integrations', JSON.stringify(state.integrations), true); }
 async function saveProducts(){ await storageSet('products', JSON.stringify(state.products), true); saveSnapshotBackup(); }
@@ -1443,7 +1494,7 @@ async function saveSnapshotBackup(){
       companies: state.companies, clients: state.clients, invoices: state.invoices,
       suppliers: state.suppliers, products: state.products,
       receivedInvoices: state.receivedInvoices, recurringInvoices: state.recurringInvoices,
-      warehouses: state.warehouses, categories: state.categories, orders: state.orders,
+      warehouses: state.warehouses, categories: state.categories, storageUnitTypes: state.storageUnitTypes, orders: state.orders,
       integrations: state.integrations, productSettings: state.productSettings,
       inventorySettings: state.inventorySettings, productColumns: state.productColumns,
       expirySettings: state.expirySettings, userPermissions: state.userPermissions,
@@ -1475,7 +1526,7 @@ function exportBackupFile(){
     companies: state.companies, clients: state.clients, invoices: state.invoices,
     suppliers: state.suppliers, products: state.products,
     receivedInvoices: state.receivedInvoices, recurringInvoices: state.recurringInvoices,
-    warehouses: state.warehouses, categories: state.categories, orders: state.orders,
+    warehouses: state.warehouses, categories: state.categories, storageUnitTypes: state.storageUnitTypes, orders: state.orders,
     integrations: state.integrations, productSettings: state.productSettings,
     inventorySettings: state.inventorySettings, productColumns: state.productColumns,
     expirySettings: state.expirySettings, userPermissions: state.userPermissions,
@@ -1505,6 +1556,7 @@ async function restoreFromBackupObject(data, label){
     if(Array.isArray(data.recurringInvoices)){ state.recurringInvoices = data.recurringInvoices; await saveRecurringInvoices(); }
     if(Array.isArray(data.warehouses)){ state.warehouses = data.warehouses; await saveWarehouses(); }
     if(Array.isArray(data.categories)){ state.categories = data.categories; await saveCategories(); }
+    if(Array.isArray(data.storageUnitTypes)){ state.storageUnitTypes = data.storageUnitTypes; await saveStorageUnitTypes(); }
     if(Array.isArray(data.orders)){ state.orders = data.orders; await saveOrders(); }
     if(data.integrations){ state.integrations = data.integrations; await saveIntegrations(); }
     if(data.productSettings){ state.productSettings = data.productSettings; await saveProductSettings(); }
@@ -5080,7 +5132,7 @@ function blankProduct(){
   return {
     id: uid(), number:'', ean:'', internalCode:'', name:'', description:'',
     category:'', manufacturer:'', supplierId:'', unit:'ks', vatRate:21, vatRatePurchase:21, note:'',
-    composition:'', dimensionUnit:'cm', dimensions:{width:0,height:0,depth:0}, packageDimensions:{width:0,height:0,depth:0}, unitsPerPallet:0, unitsPerBox:0,
+    composition:'', dimensionUnit:'cm', dimensions:{width:0,height:0,depth:0}, packageDimensions:{width:0,height:0,depth:0}, unitsPerStorageType:{},
     nutrition:{ per:'100g', energyKj:null, energyKcal:null, fat:null, saturatedFat:null, carbs:null, sugars:null, fiber:null, protein:null, salt:null },
     purchasePrice:0, salePrice:0, costs:0,
     warehouseId: (defaultWarehouse()||{}).id || '',
@@ -5803,34 +5855,36 @@ function setupRecurringForm(){
 }
 
 /* ---------- SKLADY (multi-sklad) ---------- */
-function blankWarehouse(){ return { id: uid(), name:'', address:'', isDefault:false, capacityValue:0, capacityUnitType:'palety', capacityUnitCustomLabel:'', currentUsage:0 }; }
+function blankWarehouse(){ return { id: uid(), name:'', address:'', isDefault:false, capacityValue:0, capacityUnitTypeId:null, capacityUnitCustomLabel:'', currentUsage:0 }; }
 function warehouseById(id){ return state.warehouses.find(w=>w.id===id); }
 function defaultWarehouse(){ return state.warehouses.find(w=>w.isDefault) || state.warehouses[0]; }
 function warehouseOptions(selectedId){
   return state.warehouses.map(w=>`<option value="${w.id}" ${selectedId===w.id?'selected':''}>${escapeHtml(w.name)}${w.isDefault?' (výchozí)':''}</option>`).join('');
 }
-const WAREHOUSE_CAPACITY_UNITS = { palety:'Palety', boxy:'Boxy', jine:'Vlastní jednotka' };
+function storageUnitTypeById(id){ return (state.storageUnitTypes||[]).find(u=>u.id===id); }
 function warehouseCapacityUnitLabel(w){
-  if(w.capacityUnitType==='jine') return w.capacityUnitCustomLabel||'jednotky';
-  return WAREHOUSE_CAPACITY_UNITS[w.capacityUnitType]||'jednotky';
+  if(w.capacityUnitTypeId){
+    const t = storageUnitTypeById(w.capacityUnitTypeId);
+    if(t) return t.name;
+  }
+  return w.capacityUnitCustomLabel || 'jednotky';
 }
 function computeWarehouseUsage(w){
-  // Palety/boxy program počítá sama z aktuálního skladu produktů v tomhle skladu
-  // (podle "kusů na paletě"/"kusů v boxu" u produktu) — u vlastní jednotky se
-  // hodnota zadává ručně, protože program neví, co ta jednotka znamená.
+  // Když je kapacita navázaná na konkrétní skladovou jednotku (paleta, regál, přihrádka…),
+  // program počítá sám z aktuálního skladu produktů v tomhle skladu — podle toho, kolik
+  // kusů produktu se do JEDNÉ takové jednotky vejde (nastavuje se u produktu).
   // Každý produkt se počítá zvlášť a zaokrouhluje se NAHORU (1,5 palety = 2 palety,
-  // protože rozdělaná paleta pořád zabírá celé místo — jakmile se to nevejde na
-  // jednu, hned je potřeba další).
-  if(w.capacityUnitType==='jine') return w.currentUsage||0;
-  const key = w.capacityUnitType==='boxy' ? 'unitsPerBox' : 'unitsPerPallet';
+  // protože rozdělaná jednotka pořád zabírá celé místo).
+  // Bez navázané jednotky (čistě ruční číslo) se hodnota zadává ručně.
+  if(!w.capacityUnitTypeId) return w.currentUsage||0;
   return state.products
-    .filter(p=>p.warehouseId===w.id && !p.archived && (p[key]||0)>0)
-    .reduce((s,p)=> s + Math.ceil((p.stockCurrent||0)/p[key]), 0);
+    .filter(p=>p.warehouseId===w.id && !p.archived && ((p.unitsPerStorageType||{})[w.capacityUnitTypeId]||0)>0)
+    .reduce((s,p)=> s + Math.ceil((p.stockCurrent||0)/p.unitsPerStorageType[w.capacityUnitTypeId]), 0);
 }
 function viewWarehouseForm(){
   const editing = state.editingWarehouseId ? warehouseById(state.editingWarehouseId) : null;
   const w = editing || blankWarehouse();
-  const unitType = w.capacityUnitType||'palety';
+  const unitTypeId = w.capacityUnitTypeId || '';
   return `
     <div class="pagehead"><div><h1>${editing?'Upravit sklad':'Nový sklad'}</h1></div></div>
     <form id="warehouse-form" class="form-card">
@@ -5840,21 +5894,22 @@ function viewWarehouseForm(){
         <input type="checkbox" name="isDefault" ${w.isDefault?'checked':''}> Výchozí sklad pro nové produkty (★) — automaticky se přiřadí každému nově zalistovanému produktu
       </label>
       <div class="section-title">Kapacita skladu</div>
-      <p style="font-size:12.5px;color:var(--ink-soft);margin-top:-6px;">Volitelné. U palet a boxů program sama spočítá, kolik je aktuálně obsazeno, podle „kusů na paletě"/„kusů v boxu" u jednotlivých produktů v tomhle skladu.</p>
+      <p style="font-size:12.5px;color:var(--ink-soft);margin-top:-6px;">Volitelné. Vyber skladovou jednotku (paleta, regál, přihrádka…) — program pak sám spočítá, kolik je aktuálně obsazeno, podle toho, kolik kusů produktu se do jedné takové jednotky vejde (nastavuje se u produktu). Jednotky spravuješ na stránce Sklad.</p>
       <div class="field-row">
-        <div class="field"><label>Maximální kapacita</label><input name="capacityValue" type="number" step="0.01" min="0" value="${w.capacityValue||''}" placeholder="např. 100"></div>
-        <div class="field"><label>Jednotka</label><select name="capacityUnitType" id="warehouse-capacity-unit-type">
-          ${Object.entries(WAREHOUSE_CAPACITY_UNITS).map(([v,l])=>`<option value="${v}" ${unitType===v?'selected':''}>${l}</option>`).join('')}
+        <div class="field"><label>Maximální kapacita</label><input name="capacityValue" type="number" step="0.01" min="0" value="${w.capacityValue||''}" placeholder="např. 40"></div>
+        <div class="field"><label>Skladová jednotka</label><select name="capacityUnitTypeId" id="warehouse-capacity-unit-type">
+          <option value="">— ruční číslo bez jednotky —</option>
+          ${(state.storageUnitTypes||[]).map(u=>`<option value="${u.id}" ${unitTypeId===u.id?'selected':''}>${escapeHtml(u.name)}</option>`).join('')}
         </select></div>
       </div>
-      <div id="warehouse-custom-unit-box" style="display:${unitType==='jine'?'':'none'};">
+      <div id="warehouse-custom-unit-box" style="display:${unitTypeId?'none':''};">
         <div class="field-row">
-          <div class="field"><label>Název vlastní jednotky</label><input name="capacityUnitCustomLabel" value="${escapeAttr(w.capacityUnitCustomLabel||'')}" placeholder="např. m², regály…"></div>
+          <div class="field"><label>Název jednotky (jen popisek)</label><input name="capacityUnitCustomLabel" value="${escapeAttr(w.capacityUnitCustomLabel||'')}" placeholder="např. m²"></div>
           <div class="field"><label>Aktuální využití (ručně, ve stejné jednotce)</label><input name="currentUsage" type="number" step="0.01" min="0" value="${w.currentUsage||''}" placeholder="např. 62"></div>
         </div>
       </div>
-      <div id="warehouse-auto-unit-note" style="display:${unitType==='jine'?'none':''};font-size:12.5px;color:var(--ink-soft);margin:-6px 0 14px 0;">
-        Aktuální využití program dopočítá sama po uložení (viz karta skladu) — nemusíš nic zadávat ručně.
+      <div id="warehouse-auto-unit-note" style="display:${unitTypeId?'':'none'};font-size:12.5px;color:var(--ink-soft);margin:-6px 0 14px 0;">
+        Aktuální využití program dopočítá sám po uložení (viz karta skladu) — nemusíš nic zadávat ručně.
       </div>
       <div class="formfoot" style="justify-content:space-between;">
         <button type="button" class="btn secondary" data-action="nav" data-view="stock">Zrušit</button>
@@ -5876,7 +5931,7 @@ async function onSubmitWarehouse(e){
   const fields = {
     name:(fd.get('name')||'').trim(), address:fd.get('address')||'', isDefault,
     capacityValue: parseFloat(fd.get('capacityValue'))||0,
-    capacityUnitType: fd.get('capacityUnitType')||'palety',
+    capacityUnitTypeId: fd.get('capacityUnitTypeId')||null,
     capacityUnitCustomLabel: (fd.get('capacityUnitCustomLabel')||'').trim(),
     currentUsage: parseFloat(fd.get('currentUsage'))||0
   };
@@ -7013,9 +7068,11 @@ function viewProductForm(){
         <div class="field"><label>Výška</label><input type="number" step="0.1" min="0" name="pkgHeight" value="${(p.packageDimensions&&p.packageDimensions.height)||''}"></div>
         <div class="field"><label>Hloubka</label><input type="number" step="0.1" min="0" name="pkgDepth" value="${(p.packageDimensions&&p.packageDimensions.depth)||''}"></div>
       </div>
+      <div class="mini-label" style="margin-top:14px;">Kolik kusů se vejde do jedné skladové jednotky (pro výpočet kapacity skladu)</div>
       <div class="field-row">
-        <div class="field"><label>Kusů na paletě</label><input type="number" step="1" min="0" name="unitsPerPallet" value="${p.unitsPerPallet||''}"></div>
-        <div class="field"><label>Kusů v boxu</label><input type="number" step="1" min="0" name="unitsPerBox" value="${p.unitsPerBox||''}"></div>
+        ${(state.storageUnitTypes||[]).map(u=>`
+          <div class="field"><label>Kusů na „${escapeHtml(u.name)}"</label><input type="number" step="1" min="0" name="unitsPerStorageType_${u.id}" value="${(p.unitsPerStorageType&&p.unitsPerStorageType[u.id])||''}"></div>
+        `).join('') || '<p style="font-size:12px;color:var(--ink-soft);">Zatím nemáš definované žádné skladové jednotky — přidej je na stránce Sklad.</p>'}
       </div>
 
       <div class="section-title">Nutriční údaje</div>
@@ -7275,8 +7332,7 @@ async function onSubmitProduct(e){
     dimensionUnit: fd.get('dimensionUnit')||'cm',
     dimensions: { width: parseFloat(fd.get('dimWidth'))||0, height: parseFloat(fd.get('dimHeight'))||0, depth: parseFloat(fd.get('dimDepth'))||0 },
     packageDimensions: { width: parseFloat(fd.get('pkgWidth'))||0, height: parseFloat(fd.get('pkgHeight'))||0, depth: parseFloat(fd.get('pkgDepth'))||0 },
-    unitsPerPallet: parseFloat(fd.get('unitsPerPallet'))||0,
-    unitsPerBox: parseFloat(fd.get('unitsPerBox'))||0,
+    unitsPerStorageType: Object.fromEntries((state.storageUnitTypes||[]).map(u=>[u.id, parseFloat(fd.get('unitsPerStorageType_'+u.id))||0]).filter(([,v])=>v>0)),
     nutrition: {
       per: '100g',
       energyKj: fd.get('nutri-energyKj')!=='' ? parseFloat(fd.get('nutri-energyKj')) : null,
@@ -7438,6 +7494,27 @@ function setupStockScan(){
     });
   }
 }
+function setupStorageUnitTypesTable(){
+  const tbody = document.getElementById('storage-unit-types-tbody');
+  if(!tbody) return;
+  tbody.querySelectorAll('input[data-unit-field]').forEach(input=>{
+    input.addEventListener('change', async ()=>{
+      const uid_ = input.getAttribute('data-id');
+      const field = input.getAttribute('data-unit-field');
+      const u = storageUnitTypeById(uid_);
+      if(!u) return;
+      if(field==='name'){
+        const trimmed = input.value.trim();
+        if(!trimmed){ input.value = u.name; return; } // název nesmí být prázdný
+        u.name = trimmed;
+      } else {
+        u[field] = parseFloat(input.value)||0;
+      }
+      try{ await saveStorageUnitTypes(); }catch(err){ alert('Uložení se nepovedlo.'); }
+      render();
+    });
+  });
+}
 function viewStock(){
   // Když je jen jeden sklad, nemá smysl nutit uživatele ho vybírat.
   if(!state.stockWarehouseId && state.warehouses.length===1){
@@ -7465,8 +7542,8 @@ function viewStock(){
                 <div style="background:${pct>=90?'var(--red)':pct>=70?'var(--amber)':'var(--accent)'};height:100%;width:${pct}%;"></div>
               </div>
               <div style="font-size:11px;color:var(--ink-soft);margin-bottom:8px;">
-                ${wh.capacityUnitType!=='jine'?fmtWhole(usage):fmt(usage)} / ${wh.capacityUnitType!=='jine'?fmtWhole(wh.capacityValue):fmt(wh.capacityValue)} ${escapeHtml(warehouseCapacityUnitLabel(wh))} (${pct} %)
-                · <span style="font-weight:600;color:${(wh.capacityValue-usage)<=0?'var(--red)':(pct>=70?'var(--amber)':'var(--accent)')};">zbývá ${wh.capacityUnitType!=='jine'?fmtWhole(Math.max(0,wh.capacityValue-usage)):fmt(Math.max(0,wh.capacityValue-usage))}</span>
+                ${wh.capacityUnitTypeId?fmtWhole(usage):fmt(usage)} / ${wh.capacityUnitTypeId?fmtWhole(wh.capacityValue):fmt(wh.capacityValue)} ${escapeHtml(warehouseCapacityUnitLabel(wh))} (${pct} %)
+                · <span style="font-weight:600;color:${(wh.capacityValue-usage)<=0?'var(--red)':(pct>=70?'var(--amber)':'var(--accent)')};">zbývá ${wh.capacityUnitTypeId?fmtWhole(Math.max(0,wh.capacityValue-usage)):fmt(Math.max(0,wh.capacityValue-usage))}</span>
               </div>
             ` : ''}
             <div class="no-print" style="display:flex;gap:8px;margin-top:10px;">
@@ -7476,6 +7553,30 @@ function viewStock(){
           </div>
         `;}).join('')}
       </div>
+    </div>
+
+    <div class="form-card" style="margin-bottom:24px;">
+      <div class="section-title" style="margin-top:0;padding-top:0;border-top:none;display:flex;justify-content:space-between;align-items:center;">
+        <span>Skladové jednotky (${(state.storageUnitTypes||[]).length})</span>
+        <button type="button" class="btn secondary small" data-action="add-storage-unit-type">+ Přidat jednotku</button>
+      </div>
+      <p style="font-size:12.5px;color:var(--ink-soft);margin-top:-6px;">Definuj vlastní jednotky (paleta, regál, přihrádka, bedna…). U produktu pak nastavíš, kolik kusů se do jedné vejde — appka podle toho sama spočítá kapacitu kteréhokoli skladu, který si na tuhle jednotku nastavíš.</p>
+      ${(state.storageUnitTypes||[]).length ? `
+      <table class="items-table" style="max-width:640px;">
+        <thead><tr><th>Název</th><th>Šířka (cm)</th><th>Výška (cm)</th><th>Hloubka (cm)</th><th></th></tr></thead>
+        <tbody id="storage-unit-types-tbody">
+          ${state.storageUnitTypes.map(u=>`
+            <tr>
+              <td><input type="text" data-unit-field="name" data-id="${u.id}" value="${escapeAttr(u.name)}" style="width:100%;padding:6px 8px;border:1px solid var(--line);border-radius:4px;"></td>
+              <td><input type="number" step="0.1" min="0" data-unit-field="width" data-id="${u.id}" value="${u.width||''}" style="width:80px;padding:6px 8px;border:1px solid var(--line);border-radius:4px;"></td>
+              <td><input type="number" step="0.1" min="0" data-unit-field="height" data-id="${u.id}" value="${u.height||''}" style="width:80px;padding:6px 8px;border:1px solid var(--line);border-radius:4px;"></td>
+              <td><input type="number" step="0.1" min="0" data-unit-field="depth" data-id="${u.id}" value="${u.depth||''}" style="width:80px;padding:6px 8px;border:1px solid var(--line);border-radius:4px;"></td>
+              <td><button type="button" class="iconbtn" data-action="delete-storage-unit-type" data-id="${u.id}" title="Smazat"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+      ` : `<p style="font-size:12.5px;color:var(--ink-soft);">Zatím žádné skladové jednotky.</p>`}
     </div>
   `;
 
@@ -7608,9 +7709,9 @@ function viewStock(){
         <div style="background:var(--paper);border-radius:20px;height:12px;overflow:hidden;margin-bottom:8px;">
           <div style="background:${pct>=90?'var(--red)':pct>=70?'var(--amber)':'var(--accent)'};height:100%;width:${pct}%;"></div>
         </div>
-        <p style="font-size:13px;color:var(--ink-soft);margin:0 0 4px 0;">${w.capacityUnitType!=='jine'?fmtWhole(usage):fmt(usage)} / ${w.capacityUnitType!=='jine'?fmtWhole(w.capacityValue):fmt(w.capacityValue)} ${escapeHtml(warehouseCapacityUnitLabel(w))} využito (${pct} %)${w.capacityUnitType!=='jine'?' — dopočítáno automaticky podle skladem':''}</p>
+        <p style="font-size:13px;color:var(--ink-soft);margin:0 0 4px 0;">${w.capacityUnitTypeId?fmtWhole(usage):fmt(usage)} / ${w.capacityUnitTypeId?fmtWhole(w.capacityValue):fmt(w.capacityValue)} ${escapeHtml(warehouseCapacityUnitLabel(w))} využito (${pct} %)${w.capacityUnitTypeId?' — dopočítáno automaticky podle skladem':''}</p>
         <p style="font-size:13px;font-weight:600;margin:0;color:${(w.capacityValue-usage)<=0?'var(--red)':(pct>=70?'var(--amber)':'var(--accent)')};">
-          zbývá ${w.capacityUnitType!=='jine'?fmtWhole(Math.max(0,w.capacityValue-usage)):fmt(Math.max(0,w.capacityValue-usage))} ${escapeHtml(warehouseCapacityUnitLabel(w))}
+          zbývá ${w.capacityUnitTypeId?fmtWhole(Math.max(0,w.capacityValue-usage)):fmt(Math.max(0,w.capacityValue-usage))} ${escapeHtml(warehouseCapacityUnitLabel(w))}
         </p>
       </div>
     ` : ''}
@@ -8301,7 +8402,7 @@ function afterRender(){
     const capacityUnitTypeSelect = document.getElementById('warehouse-capacity-unit-type');
     if(capacityUnitTypeSelect){
       capacityUnitTypeSelect.addEventListener('change', ()=>{
-        const isCustom = capacityUnitTypeSelect.value==='jine';
+        const isCustom = capacityUnitTypeSelect.value==='';
         const customBox = document.getElementById('warehouse-custom-unit-box');
         const autoNote = document.getElementById('warehouse-auto-unit-note');
         if(customBox) customBox.style.display = isCustom ? '' : 'none';
@@ -8332,6 +8433,7 @@ function afterRender(){
   if(tenantSwitcher){ tenantSwitcher.addEventListener('change', ()=> switchTenant(tenantSwitcher.value)); }
   if(state.view==='received-invoice-detail') setupReceivedInvoiceDetail();
   if(state.view==='stock') setupStockScan();
+  if(state.view==='stock') setupStorageUnitTypesTable();
   if(state.view==='stock'){
     const valEl = document.getElementById('expiry-threshold-value');
     const unitEl = document.getElementById('expiry-threshold-unit');
@@ -9884,6 +9986,31 @@ document.addEventListener('click', async (e)=>{
   else if(action==='toggle-categories-manage'){
     const box = document.getElementById('categories-manage-box');
     if(box) box.style.display = box.style.display==='none' ? '' : 'none';
+  }
+  else if(action==='add-storage-unit-type'){
+    const name = prompt('Název skladové jednotky (např. Paleta, Regál, Přihrádka, Bedna):');
+    if(!name || !name.trim()) return;
+    state.storageUnitTypes.push({ id: uid(), name: name.trim(), width:0, height:0, depth:0 });
+    try{ await saveStorageUnitTypes(); }catch(err){ alert('Uložení se nepovedlo.'); }
+    render();
+  }
+  else if(action==='delete-storage-unit-type'){
+    const u = storageUnitTypeById(id);
+    if(!u) return;
+    const usedByWarehouses = state.warehouses.filter(w=>w.capacityUnitTypeId===id).length;
+    const usedByProducts = state.products.filter(p=>(p.unitsPerStorageType||{})[id]>0).length;
+    let msg = `Smazat jednotku „${u.name}"?`;
+    if(usedByWarehouses||usedByProducts) msg += ` Používá ji ${usedByWarehouses} skladů a ${usedByProducts} produktů — u skladů se kapacita přepne na ruční číslo.`;
+    if(!confirm(msg)) return;
+    state.storageUnitTypes = state.storageUnitTypes.filter(x=>x.id!==id);
+    state.warehouses.forEach(w=>{ if(w.capacityUnitTypeId===id) w.capacityUnitTypeId=null; });
+    state.products.forEach(p=>{ if(p.unitsPerStorageType && p.unitsPerStorageType[id]!=null) delete p.unitsPerStorageType[id]; });
+    try{
+      await saveStorageUnitTypes();
+      await saveWarehouses();
+      await saveProducts();
+    }catch(err){ alert('Uložení se nepovedlo.'); }
+    render();
   }
   else if(action==='add-category'){
     const name = prompt('Název nové kategorie:');
