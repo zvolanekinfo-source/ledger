@@ -1438,7 +1438,17 @@ async function saveSnapshotBackup(){
     const daysSinceLast = lastDate ? Math.round((new Date(todayISO()) - new Date(lastDate)) / 86400000) : Infinity;
     if(lastDate && daysSinceLast < intervalDays){ state.backupDates = dates; return; } // ještě není čas na další zálohu
     const date = todayISO();
-    const payload = JSON.stringify({ savedAt: new Date().toISOString(), companies: state.companies, clients: state.clients, invoices: state.invoices, suppliers: state.suppliers, products: state.products });
+    const payload = JSON.stringify({
+      savedAt: new Date().toISOString(),
+      companies: state.companies, clients: state.clients, invoices: state.invoices,
+      suppliers: state.suppliers, products: state.products,
+      receivedInvoices: state.receivedInvoices, recurringInvoices: state.recurringInvoices,
+      warehouses: state.warehouses, categories: state.categories, orders: state.orders,
+      integrations: state.integrations, productSettings: state.productSettings,
+      inventorySettings: state.inventorySettings, productColumns: state.productColumns,
+      expirySettings: state.expirySettings, userPermissions: state.userPermissions,
+      dashboardWidgets: state.dashboardWidgets
+    });
     await window.storage.set('backup:'+date, payload, true);
     if(!dates.includes(date)) dates.push(date);
     dates.sort();
@@ -1460,12 +1470,22 @@ async function deleteSnapshotBackup(date){
 }
 
 function exportBackupFile(){
-  const payload = { exportedAt: new Date().toISOString(), companies: state.companies, clients: state.clients, invoices: state.invoices, suppliers: state.suppliers, products: state.products };
+  const payload = {
+    exportedAt: new Date().toISOString(),
+    companies: state.companies, clients: state.clients, invoices: state.invoices,
+    suppliers: state.suppliers, products: state.products,
+    receivedInvoices: state.receivedInvoices, recurringInvoices: state.recurringInvoices,
+    warehouses: state.warehouses, categories: state.categories, orders: state.orders,
+    integrations: state.integrations, productSettings: state.productSettings,
+    inventorySettings: state.inventorySettings, productColumns: state.productColumns,
+    expirySettings: state.expirySettings, userPermissions: state.userPermissions,
+    dashboardWidgets: state.dashboardWidgets
+  };
   const blob = new Blob([JSON.stringify(payload, null, 2)], { type:'application/json' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `faktury-zaloha-${todayISO()}.json`;
+  a.download = `ledgers-zaloha-${todayISO()}.json`;
   document.body.appendChild(a);
   a.click();
   a.remove();
@@ -1473,7 +1493,7 @@ function exportBackupFile(){
 }
 
 async function restoreFromBackupObject(data, label){
-  if(!confirm(`Obnovit data ${label}? Přepíší se tím současní odběratelé, faktury i údaje o firmě.`)) return;
+  if(!confirm(`Obnovit data ${label}? Přepíší se tím všechna aktuální data v appce (faktury, odběratelé, sklad, objednávky, nastavení a vše ostatní).`)) return;
   try{
     if(Array.isArray(data.companies)){ state.companies = data.companies; await saveCompanies(); }
     else if(data.company){ state.companies = [data.company]; await saveCompanies(); }
@@ -1481,6 +1501,18 @@ async function restoreFromBackupObject(data, label){
     if(Array.isArray(data.invoices)){ state.invoices = data.invoices; await saveInvoices(); }
     if(Array.isArray(data.suppliers)){ state.suppliers = data.suppliers; await saveSuppliers(); }
     if(Array.isArray(data.products)){ state.products = data.products; await saveProducts(); }
+    if(Array.isArray(data.receivedInvoices)){ state.receivedInvoices = data.receivedInvoices; await saveReceivedInvoices(); }
+    if(Array.isArray(data.recurringInvoices)){ state.recurringInvoices = data.recurringInvoices; await saveRecurringInvoices(); }
+    if(Array.isArray(data.warehouses)){ state.warehouses = data.warehouses; await saveWarehouses(); }
+    if(Array.isArray(data.categories)){ state.categories = data.categories; await saveCategories(); }
+    if(Array.isArray(data.orders)){ state.orders = data.orders; await saveOrders(); }
+    if(data.integrations){ state.integrations = data.integrations; await saveIntegrations(); }
+    if(data.productSettings){ state.productSettings = data.productSettings; await saveProductSettings(); }
+    if(data.inventorySettings){ state.inventorySettings = data.inventorySettings; await saveInventorySettings(); }
+    if(data.productColumns){ state.productColumns = data.productColumns; await saveProductColumns(); }
+    if(data.expirySettings){ state.expirySettings = data.expirySettings; await saveExpirySettings(); }
+    if(data.userPermissions){ state.userPermissions = data.userPermissions; await saveUserPermissions(); }
+    if(data.dashboardWidgets){ state.dashboardWidgets = data.dashboardWidgets; await saveDashboardWidgets(); }
     alert('Data byla obnovena ze zálohy.');
     render();
   }catch(e){
