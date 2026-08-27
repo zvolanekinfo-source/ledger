@@ -507,6 +507,7 @@
   table.prod-table tbody td{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
   table.prod-table tbody td.actions-cell{overflow:visible;}
   table.prod-table tbody tr.selected{background:var(--accent-soft);}
+  .fixed-table tbody tr.selected{background:var(--accent-soft);}
   .prod-thumb{width:32px;height:32px;border-radius:5px;object-fit:cover;background:var(--paper);border:1px solid var(--line);display:block;}
   .prod-thumb-empty{width:32px;height:32px;border-radius:5px;background:var(--paper);border:1px dashed var(--line);}
   .cols-panel{position:absolute;top:100%;right:0;background:#fff;border:1px solid var(--line);border-radius:6px;box-shadow:0 6px 18px rgba(24,36,32,0.12);z-index:30;padding:10px;min-width:220px;display:none;}
@@ -7439,6 +7440,19 @@ function viewStock(){
       </div>
     </div>
 
+    ${renderBulkBar(state.selectedProductIds.size, 'produktů', `
+      <button type="button" class="btn secondary small" data-action="bulk-print-product-code">Tisk produktového kódu</button>
+      <button type="button" class="btn secondary small" data-action="bulk-save-product-code">Uložit produktový kód</button>
+      <button type="button" class="btn secondary small" data-action="bulk-print-product-info">Tisk informací</button>
+      <button type="button" class="btn secondary small" data-action="bulk-save-product-info">Uložit informace</button>
+      <button type="button" class="btn secondary small" data-action="bulk-edit-products-price">Změnit ceny</button>
+      <button type="button" class="btn secondary small" data-action="bulk-edit-products-vat">Změnit DPH</button>
+      <button type="button" class="btn secondary small" data-action="bulk-edit-products-supplier">Změnit dodavatele</button>
+      <button type="button" class="btn secondary small" data-action="bulk-edit-products-category">Změnit kategorii</button>
+      <button type="button" class="btn secondary small" data-action="bulk-archive-products">${[...state.selectedProductIds].length && [...state.selectedProductIds].every(id=>{ const pr=productById(id); return pr && pr.archived; }) ? 'Odebrat archivaci' : 'Archivovat'}</button>
+      <button type="button" class="btn danger small" data-action="bulk-delete-products">Smazat vybrané</button>
+    `)}
+
     <div style="display:grid;grid-template-columns:${pct!==null?'1fr 1fr':'1fr'};gap:20px;margin-bottom:24px;">
       <div class="form-card" style="margin-bottom:0;max-width:none;">
         <div class="section-title" style="margin-top:0;padding-top:0;border-top:none;display:flex;justify-content:space-between;align-items:center;">
@@ -7494,8 +7508,8 @@ function viewStock(){
       ${expiring.length ? `
       <div class="table-scroll">
       <table class="fixed-table">
-        <thead><tr><th style="width:44px;"></th><th>Produkt</th><th style="width:130px;">Expirace</th><th style="width:100px;">Zbývá dní</th><th style="width:110px;">Skladem</th><th style="width:280px;">Umístění</th><th style="width:70px;"></th></tr></thead>
-        <tbody>
+        <thead><tr><th style="width:44px;"><input type="checkbox" data-action="toggle-select-all-expiring" ${expiring.length && expiring.every(p=>state.selectedProductIds.has(p.id))?'checked':''}></th><th>Produkt</th><th style="width:130px;">Expirace</th><th style="width:100px;">Zbývá dní</th><th style="width:110px;">Skladem</th><th style="width:280px;">Umístění</th><th style="width:70px;"></th></tr></thead>
+        <tbody id="expiring-tbody">
           ${expiring.map(p=>`
             <tr class="${state.selectedProductIds.has(p.id)?'selected':''}">
               <td class="no-print" style="padding:0;"><span class="checkbox-hit" data-action="toggle-product-select" data-id="${p.id}"><input type="checkbox" data-action="toggle-product-select" data-id="${p.id}" ${state.selectedProductIds.has(p.id)?'checked':''}></span></td>
@@ -9760,6 +9774,13 @@ document.addEventListener('click', async (e)=>{
     const idsRaw = el.getAttribute('data-ids')||'';
     const ids = idsRaw.split(',').filter(Boolean);
     if(!ids.length) return; // 0 produktů = nic se neděje
+    const alreadySelected = ids.length===state.selectedProductIds.size && ids.every(pid=>state.selectedProductIds.has(pid));
+    if(alreadySelected){
+      // druhý klik na tu samou kartu = odznačit
+      state.selectedProductIds.clear();
+      render();
+      return;
+    }
     state.selectedProductIds.clear();
     ids.forEach(pid=> state.selectedProductIds.add(pid));
     const targetId = el.getAttribute('data-target');
@@ -10119,6 +10140,14 @@ document.addEventListener('click', async (e)=>{
   else if(action==='toggle-product-select'){
     const pid = el.getAttribute('data-id');
     if(state.selectedProductIds.has(pid)) state.selectedProductIds.delete(pid); else state.selectedProductIds.add(pid);
+    render();
+  }
+  else if(action==='toggle-select-all-expiring'){
+    const checked = el.checked;
+    document.querySelectorAll('#expiring-tbody input[data-action="toggle-product-select"]').forEach(cb=>{
+      const pid = cb.getAttribute('data-id');
+      if(checked) state.selectedProductIds.add(pid); else state.selectedProductIds.delete(pid);
+    });
     render();
   }
   else if(action==='toggle-select-all-products'){
