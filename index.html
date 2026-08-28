@@ -743,6 +743,19 @@ const VAT_RATES = [21, 12, 0];
 function uid(){ return Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
 function fmt(n){ return (Math.round((n+Number.EPSILON)*100)/100).toLocaleString('cs-CZ',{minimumFractionDigits:2,maximumFractionDigits:2}); }
 function fmtWhole(n){ return Math.round(n).toLocaleString('cs-CZ'); }
+function buildInvoiceBarcodeMarkup(value, type){
+  // Stejně jako u QR kódu (viz buildQrSvgMarkup výše) se vyhýbáme inline SVG
+  // vloženému přímo do dokladu — přes canvas + PNG data URL je to spolehlivé
+  // i při exportu do PDF a tisku napříč prohlížeči.
+  if(!value || typeof JsBarcode === 'undefined') return '';
+  try{
+    const canvas = document.createElement('canvas');
+    const { value: encoded, format } = buildBarcodeForType(value, type || 'EAN13');
+    JsBarcode(canvas, encoded, { format, displayValue:true, fontSize:11, height:34, margin:4, background:'#ffffff', lineColor:'#1A2233' });
+    const dataUrl = canvas.toDataURL('image/png');
+    return `<img src="${dataUrl}" style="height:48px;display:block;margin-left:auto;" alt="Čárový kód objednávky">`;
+  }catch(e){ console.error('Invoice barcode render failed', e); return ''; }
+}
 function buildQrSvgMarkup(text, size){
   // Vrátí hotový HTML markup pro QR kód jako mřížku obyčejných <div> políček
   // (ne jako SVG/obrázek). html2canvas totiž inline SVG interně převádí na
@@ -1318,7 +1331,7 @@ async function loadAll(){
     prefix:'', nextNumber:1, defaultDueDays:'', defaultNote:'',
     creditNotePrefix:'DOB-', creditNoteNextNumber:1,
     proformaPrefix:'ZF-', proformaNextNumber:1,
-    vsMode:'same_as_invoice', vsPrefix:'', vsNextNumber:1, ksMode:'manual', ksPrefix:'', ksNextNumber:1,
+    vsMode:'same_as_invoice', vsPrefix:'', vsNextNumber:1, ksMode:'manual', ksPrefix:'', ksNextNumber:1, showInvoiceBarcode:true, invoiceBarcodeType:'EAN13',
     invoiceTerms:'',
     defaultPaymentMethod:'', invoiceAccent:'#5B8DEF',
     logo:'', signature:'', stamp:'', showLogo:true, showStamp:true, showSignature:true, showQr:true,
@@ -3066,6 +3079,7 @@ function viewInvoicePreview(){
             </div>
           </div>
           <div class="inv-header-right">
+            ${co.showInvoiceBarcode!==false ? `<div style="margin-bottom:8px;">${buildInvoiceBarcodeMarkup(inv.number, co.invoiceBarcodeType)}</div>` : ''}
             ${co.vatPayer===false?'<div style="font-size:10.5px;font-weight:600;color:var(--ink-soft);margin-bottom:3px;">(neplátce DPH)</div>':''}
             <div class="inv-doctitle">${docTypeLabel(invoiceDocType(inv))} číslo:</div>
             <div class="inv-docnum">${escapeHtml(inv.number)}</div>
@@ -3218,6 +3232,7 @@ function buildInvoiceSheetBlock(inv, idx){
             </div>
           </div>
           <div class="inv-header-right">
+            ${co.showInvoiceBarcode!==false ? `<div style="margin-bottom:8px;">${buildInvoiceBarcodeMarkup(inv.number, co.invoiceBarcodeType)}</div>` : ''}
             ${co.vatPayer===false?'<div style="font-size:10.5px;font-weight:600;color:var(--ink-soft);margin-bottom:3px;">(neplátce DPH)</div>':''}
             <div class="inv-doctitle">${docTypeLabel(invoiceDocType(inv))} číslo:</div>
             <div class="inv-docnum">${escapeHtml(inv.number)}</div>
@@ -4518,7 +4533,7 @@ function viewCompanyForm(){
       prefix:'', nextNumber:1, defaultDueDays:'', defaultNote:'',
       creditNotePrefix:'DOB-', creditNoteNextNumber:1,
       proformaPrefix:'ZF-', proformaNextNumber:1,
-      vsMode:'same_as_invoice', vsPrefix:'', vsNextNumber:1, ksMode:'manual', ksPrefix:'', ksNextNumber:1,
+      vsMode:'same_as_invoice', vsPrefix:'', vsNextNumber:1, ksMode:'manual', ksPrefix:'', ksNextNumber:1, showInvoiceBarcode:true, invoiceBarcodeType:'EAN13',
       invoiceTerms:'',
       defaultPaymentMethod:'', vatPayer:true,
       logo:state.newCompanyDraft.logo, signature:state.newCompanyDraft.signature, stamp:state.newCompanyDraft.stamp,
@@ -4605,6 +4620,17 @@ function companyFormMarkup(co, opts){
       <div id="company-ks-sequence-box" class="field-row" style="display:${co.ksMode==='separate_sequence'?'':'none'};">
         <div class="field"><label>Prefix konstantního symbolu</label><input name="ksPrefix" value="${escapeAttr(co.ksPrefix||'')}" placeholder="nepovinné"></div>
         <div class="field"><label>Další pořadové číslo KS</label><input type="number" name="ksNextNumber" value="${co.ksNextNumber||1}"></div>
+      </div>
+
+      <div class="section-title">Čárový kód na faktuře</div>
+      <label style="display:flex;align-items:center;gap:8px;font-size:14px;margin:6px 0 14px 0;">
+        <input type="checkbox" name="showInvoiceBarcode" ${co.showInvoiceBarcode!==false?'checked':''}> Zobrazovat čárový kód čísla faktury vpravo nahoře
+      </label>
+      <div class="field" style="max-width:340px;">
+        <label>Typ čárového kódu</label>
+        <select name="invoiceBarcodeType">
+          ${BARCODE_TYPES.map(t=>`<option value="${t.value}" ${(co.invoiceBarcodeType||'EAN13')===t.value?'selected':''}>${escapeHtml(t.label)}</option>`).join('')}
+        </select>
       </div>
       <div class="field-row">
         <div class="field"><label>Výchozí splatnost (dny)</label><input type="number" name="defaultDueDays" value="${co.defaultDueDays}"></div>
@@ -10928,6 +10954,7 @@ async function onSubmitCompany(e){
     proformaPrefix: fd.get('proformaPrefix')||'ZF-', proformaNextNumber: parseInt(fd.get('proformaNextNumber'))||1,
     vsMode: fd.get('vsMode')||'same_as_invoice', vsPrefix: fd.get('vsPrefix')||'', vsNextNumber: parseInt(fd.get('vsNextNumber'))||1,
     ksMode: fd.get('ksMode')||'manual', ksPrefix: fd.get('ksPrefix')||'', ksNextNumber: parseInt(fd.get('ksNextNumber'))||1,
+    showInvoiceBarcode: fd.get('showInvoiceBarcode')==='on', invoiceBarcodeType: fd.get('invoiceBarcodeType')||'EAN13',
     defaultDueDays: parseInt(fd.get('defaultDueDays'))||14, defaultNote: fd.get('defaultNote'),
     invoiceTerms: fd.get('invoiceTerms'), defaultPaymentMethod: fd.get('defaultPaymentMethod'),
     inventoryValuationMethod: fd.get('inventoryValuationMethod') || 'average',
