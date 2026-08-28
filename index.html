@@ -275,18 +275,18 @@
   .invoice-sheet .inv-body{padding:48px 52px 48px 52px;}
   .invoice-sheet.bw-mode{filter:grayscale(1) contrast(1.05);}
 
-  /* header */
-  .invoice-sheet .inv-title-center{text-align:center;font-family:'Inter',sans-serif;font-size:20px;font-weight:700;color:var(--ink);letter-spacing:-0.2px;margin-bottom:22px;}
+  /* header — název, EAN a faktura číslo zarovnané do jedné řady, horní hranou k sobě */
   .invoice-sheet .inv-header{
     display:flex;justify-content:space-between;align-items:flex-start;gap:20px;
     padding-bottom:24px;margin-bottom:24px;border-bottom:1px solid var(--line);
   }
-  .invoice-sheet .inv-header-left{display:flex;align-items:center;gap:14px;min-width:0;}
+  .invoice-sheet .inv-header-left{display:flex;align-items:center;gap:14px;min-width:0;flex:1;}
   .invoice-sheet .inv-logo{height:48px;width:auto;max-width:170px;object-fit:contain;flex-shrink:0;}
   .invoice-sheet .inv-co-name{font-family:'Inter',sans-serif;font-size:16px;font-weight:600;color:var(--ink);line-height:1.3;letter-spacing:-0.2px;}
   .invoice-sheet .inv-co-tagline{font-size:12px;color:var(--ink);margin-top:2px;}
-  .invoice-sheet .inv-header-right{text-align:right;flex-shrink:0;}
-  .invoice-sheet .inv-barcode-img{height:64px;display:block;margin-left:auto;}
+  .invoice-sheet .inv-title-center{flex:1;text-align:center;font-family:'Inter',sans-serif;font-size:13px;font-weight:700;color:var(--ink);letter-spacing:-0.1px;padding-top:2px;}
+  .invoice-sheet .inv-header-right{text-align:right;flex-shrink:0;flex:1;}
+  .invoice-sheet .inv-barcode-img{height:44px;display:block;margin-left:auto;}
   .invoice-sheet .paid-badge{
     display:inline-block;margin-top:10px;
     color:var(--inv-accent);background:var(--inv-accent-soft);
@@ -306,7 +306,7 @@
 
   .invoice-sheet table.lines{width:100%;border-collapse:collapse;margin-bottom:22px;}
   .invoice-sheet table.lines thead th{
-    text-align:left;font-size:10.5px;text-transform:uppercase;letter-spacing:0.5px;color:var(--ink-soft);
+    text-align:left;font-size:10.5px;text-transform:uppercase;letter-spacing:0.5px;color:var(--ink);
     padding:0 10px 10px 10px;font-weight:500;border-bottom:1px solid var(--ink);
   }
   .invoice-sheet table.lines td{padding:12px 10px;border-bottom:1px solid var(--line);font-size:13.5px;color:var(--ink);}
@@ -314,26 +314,26 @@
   .invoice-sheet table.lines td.num,.invoice-sheet table.lines th.num{text-align:right;font-family:'Inter',sans-serif;}
 
   .invoice-sheet .bottom{display:flex;justify-content:flex-end;align-items:flex-start;margin-top:8px;gap:32px;}
-  .invoice-sheet .qrbox{text-align:center;font-size:10.5px;color:var(--ink-soft);flex-shrink:0;}
+  .invoice-sheet .qrbox{text-align:center;font-size:10.5px;color:var(--ink);flex-shrink:0;}
   .invoice-sheet .qrbox .qrimg{border:1px solid var(--line);padding:8px;background:#fff;display:inline-block;margin-bottom:6px;border-radius:8px;}
   .invoice-sheet .totals{width:230px;flex-shrink:0;}
-  .invoice-sheet .totals .trow{display:flex;justify-content:space-between;font-size:13px;padding:5px 0;color:var(--ink-soft);}
+  .invoice-sheet .totals .trow{display:flex;justify-content:space-between;font-size:13px;padding:5px 0;color:var(--ink);}
   .invoice-sheet .totals .trow.grand{
-    font-family:'Inter',sans-serif;font-size:13.5px;font-weight:700;color:var(--inv-accent);
+    font-family:'Inter',sans-serif;font-size:13.5px;font-weight:700;color:var(--ink);
     border-top:1.5px solid var(--ink);margin-top:8px;padding-top:10px;letter-spacing:-0.1px;
   }
-  .invoice-sheet .note{margin-top:24px;font-size:12px;color:var(--ink-soft);border-top:1px solid var(--line);padding-top:16px;white-space:pre-wrap;}
+  .invoice-sheet .note{margin-top:24px;font-size:12px;color:var(--ink);border-top:1px solid var(--line);padding-top:16px;white-space:pre-wrap;}
 
   /* signature / stamp row */
   .invoice-sheet .signoff{display:flex;justify-content:space-between;align-items:flex-end;margin-top:36px;gap:24px;}
-  .invoice-sheet .signoff-terms{flex:1;font-size:11px;color:var(--ink-soft);line-height:1.5;white-space:pre-wrap;}
+  .invoice-sheet .signoff-terms{flex:1;font-size:11px;color:var(--ink);line-height:1.5;white-space:pre-wrap;}
   .invoice-sheet .signbox{width:260px;flex-shrink:0;text-align:center;min-height:92px;}
   .invoice-sheet .signbox .sig-stack{display:flex;align-items:flex-end;justify-content:center;gap:18px;height:64px;}
   .invoice-sheet .signbox img.sig-img{max-height:60px;max-width:130px;object-fit:contain;}
   .invoice-sheet .signbox img.co-stamp-img{max-height:64px;max-width:120px;object-fit:contain;}
-  .invoice-sheet .signbox .sig-line{border-top:1px solid var(--line);margin-top:6px;padding-top:6px;font-size:10px;color:var(--ink-soft);text-transform:uppercase;letter-spacing:0.5px;}
+  .invoice-sheet .signbox .sig-line{border-top:1px solid var(--line);margin-top:6px;padding-top:6px;font-size:10px;color:var(--ink);text-transform:uppercase;letter-spacing:0.5px;}
 
-  .invoice-sheet .inv-footer{margin-top:28px;padding-top:16px;border-top:1px solid var(--line);display:flex;justify-content:space-between;font-size:10.5px;color:var(--ink-soft);}
+  .invoice-sheet .inv-footer{margin-top:28px;padding-top:16px;border-top:1px solid var(--line);display:flex;justify-content:space-between;font-size:10.5px;color:var(--ink);}
 
   /* WIDGETY PŘEHLEDU */
   .widget-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:20px;}
@@ -580,9 +580,9 @@
   }
 
   .invoice-sheet.pdf-compact .inv-body{padding:26px 30px 18px 30px !important;}
-  .invoice-sheet.pdf-compact .inv-title-center{font-size:15px !important;margin-bottom:10px !important;}
+  .invoice-sheet.pdf-compact .inv-title-center{font-size:11px !important;}
   .invoice-sheet.pdf-compact .inv-header{padding-bottom:10px !important;margin-bottom:10px !important;}
-  .invoice-sheet.pdf-compact .inv-barcode-img{height:44px !important;}
+  .invoice-sheet.pdf-compact .inv-barcode-img{height:34px !important;}
   .invoice-sheet.pdf-compact .info-grid{margin-bottom:12px !important;}
   .invoice-sheet.pdf-compact .info-card{padding:10px 12px !important;font-size:11.5px !important;line-height:1.4 !important;}
   .invoice-sheet.pdf-compact table.lines{margin-bottom:10px !important;}
@@ -604,7 +604,7 @@
     .invoice-sheet{box-shadow:none;border:none;width:auto;border-radius:0;}
     .invoice-sheet .inv-body{padding:34px 34px 22px 34px !important;}
     .invoice-sheet .inv-header{padding-bottom:14px !important;margin-bottom:14px !important;}
-    .invoice-sheet .inv-barcode-img{height:50px !important;}
+    .invoice-sheet .inv-barcode-img{height:40px !important;}
     .invoice-sheet .info-grid{margin-bottom:16px !important;}
     .invoice-sheet .info-card{padding:12px 14px !important;font-size:12px !important;line-height:1.45 !important;}
     .invoice-sheet table.lines td{padding:8px 10px !important;}
@@ -751,7 +751,7 @@ function buildInvoiceBarcodeMarkup(value, type){
   try{
     const canvas = document.createElement('canvas');
     const { value: encoded, format } = buildBarcodeForType(value, type || 'EAN13');
-    JsBarcode(canvas, encoded, { format, displayValue:true, width:3, height:90, fontSize:30, margin:10, background:'#ffffff', lineColor:'#1A2233' });
+    JsBarcode(canvas, encoded, { format, displayValue:false, width:3, height:80, margin:10, background:'#ffffff', lineColor:'#1A2233' });
     const dataUrl = canvas.toDataURL('image/png');
     return `<img src="${dataUrl}" class="inv-barcode-img" alt="Čárový kód faktury">`;
   }catch(e){ console.error('Invoice barcode render failed', e); return ''; }
@@ -3070,7 +3070,6 @@ function viewInvoicePreview(){
     <div class="preview-wrap">
       <div class="invoice-sheet ${inv.colorMode==='bw'?'bw-mode':''}" id="invoice-sheet" style="${sheetStyle}">
         <div class="inv-body">
-        <div class="inv-title-center">${docTypeLabel(invoiceDocType(inv))} číslo: ${escapeHtml(inv.number)}</div>
         <div class="inv-header">
           <div class="inv-header-left">
             ${showLogo ? `<img class="inv-logo" src="${co.logo}" alt="Logo" style="height:${Math.round(48*((co.logoScale||100)/100))}px;">` : ''}
@@ -3079,6 +3078,7 @@ function viewInvoicePreview(){
               ${co.tagline?`<div class="inv-co-tagline">${escapeHtml(co.tagline)}</div>`:''}
             </div>
           </div>
+          <div class="inv-title-center">${docTypeLabel(invoiceDocType(inv))} číslo: ${escapeHtml(inv.number)}</div>
           <div class="inv-header-right">
             ${co.showInvoiceBarcode!==false ? buildInvoiceBarcodeMarkup(inv.number, co.invoiceBarcodeType) : ''}
             ${inv.paid ? `<div class="paid-badge">Zaplaceno</div>` : ''}
@@ -3222,7 +3222,6 @@ function buildInvoiceSheetBlock(inv, idx){
   const html = `<div class="print-invoice-block">
       <div class="invoice-sheet ${inv.colorMode==='bw'?'bw-mode':''}" id="invoice-sheet-${idx}" style="${sheetStyle}">
         <div class="inv-body">
-        <div class="inv-title-center">${docTypeLabel(invoiceDocType(inv))} číslo: ${escapeHtml(inv.number)}</div>
         <div class="inv-header">
           <div class="inv-header-left">
             ${showLogo ? `<img class="inv-logo" src="${co.logo}" alt="Logo" style="height:${Math.round(48*((co.logoScale||100)/100))}px;">` : ''}
@@ -3231,6 +3230,7 @@ function buildInvoiceSheetBlock(inv, idx){
               ${co.tagline?`<div class="inv-co-tagline">${escapeHtml(co.tagline)}</div>`:''}
             </div>
           </div>
+          <div class="inv-title-center">${docTypeLabel(invoiceDocType(inv))} číslo: ${escapeHtml(inv.number)}</div>
           <div class="inv-header-right">
             ${co.showInvoiceBarcode!==false ? buildInvoiceBarcodeMarkup(inv.number, co.invoiceBarcodeType) : ''}
             ${inv.paid ? `<div class="paid-badge">Zaplaceno</div>` : ''}
