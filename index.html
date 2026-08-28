@@ -3106,18 +3106,16 @@ function viewInvoicePreview(){
             </div>
             <div class="party-col">
               ${co.account?`<div class="meta-row"><span>Číslo účtu</span><span>${escapeHtml(co.account)}</span></div>`:''}
-              ${co.iban?`<div class="meta-row"><span>IBAN</span><span>${escapeHtml(co.iban)}</span></div>`:''}
-              ${co.swift?`<div class="meta-row"><span>SWIFT/BIC</span><span>${escapeHtml(co.swift)}</span></div>`:''}
+              ${inv.variableSymbol?`<div class="meta-row"><span>Variabilní symbol</span><span>${escapeHtml(inv.variableSymbol)}</span></div>`:''}
+              ${inv.constantSymbol?`<div class="meta-row"><span>Konstantní symbol</span><span>${escapeHtml(inv.constantSymbol)}</span></div>`:''}
               <div class="meta-row"><span>Forma úhrady</span><span>${escapeHtml(inv.paymentMethod||'Bankovním převodem')}</span></div>
               <div class="meta-row"><span>Datum vystavení</span><span>${inv.issueDate||''}</span></div>
               <div class="meta-row"><span>Datum splatnosti</span><span>${inv.dueDate||''}</span></div>
               ${co.vatPayer!==false?`<div class="meta-row"><span>Zd. plnění</span><span>${inv.taxDate||''}</span></div>`:''}
-              ${inv.variableSymbol?`<div class="meta-row"><span>Variabilní symbol</span><span>${escapeHtml(inv.variableSymbol)}</span></div>`:''}
-              ${inv.constantSymbol?`<div class="meta-row"><span>Konstantní symbol</span><span>${escapeHtml(inv.constantSymbol)}</span></div>`:''}
               ${inv.orderNumber?`<div class="meta-row"><span>Číslo objednávky</span><span>${escapeHtml(inv.orderNumber)}</span></div>`:''}
               ${invoiceDocType(inv)==='credit_note' && inv.relatedInvoiceId ? (function(){ const ri=state.invoices.find(x=>x.id===inv.relatedInvoiceId); return ri?`<div class="meta-row"><span>K faktuře</span><span>${escapeHtml(ri.number)}</span></div>`:''; })() : ''}
               ${invoiceDocType(inv)==='credit_note' && inv.creditReason ? `<div class="meta-row"><span>Důvod</span><span>${escapeHtml(inv.creditReason)}</span></div>` : ''}
-              ${!co.account && !co.iban ? `<div style="margin-top:6px;">Doplň platební údaje v nastavení.</div>` : ''}
+              ${!co.account ? `<div style="margin-top:6px;">Doplň platební údaje v nastavení.</div>` : ''}
             </div>
           </div>
 
@@ -3267,18 +3265,16 @@ function buildInvoiceSheetBlock(inv, idx){
             </div>
             <div class="party-col">
               ${co.account?`<div class="meta-row"><span>Číslo účtu</span><span>${escapeHtml(co.account)}</span></div>`:''}
-              ${co.iban?`<div class="meta-row"><span>IBAN</span><span>${escapeHtml(co.iban)}</span></div>`:''}
-              ${co.swift?`<div class="meta-row"><span>SWIFT/BIC</span><span>${escapeHtml(co.swift)}</span></div>`:''}
+              ${inv.variableSymbol?`<div class="meta-row"><span>Variabilní symbol</span><span>${escapeHtml(inv.variableSymbol)}</span></div>`:''}
+              ${inv.constantSymbol?`<div class="meta-row"><span>Konstantní symbol</span><span>${escapeHtml(inv.constantSymbol)}</span></div>`:''}
               <div class="meta-row"><span>Forma úhrady</span><span>${escapeHtml(inv.paymentMethod||'Bankovním převodem')}</span></div>
               <div class="meta-row"><span>Datum vystavení</span><span>${inv.issueDate||''}</span></div>
               <div class="meta-row"><span>Datum splatnosti</span><span>${inv.dueDate||''}</span></div>
               ${co.vatPayer!==false?`<div class="meta-row"><span>Zd. plnění</span><span>${inv.taxDate||''}</span></div>`:''}
-              ${inv.variableSymbol?`<div class="meta-row"><span>Variabilní symbol</span><span>${escapeHtml(inv.variableSymbol)}</span></div>`:''}
-              ${inv.constantSymbol?`<div class="meta-row"><span>Konstantní symbol</span><span>${escapeHtml(inv.constantSymbol)}</span></div>`:''}
               ${inv.orderNumber?`<div class="meta-row"><span>Číslo objednávky</span><span>${escapeHtml(inv.orderNumber)}</span></div>`:''}
               ${invoiceDocType(inv)==='credit_note' && inv.relatedInvoiceId ? (function(){ const ri=state.invoices.find(x=>x.id===inv.relatedInvoiceId); return ri?`<div class="meta-row"><span>K faktuře</span><span>${escapeHtml(ri.number)}</span></div>`:''; })() : ''}
               ${invoiceDocType(inv)==='credit_note' && inv.creditReason ? `<div class="meta-row"><span>Důvod</span><span>${escapeHtml(inv.creditReason)}</span></div>` : ''}
-              ${!co.account && !co.iban ? `<div style="margin-top:6px;">Doplň platební údaje v nastavení.</div>` : ''}
+              ${!co.account ? `<div style="margin-top:6px;">Doplň platební údaje v nastavení.</div>` : ''}
             </div>
           </div>
 
