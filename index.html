@@ -276,6 +276,7 @@
   .invoice-sheet.bw-mode{filter:grayscale(1) contrast(1.05);}
 
   /* header */
+  .invoice-sheet .inv-title-center{text-align:center;font-family:'Inter',sans-serif;font-size:20px;font-weight:700;color:var(--ink);letter-spacing:-0.2px;margin-bottom:22px;}
   .invoice-sheet .inv-header{
     display:flex;justify-content:space-between;align-items:flex-start;gap:20px;
     padding-bottom:24px;margin-bottom:24px;border-bottom:1px solid var(--line);
@@ -283,12 +284,9 @@
   .invoice-sheet .inv-header-left{display:flex;align-items:center;gap:14px;min-width:0;}
   .invoice-sheet .inv-logo{height:48px;width:auto;max-width:170px;object-fit:contain;flex-shrink:0;}
   .invoice-sheet .inv-co-name{font-family:'Inter',sans-serif;font-size:16px;font-weight:600;color:var(--ink);line-height:1.3;letter-spacing:-0.2px;}
-  .invoice-sheet .inv-co-tagline{font-size:12px;color:var(--ink-soft);margin-top:2px;}
+  .invoice-sheet .inv-co-tagline{font-size:12px;color:var(--ink);margin-top:2px;}
   .invoice-sheet .inv-header-right{text-align:right;flex-shrink:0;}
-  .invoice-sheet .inv-barcode-img{height:44px;display:block;margin-left:auto;margin-bottom:8px;}
-  .invoice-sheet .inv-docline{font-family:'Inter',sans-serif;font-size:13px;white-space:nowrap;}
-  .invoice-sheet .inv-docline .inv-doctitle{font-weight:600;color:var(--ink-soft);letter-spacing:0.2px;}
-  .invoice-sheet .inv-docline .inv-docnum{font-weight:700;color:var(--ink);margin-left:5px;letter-spacing:-0.1px;}
+  .invoice-sheet .inv-barcode-img{height:64px;display:block;margin-left:auto;}
   .invoice-sheet .paid-badge{
     display:inline-block;margin-top:10px;
     color:var(--inv-accent);background:var(--inv-accent-soft);
@@ -298,12 +296,12 @@
 
   /* info cards (dodavatel+platba / odběratel) — rozvržení podle referenční faktury */
   .invoice-sheet .info-grid{display:flex;gap:20px;margin-bottom:30px;align-items:stretch;}
-  .invoice-sheet .info-card{flex:1;border:1px solid var(--line);border-radius:10px;padding:18px 20px;font-size:13px;line-height:1.6;color:var(--ink-soft);}
-  .invoice-sheet .info-card .k{font-size:10px;text-transform:uppercase;letter-spacing:0.8px;color:var(--ink-soft);font-weight:600;margin-bottom:8px;}
+  .invoice-sheet .info-card{flex:1;border:1px solid var(--line);border-radius:10px;padding:18px 20px;font-size:13px;line-height:1.6;color:var(--ink);}
+  .invoice-sheet .info-card .k{font-size:10px;text-transform:uppercase;letter-spacing:0.8px;color:var(--ink);font-weight:600;margin-bottom:8px;}
   .invoice-sheet .info-card .nm{font-weight:600;font-size:14px;margin-bottom:3px;color:var(--ink);}
   .invoice-sheet .info-card .divider{border-top:1px solid var(--line);margin-top:14px;padding-top:14px;}
   .invoice-sheet .info-card .meta-row{display:flex;justify-content:space-between;padding:2px 0;gap:10px;}
-  .invoice-sheet .info-card .meta-row span:first-child{color:var(--ink-soft);}
+  .invoice-sheet .info-card .meta-row span:first-child{color:var(--ink);}
   .invoice-sheet .info-card .meta-row span:last-child{font-family:'Inter',sans-serif;font-weight:600;color:var(--ink);text-align:right;}
 
   .invoice-sheet table.lines{width:100%;border-collapse:collapse;margin-bottom:22px;}
@@ -582,8 +580,9 @@
   }
 
   .invoice-sheet.pdf-compact .inv-body{padding:26px 30px 18px 30px !important;}
+  .invoice-sheet.pdf-compact .inv-title-center{font-size:15px !important;margin-bottom:10px !important;}
   .invoice-sheet.pdf-compact .inv-header{padding-bottom:10px !important;margin-bottom:10px !important;}
-  .invoice-sheet.pdf-compact .inv-barcode-img{height:32px !important;margin-bottom:6px !important;}
+  .invoice-sheet.pdf-compact .inv-barcode-img{height:44px !important;}
   .invoice-sheet.pdf-compact .info-grid{margin-bottom:12px !important;}
   .invoice-sheet.pdf-compact .info-card{padding:10px 12px !important;font-size:11.5px !important;line-height:1.4 !important;}
   .invoice-sheet.pdf-compact table.lines{margin-bottom:10px !important;}
@@ -605,7 +604,7 @@
     .invoice-sheet{box-shadow:none;border:none;width:auto;border-radius:0;}
     .invoice-sheet .inv-body{padding:34px 34px 22px 34px !important;}
     .invoice-sheet .inv-header{padding-bottom:14px !important;margin-bottom:14px !important;}
-    .invoice-sheet .inv-barcode-img{height:36px !important;margin-bottom:6px !important;}
+    .invoice-sheet .inv-barcode-img{height:50px !important;}
     .invoice-sheet .info-grid{margin-bottom:16px !important;}
     .invoice-sheet .info-card{padding:12px 14px !important;font-size:12px !important;line-height:1.45 !important;}
     .invoice-sheet table.lines td{padding:8px 10px !important;}
@@ -3071,6 +3070,7 @@ function viewInvoicePreview(){
     <div class="preview-wrap">
       <div class="invoice-sheet ${inv.colorMode==='bw'?'bw-mode':''}" id="invoice-sheet" style="${sheetStyle}">
         <div class="inv-body">
+        <div class="inv-title-center">${docTypeLabel(invoiceDocType(inv))} číslo: ${escapeHtml(inv.number)}</div>
         <div class="inv-header">
           <div class="inv-header-left">
             ${showLogo ? `<img class="inv-logo" src="${co.logo}" alt="Logo" style="height:${Math.round(48*((co.logoScale||100)/100))}px;">` : ''}
@@ -3081,8 +3081,6 @@ function viewInvoicePreview(){
           </div>
           <div class="inv-header-right">
             ${co.showInvoiceBarcode!==false ? buildInvoiceBarcodeMarkup(inv.number, co.invoiceBarcodeType) : ''}
-            <div class="inv-docline"><span class="inv-doctitle">${docTypeLabel(invoiceDocType(inv))} číslo:</span><span class="inv-docnum">${escapeHtml(inv.number)}</span></div>
-            ${co.vatPayer===false?'<div style="font-size:10.5px;font-weight:600;color:var(--ink-soft);margin-top:4px;">(neplátce DPH)</div>':''}
             ${inv.paid ? `<div class="paid-badge">Zaplaceno</div>` : ''}
           </div>
         </div>
@@ -3091,6 +3089,7 @@ function viewInvoicePreview(){
             <div class="info-card">
               <div class="k">Dodavatel</div>
               <div class="nm">${escapeHtml(co.name||'—')}</div>
+              ${co.vatPayer===false?'<div style="font-size:11px;font-weight:600;color:var(--ink);margin-bottom:4px;">(neplátce DPH)</div>':''}
               <div>${nl2br(formatAddress(co.address))}</div>
               ${co.ico?`<div>IČO: ${escapeHtml(co.ico)}</div>`:''}
               ${co.dic?`<div>DIČ: ${escapeHtml(co.dic)}</div>`:''}
@@ -3223,6 +3222,7 @@ function buildInvoiceSheetBlock(inv, idx){
   const html = `<div class="print-invoice-block">
       <div class="invoice-sheet ${inv.colorMode==='bw'?'bw-mode':''}" id="invoice-sheet-${idx}" style="${sheetStyle}">
         <div class="inv-body">
+        <div class="inv-title-center">${docTypeLabel(invoiceDocType(inv))} číslo: ${escapeHtml(inv.number)}</div>
         <div class="inv-header">
           <div class="inv-header-left">
             ${showLogo ? `<img class="inv-logo" src="${co.logo}" alt="Logo" style="height:${Math.round(48*((co.logoScale||100)/100))}px;">` : ''}
@@ -3233,8 +3233,6 @@ function buildInvoiceSheetBlock(inv, idx){
           </div>
           <div class="inv-header-right">
             ${co.showInvoiceBarcode!==false ? buildInvoiceBarcodeMarkup(inv.number, co.invoiceBarcodeType) : ''}
-            <div class="inv-docline"><span class="inv-doctitle">${docTypeLabel(invoiceDocType(inv))} číslo:</span><span class="inv-docnum">${escapeHtml(inv.number)}</span></div>
-            ${co.vatPayer===false?'<div style="font-size:10.5px;font-weight:600;color:var(--ink-soft);margin-top:4px;">(neplátce DPH)</div>':''}
             ${inv.paid ? `<div class="paid-badge">Zaplaceno</div>` : ''}
           </div>
         </div>
@@ -3243,6 +3241,7 @@ function buildInvoiceSheetBlock(inv, idx){
             <div class="info-card">
               <div class="k">Dodavatel</div>
               <div class="nm">${escapeHtml(co.name||'—')}</div>
+              ${co.vatPayer===false?'<div style="font-size:11px;font-weight:600;color:var(--ink);margin-bottom:4px;">(neplátce DPH)</div>':''}
               <div>${nl2br(formatAddress(co.address))}</div>
               ${co.ico?`<div>IČO: ${escapeHtml(co.ico)}</div>`:''}
               ${co.dic?`<div>DIČ: ${escapeHtml(co.dic)}</div>`:''}
