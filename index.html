@@ -294,15 +294,20 @@
     padding:3px 11px;border-radius:20px;
   }
 
-  /* info cards (dodavatel+platba / odběratel) — rozvržení podle referenční faktury */
-  .invoice-sheet .info-grid{display:flex;gap:20px;margin-bottom:30px;align-items:stretch;}
-  .invoice-sheet .info-card{flex:1;border:1px solid var(--line);border-radius:10px;padding:18px 20px;font-size:13px;line-height:1.6;color:var(--ink);}
-  .invoice-sheet .info-card .k{font-size:10px;text-transform:uppercase;letter-spacing:0.8px;color:var(--ink);font-weight:600;margin-bottom:8px;}
-  .invoice-sheet .info-card .nm{font-weight:600;font-size:14px;margin-bottom:3px;color:var(--ink);}
-  .invoice-sheet .info-card .divider{border-top:1px solid var(--line);margin-top:14px;padding-top:14px;}
-  .invoice-sheet .info-card .meta-row{display:flex;justify-content:space-between;padding:2px 0;gap:10px;}
-  .invoice-sheet .info-card .meta-row span:first-child{color:var(--ink);}
-  .invoice-sheet .info-card .meta-row span:last-child{font-family:'Inter',sans-serif;font-weight:600;color:var(--ink);text-align:right;}
+  /* info cards (dodavatel+platba / odběratel) — nahoře dodavatel na dva sloupce
+     (identita | platební a dokladové údaje), pod čárou samostatně odběratel na
+     celou šířku, uvnitř taky na dva sloupce podle toho, kolik má informací */
+  .invoice-sheet .doc-top-row{display:flex;gap:40px;margin-bottom:18px;}
+  .invoice-sheet .doc-top-row .party-col{flex:1;font-size:13px;line-height:1.6;color:var(--ink);min-width:0;}
+  .invoice-sheet .doc-divider-line{border:none;border-top:1px solid var(--line);margin:0 0 18px 0;}
+  .invoice-sheet .doc-client-section{margin-bottom:30px;font-size:13px;line-height:1.6;color:var(--ink);}
+  .invoice-sheet .doc-client-cols{display:flex;gap:40px;margin-top:8px;}
+  .invoice-sheet .doc-client-cols > div{flex:1;min-width:0;}
+  .invoice-sheet .k{font-size:10px;text-transform:uppercase;letter-spacing:0.8px;color:var(--ink);font-weight:600;margin-bottom:8px;}
+  .invoice-sheet .nm{font-weight:600;font-size:14px;margin-bottom:3px;color:var(--ink);}
+  .invoice-sheet .meta-row{display:flex;justify-content:space-between;padding:2px 0;gap:10px;}
+  .invoice-sheet .meta-row span:first-child{color:var(--ink);}
+  .invoice-sheet .meta-row span:last-child{font-family:'Inter',sans-serif;font-weight:600;color:var(--ink);text-align:right;}
 
   .invoice-sheet table.lines{width:100%;border-collapse:collapse;margin-bottom:22px;}
   .invoice-sheet table.lines thead th{
@@ -583,8 +588,9 @@
   .invoice-sheet.pdf-compact .inv-title-center{font-size:11px !important;}
   .invoice-sheet.pdf-compact .inv-header{padding-bottom:10px !important;margin-bottom:10px !important;}
   .invoice-sheet.pdf-compact .inv-barcode-img{height:34px !important;}
-  .invoice-sheet.pdf-compact .info-grid{margin-bottom:12px !important;}
-  .invoice-sheet.pdf-compact .info-card{padding:10px 12px !important;font-size:11.5px !important;line-height:1.4 !important;}
+  .invoice-sheet.pdf-compact .doc-top-row{margin-bottom:10px !important;}
+  .invoice-sheet.pdf-compact .doc-client-section{margin-bottom:12px !important;font-size:11.5px !important;line-height:1.4 !important;}
+  .invoice-sheet.pdf-compact .doc-top-row .party-col{font-size:11.5px !important;line-height:1.4 !important;}
   .invoice-sheet.pdf-compact table.lines{margin-bottom:10px !important;}
   .invoice-sheet.pdf-compact table.lines td{padding:6px 8px !important;font-size:12.5px !important;}
   .invoice-sheet.pdf-compact table.lines thead th{padding:6px 8px !important;}
@@ -594,7 +600,7 @@
   .invoice-sheet.pdf-compact .inv-footer{margin-top:8px !important;padding-top:6px !important;}
   .invoice-sheet.pdf-compact{border:none !important;box-shadow:none !important;border-radius:0 !important;}
   .invoice-sheet table.lines tr{page-break-inside:avoid;break-inside:avoid;}
-  .invoice-sheet .info-grid,.invoice-sheet .totals,.invoice-sheet .qrbox,.invoice-sheet .signoff{page-break-inside:avoid;break-inside:avoid;}
+  .invoice-sheet .doc-top-row,.invoice-sheet .totals,.invoice-sheet .qrbox,.invoice-sheet .signoff{page-break-inside:avoid;break-inside:avoid;}
 
   @media print{
     .sidebar,.pagehead,.preview-side,.no-print{display:none !important;}
@@ -605,8 +611,9 @@
     .invoice-sheet .inv-body{padding:34px 34px 22px 34px !important;}
     .invoice-sheet .inv-header{padding-bottom:14px !important;margin-bottom:14px !important;}
     .invoice-sheet .inv-barcode-img{height:40px !important;}
-    .invoice-sheet .info-grid{margin-bottom:16px !important;}
-    .invoice-sheet .info-card{padding:12px 14px !important;font-size:12px !important;line-height:1.45 !important;}
+    .invoice-sheet .doc-top-row{margin-bottom:14px !important;}
+    .invoice-sheet .doc-client-section{font-size:12px !important;line-height:1.45 !important;}
+    .invoice-sheet .doc-top-row .party-col{font-size:12px !important;line-height:1.45 !important;}
     .invoice-sheet table.lines td{padding:8px 10px !important;}
     .invoice-sheet .signoff{margin-top:16px !important;}
     .invoice-sheet .note{margin-top:12px !important;padding-top:10px !important;}
@@ -3085,8 +3092,8 @@ function viewInvoicePreview(){
           </div>
         </div>
 
-          <div class="info-grid">
-            <div class="info-card">
+          <div class="doc-top-row">
+            <div class="party-col">
               <div class="k">Dodavatel</div>
               <div class="nm">${escapeHtml(co.name||'—')}</div>
               ${co.vatPayer===false?'<div style="font-size:11px;font-weight:600;color:var(--ink);margin-bottom:4px;">(neplátce DPH)</div>':''}
@@ -3096,33 +3103,42 @@ function viewInvoicePreview(){
               ${co.email?`<div>${escapeHtml(co.email)}</div>`:''}
               ${co.phone?`<div>${escapeHtml(co.phone)}</div>`:''}
               ${co.website?`<div>${escapeHtml(co.website)}</div>`:''}
-              <div class="divider">
-                ${co.account?`<div class="meta-row"><span>Číslo účtu</span><span>${escapeHtml(co.account)}</span></div>`:''}
-                ${co.iban?`<div class="meta-row"><span>IBAN</span><span>${escapeHtml(co.iban)}</span></div>`:''}
-                ${co.swift?`<div class="meta-row"><span>SWIFT/BIC</span><span>${escapeHtml(co.swift)}</span></div>`:''}
-                <div class="meta-row"><span>Forma úhrady</span><span>${escapeHtml(inv.paymentMethod||'Bankovním převodem')}</span></div>
-                <div class="meta-row"><span>Datum vystavení</span><span>${inv.issueDate||''}</span></div>
-                <div class="meta-row"><span>Datum splatnosti</span><span>${inv.dueDate||''}</span></div>
-                ${co.vatPayer!==false?`<div class="meta-row"><span>Zd. plnění</span><span>${inv.taxDate||''}</span></div>`:''}
-                ${inv.variableSymbol?`<div class="meta-row"><span>Variabilní symbol</span><span>${escapeHtml(inv.variableSymbol)}</span></div>`:''}
-                ${inv.constantSymbol?`<div class="meta-row"><span>Konstantní symbol</span><span>${escapeHtml(inv.constantSymbol)}</span></div>`:''}
-                ${inv.orderNumber?`<div class="meta-row"><span>Číslo objednávky</span><span>${escapeHtml(inv.orderNumber)}</span></div>`:''}
-                ${invoiceDocType(inv)==='credit_note' && inv.relatedInvoiceId ? (function(){ const ri=state.invoices.find(x=>x.id===inv.relatedInvoiceId); return ri?`<div class="meta-row"><span>K faktuře</span><span>${escapeHtml(ri.number)}</span></div>`:''; })() : ''}
-                ${invoiceDocType(inv)==='credit_note' && inv.creditReason ? `<div class="meta-row"><span>Důvod</span><span>${escapeHtml(inv.creditReason)}</span></div>` : ''}
-                ${!co.account && !co.iban ? `<div style="margin-top:6px;">Doplň platební údaje v nastavení.</div>` : ''}
-              </div>
             </div>
-            <div class="info-card">
-              <div class="k">Odběratel</div>
-              <div class="nm">${c?escapeHtml(c.name):'—'}</div>
-              <div>${c?nl2br(formatAddress(c.address)):''}</div>
-              ${c&&c.ico?`<div>IČO: ${escapeHtml(c.ico)}</div>`:''}
-              ${c&&c.dic?`<div>DIČ: ${escapeHtml(c.dic)}</div>`:''}
-              ${c&&c.contactPerson?`<div>K rukám: ${escapeHtml(c.contactPerson)}</div>`:''}
-              ${c&&c.contactEmail?`<div>${escapeHtml(c.contactEmail)}</div>`:''}
-              ${c&&c.contactPhone?`<div>${escapeHtml(c.contactPhone)}</div>`:''}
-              ${c&&c.website?`<div>${escapeHtml(c.website)}</div>`:''}
-              ${c&&formatAddress(c.deliveryAddress)?`<div style="margin-top:8px;"><span style="opacity:.7;">Dodací adresa:</span><br>${nl2br(formatAddress(c.deliveryAddress))}</div>`:''}
+            <div class="party-col">
+              ${co.account?`<div class="meta-row"><span>Číslo účtu</span><span>${escapeHtml(co.account)}</span></div>`:''}
+              ${co.iban?`<div class="meta-row"><span>IBAN</span><span>${escapeHtml(co.iban)}</span></div>`:''}
+              ${co.swift?`<div class="meta-row"><span>SWIFT/BIC</span><span>${escapeHtml(co.swift)}</span></div>`:''}
+              <div class="meta-row"><span>Forma úhrady</span><span>${escapeHtml(inv.paymentMethod||'Bankovním převodem')}</span></div>
+              <div class="meta-row"><span>Datum vystavení</span><span>${inv.issueDate||''}</span></div>
+              <div class="meta-row"><span>Datum splatnosti</span><span>${inv.dueDate||''}</span></div>
+              ${co.vatPayer!==false?`<div class="meta-row"><span>Zd. plnění</span><span>${inv.taxDate||''}</span></div>`:''}
+              ${inv.variableSymbol?`<div class="meta-row"><span>Variabilní symbol</span><span>${escapeHtml(inv.variableSymbol)}</span></div>`:''}
+              ${inv.constantSymbol?`<div class="meta-row"><span>Konstantní symbol</span><span>${escapeHtml(inv.constantSymbol)}</span></div>`:''}
+              ${inv.orderNumber?`<div class="meta-row"><span>Číslo objednávky</span><span>${escapeHtml(inv.orderNumber)}</span></div>`:''}
+              ${invoiceDocType(inv)==='credit_note' && inv.relatedInvoiceId ? (function(){ const ri=state.invoices.find(x=>x.id===inv.relatedInvoiceId); return ri?`<div class="meta-row"><span>K faktuře</span><span>${escapeHtml(ri.number)}</span></div>`:''; })() : ''}
+              ${invoiceDocType(inv)==='credit_note' && inv.creditReason ? `<div class="meta-row"><span>Důvod</span><span>${escapeHtml(inv.creditReason)}</span></div>` : ''}
+              ${!co.account && !co.iban ? `<div style="margin-top:6px;">Doplň platební údaje v nastavení.</div>` : ''}
+            </div>
+          </div>
+
+          <hr class="doc-divider-line">
+
+          <div class="doc-client-section">
+            <div class="k">Odběratel</div>
+            <div class="doc-client-cols">
+              <div>
+                <div class="nm">${c?escapeHtml(c.name):'—'}</div>
+                <div>${c?nl2br(formatAddress(c.address)):''}</div>
+                ${c&&c.ico?`<div>IČO: ${escapeHtml(c.ico)}</div>`:''}
+                ${c&&c.dic?`<div>DIČ: ${escapeHtml(c.dic)}</div>`:''}
+              </div>
+              <div>
+                ${c&&c.contactPerson?`<div>K rukám: ${escapeHtml(c.contactPerson)}</div>`:''}
+                ${c&&c.contactEmail?`<div>${escapeHtml(c.contactEmail)}</div>`:''}
+                ${c&&c.contactPhone?`<div>${escapeHtml(c.contactPhone)}</div>`:''}
+                ${c&&c.website?`<div>${escapeHtml(c.website)}</div>`:''}
+                ${c&&formatAddress(c.deliveryAddress)?`<div style="margin-top:8px;"><span style="opacity:.7;">Dodací adresa:</span><br>${nl2br(formatAddress(c.deliveryAddress))}</div>`:''}
+              </div>
             </div>
           </div>
 
@@ -3237,8 +3253,8 @@ function buildInvoiceSheetBlock(inv, idx){
           </div>
         </div>
 
-          <div class="info-grid">
-            <div class="info-card">
+          <div class="doc-top-row">
+            <div class="party-col">
               <div class="k">Dodavatel</div>
               <div class="nm">${escapeHtml(co.name||'—')}</div>
               ${co.vatPayer===false?'<div style="font-size:11px;font-weight:600;color:var(--ink);margin-bottom:4px;">(neplátce DPH)</div>':''}
@@ -3248,33 +3264,42 @@ function buildInvoiceSheetBlock(inv, idx){
               ${co.email?`<div>${escapeHtml(co.email)}</div>`:''}
               ${co.phone?`<div>${escapeHtml(co.phone)}</div>`:''}
               ${co.website?`<div>${escapeHtml(co.website)}</div>`:''}
-              <div class="divider">
-                ${co.account?`<div class="meta-row"><span>Číslo účtu</span><span>${escapeHtml(co.account)}</span></div>`:''}
-                ${co.iban?`<div class="meta-row"><span>IBAN</span><span>${escapeHtml(co.iban)}</span></div>`:''}
-                ${co.swift?`<div class="meta-row"><span>SWIFT/BIC</span><span>${escapeHtml(co.swift)}</span></div>`:''}
-                <div class="meta-row"><span>Forma úhrady</span><span>${escapeHtml(inv.paymentMethod||'Bankovním převodem')}</span></div>
-                <div class="meta-row"><span>Datum vystavení</span><span>${inv.issueDate||''}</span></div>
-                <div class="meta-row"><span>Datum splatnosti</span><span>${inv.dueDate||''}</span></div>
-                ${co.vatPayer!==false?`<div class="meta-row"><span>Zd. plnění</span><span>${inv.taxDate||''}</span></div>`:''}
-                ${inv.variableSymbol?`<div class="meta-row"><span>Variabilní symbol</span><span>${escapeHtml(inv.variableSymbol)}</span></div>`:''}
-                ${inv.constantSymbol?`<div class="meta-row"><span>Konstantní symbol</span><span>${escapeHtml(inv.constantSymbol)}</span></div>`:''}
-                ${inv.orderNumber?`<div class="meta-row"><span>Číslo objednávky</span><span>${escapeHtml(inv.orderNumber)}</span></div>`:''}
-                ${invoiceDocType(inv)==='credit_note' && inv.relatedInvoiceId ? (function(){ const ri=state.invoices.find(x=>x.id===inv.relatedInvoiceId); return ri?`<div class="meta-row"><span>K faktuře</span><span>${escapeHtml(ri.number)}</span></div>`:''; })() : ''}
-                ${invoiceDocType(inv)==='credit_note' && inv.creditReason ? `<div class="meta-row"><span>Důvod</span><span>${escapeHtml(inv.creditReason)}</span></div>` : ''}
-                ${!co.account && !co.iban ? `<div style="margin-top:6px;">Doplň platební údaje v nastavení.</div>` : ''}
-              </div>
             </div>
-            <div class="info-card">
-              <div class="k">Odběratel</div>
-              <div class="nm">${c?escapeHtml(c.name):'—'}</div>
-              <div>${c?nl2br(formatAddress(c.address)):''}</div>
-              ${c&&c.ico?`<div>IČO: ${escapeHtml(c.ico)}</div>`:''}
-              ${c&&c.dic?`<div>DIČ: ${escapeHtml(c.dic)}</div>`:''}
-              ${c&&c.contactPerson?`<div>K rukám: ${escapeHtml(c.contactPerson)}</div>`:''}
-              ${c&&c.contactEmail?`<div>${escapeHtml(c.contactEmail)}</div>`:''}
-              ${c&&c.contactPhone?`<div>${escapeHtml(c.contactPhone)}</div>`:''}
-              ${c&&c.website?`<div>${escapeHtml(c.website)}</div>`:''}
-              ${c&&formatAddress(c.deliveryAddress)?`<div style="margin-top:8px;"><span style="opacity:.7;">Dodací adresa:</span><br>${nl2br(formatAddress(c.deliveryAddress))}</div>`:''}
+            <div class="party-col">
+              ${co.account?`<div class="meta-row"><span>Číslo účtu</span><span>${escapeHtml(co.account)}</span></div>`:''}
+              ${co.iban?`<div class="meta-row"><span>IBAN</span><span>${escapeHtml(co.iban)}</span></div>`:''}
+              ${co.swift?`<div class="meta-row"><span>SWIFT/BIC</span><span>${escapeHtml(co.swift)}</span></div>`:''}
+              <div class="meta-row"><span>Forma úhrady</span><span>${escapeHtml(inv.paymentMethod||'Bankovním převodem')}</span></div>
+              <div class="meta-row"><span>Datum vystavení</span><span>${inv.issueDate||''}</span></div>
+              <div class="meta-row"><span>Datum splatnosti</span><span>${inv.dueDate||''}</span></div>
+              ${co.vatPayer!==false?`<div class="meta-row"><span>Zd. plnění</span><span>${inv.taxDate||''}</span></div>`:''}
+              ${inv.variableSymbol?`<div class="meta-row"><span>Variabilní symbol</span><span>${escapeHtml(inv.variableSymbol)}</span></div>`:''}
+              ${inv.constantSymbol?`<div class="meta-row"><span>Konstantní symbol</span><span>${escapeHtml(inv.constantSymbol)}</span></div>`:''}
+              ${inv.orderNumber?`<div class="meta-row"><span>Číslo objednávky</span><span>${escapeHtml(inv.orderNumber)}</span></div>`:''}
+              ${invoiceDocType(inv)==='credit_note' && inv.relatedInvoiceId ? (function(){ const ri=state.invoices.find(x=>x.id===inv.relatedInvoiceId); return ri?`<div class="meta-row"><span>K faktuře</span><span>${escapeHtml(ri.number)}</span></div>`:''; })() : ''}
+              ${invoiceDocType(inv)==='credit_note' && inv.creditReason ? `<div class="meta-row"><span>Důvod</span><span>${escapeHtml(inv.creditReason)}</span></div>` : ''}
+              ${!co.account && !co.iban ? `<div style="margin-top:6px;">Doplň platební údaje v nastavení.</div>` : ''}
+            </div>
+          </div>
+
+          <hr class="doc-divider-line">
+
+          <div class="doc-client-section">
+            <div class="k">Odběratel</div>
+            <div class="doc-client-cols">
+              <div>
+                <div class="nm">${c?escapeHtml(c.name):'—'}</div>
+                <div>${c?nl2br(formatAddress(c.address)):''}</div>
+                ${c&&c.ico?`<div>IČO: ${escapeHtml(c.ico)}</div>`:''}
+                ${c&&c.dic?`<div>DIČ: ${escapeHtml(c.dic)}</div>`:''}
+              </div>
+              <div>
+                ${c&&c.contactPerson?`<div>K rukám: ${escapeHtml(c.contactPerson)}</div>`:''}
+                ${c&&c.contactEmail?`<div>${escapeHtml(c.contactEmail)}</div>`:''}
+                ${c&&c.contactPhone?`<div>${escapeHtml(c.contactPhone)}</div>`:''}
+                ${c&&c.website?`<div>${escapeHtml(c.website)}</div>`:''}
+                ${c&&formatAddress(c.deliveryAddress)?`<div style="margin-top:8px;"><span style="opacity:.7;">Dodací adresa:</span><br>${nl2br(formatAddress(c.deliveryAddress))}</div>`:''}
+              </div>
             </div>
           </div>
 
