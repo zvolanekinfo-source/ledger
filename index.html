@@ -273,7 +273,6 @@
     -webkit-print-color-adjust:exact;print-color-adjust:exact;color-adjust:exact;
   }
   .invoice-sheet .inv-body{padding:48px 52px 48px 52px;}
-  .invoice-sheet.bw-mode{filter:grayscale(1) contrast(1.05);}
 
   /* header — název, EAN a faktura číslo zarovnané do jedné řady, horní hranou k sobě */
   .invoice-sheet .inv-header{
@@ -685,6 +684,7 @@ let state = {
   reportFormat: 'pdf',
   invoiceFilter: { search:'', from:'', to:'', clientId:'', status:'', docType:'' },
   newInvoiceDocType: 'invoice',
+  _currentInvoiceFxRate: null,
   newInvoiceRelatedId: null,
   newInvoiceClientId: null,
   invoiceSort: 'date-desc',
@@ -823,6 +823,29 @@ function waitForImageReady(container){
   });
 }
 function currencyLabel(cur){ return (!cur || cur==='CZK') ? 'Kč' : cur; }
+async function fetchLiveFxRate(toCurrency, marginPercent){
+  // Vrátí kurz "kolik Kč za 1 jednotku cizí měny", mírně SNÍŽENÝ oproti tržnímu
+  // kurzu (o zadanou marži) — tím pádem při přepočtu ceny z Kč do cizí měny
+  // (dělením tímto kurzem) vyjde o trochu VYŠŠÍ částka v cizí měně, takže klient
+  // fakticky zaplatí i za budoucí převod peněz zpátky na koruny. Zaokrouhleno
+  // na 2 desetinná místa, ať je to na faktuře hezké, čitelné číslo.
+  if(!toCurrency || toCurrency==='CZK') return null;
+  try{
+    const res = await fetch(`https://api.frankfurter.app/latest?from=CZK&to=${encodeURIComponent(toCurrency)}`);
+    if(!res.ok) throw new Error('Kurz se nepodařilo načíst');
+    const data = await res.json();
+    const perUnit = data && data.rates && data.rates[toCurrency];
+    if(!perUnit) return null;
+    const marketCzkPerUnit = 1 / perUnit;
+    const margin = marginPercent || 0;
+    const adjusted = marketCzkPerUnit * (1 - margin/100);
+    const rounded = Math.round(adjusted*100)/100;
+    return { rate: rounded, marketRate: Math.round(marketCzkPerUnit*100)/100, date: data.date || todayISO() };
+  }catch(e){
+    console.error('Načtení kurzu se nepovedlo', e);
+    return null;
+  }
+}
 function todayISO(){ return new Date().toISOString().slice(0,10); }
 function addDays(dateStr, days){ const d = new Date(dateStr); d.setDate(d.getDate()+days); return d.toISOString().slice(0,10); }
 function stripDiacritics(s){ return (s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,''); }
@@ -1338,7 +1361,7 @@ async function loadAll(){
     prefix:'', nextNumber:1, defaultDueDays:'', defaultNote:'',
     creditNotePrefix:'DOB-', creditNoteNextNumber:1,
     proformaPrefix:'ZF-', proformaNextNumber:1,
-    vsMode:'same_as_invoice', vsPrefix:'', vsNextNumber:1, ksMode:'manual', ksPrefix:'', ksNextNumber:1, showInvoiceBarcode:true, invoiceBarcodeType:'EAN13',
+    vsMode:'same_as_invoice', vsPrefix:'', vsNextNumber:1, ksMode:'manual', ksPrefix:'', ksNextNumber:1, showInvoiceBarcode:true, invoiceBarcodeType:'EAN13', fxMarginPercent:2,
     invoiceTerms:'',
     defaultPaymentMethod:'', invoiceAccent:'#5B8DEF',
     logo:'', signature:'', stamp:'', showLogo:true, showStamp:true, showSignature:true, showQr:true,
@@ -2940,10 +2963,14 @@ function viewInvoiceForm(){
           </select>
         </div>
         <div class="field"><label>Měna</label>
-          <select name="currency">
+          <select name="currency" id="invoice-currency-select">
             ${['CZK','EUR','USD'].map(m=>`<option value="${m}" ${(inv.currency||'CZK')===m?'selected':''}>${m}</option>`).join('')}
           </select>
         </div>
+      </div>
+      <div id="fx-rate-box" style="display:${(inv.currency&&inv.currency!=='CZK')?'':'none'};margin:-6px 0 14px 0;padding:12px 14px;background:var(--paper);border-radius:var(--radius);font-size:12.5px;">
+        <div id="fx-rate-info" style="color:var(--ink-soft);">Zjišťuji aktuální kurz…</div>
+        <button type="button" class="btn-link" data-action="convert-items-to-fx" style="margin-top:6px;">Přepočítat ceny položek podle kurzu (z Kč)</button>
       </div>
       <div class="field-row">
         <div class="field"><label>Zaokrouhlení</label>
@@ -2966,13 +2993,6 @@ function viewInvoiceForm(){
       </div>
 
       <div class="section-title">Vzhled této faktury</div>
-      <div class="field" style="max-width:320px;">
-        <label>Vzhled faktury</label>
-        <select name="colorMode">
-          <option value="color" ${(inv.colorMode||'color')==='color'?'selected':''}>Barevná faktura</option>
-          <option value="bw" ${inv.colorMode==='bw'?'selected':''}>Černobílá faktura (úsporná pro tisk)</option>
-        </select>
-      </div>
       <div class="toggle-row"><input type="checkbox" name="includeStamp" id="chk-inc-stamp" value="1" ${inv.includeStamp!==false?'checked':''}><label for="chk-inc-stamp">Zobrazit razítko (pokud je nahrané v nastavení)</label></div>
       <div class="toggle-row"><input type="checkbox" name="includeSignature" id="chk-inc-sig" value="1" ${inv.includeSignature!==false?'checked':''}><label for="chk-inc-sig">Zobrazit elektronický podpis (pokud je nahraný)</label></div>
       <div class="toggle-row"><input type="checkbox" name="includeQr" id="chk-inc-qr" value="1" ${inv.includeQr!==false?'checked':''}><label for="chk-inc-qr">Zobrazit QR platbu (vyžaduje IBAN)</label></div>
@@ -3075,7 +3095,7 @@ function viewInvoicePreview(){
       </div>
     </div>
     <div class="preview-wrap">
-      <div class="invoice-sheet ${inv.colorMode==='bw'?'bw-mode':''}" id="invoice-sheet" style="${sheetStyle}">
+      <div class="invoice-sheet" id="invoice-sheet" style="${sheetStyle}">
         <div class="inv-body">
         <div class="inv-header">
           <div class="inv-header-left">
@@ -3112,6 +3132,7 @@ function viewInvoicePreview(){
               <div class="meta-row"><span>Datum vystavení</span><span>${inv.issueDate||''}</span></div>
               <div class="meta-row"><span>Datum splatnosti</span><span>${inv.dueDate||''}</span></div>
               ${co.vatPayer!==false?`<div class="meta-row"><span>Zd. plnění</span><span>${inv.taxDate||''}</span></div>`:''}
+              ${(inv.currency && inv.currency!=='CZK' && inv.fxRate) ? `<div class="meta-row"><span>Použitý kurz</span><span>1 ${escapeHtml(inv.currency)} = ${fmt(inv.fxRate)} Kč</span></div>` : ''}
               ${inv.orderNumber?`<div class="meta-row"><span>Číslo objednávky</span><span>${escapeHtml(inv.orderNumber)}</span></div>`:''}
               ${invoiceDocType(inv)==='credit_note' && inv.relatedInvoiceId ? (function(){ const ri=state.invoices.find(x=>x.id===inv.relatedInvoiceId); return ri?`<div class="meta-row"><span>K faktuře</span><span>${escapeHtml(ri.number)}</span></div>`:''; })() : ''}
               ${invoiceDocType(inv)==='credit_note' && inv.creditReason ? `<div class="meta-row"><span>Důvod</span><span>${escapeHtml(inv.creditReason)}</span></div>` : ''}
@@ -3234,7 +3255,7 @@ function buildInvoiceSheetBlock(inv, idx){
   const accent = co.invoiceAccent || '#5B8DEF';
   const sheetStyle = `--inv-accent:${accent};--inv-accent-soft:${hexToRgba(accent,0.12)};--inv-accent-tint:${hexToRgba(accent,0.05)};`;
   const html = `<div class="print-invoice-block">
-      <div class="invoice-sheet ${inv.colorMode==='bw'?'bw-mode':''}" id="invoice-sheet-${idx}" style="${sheetStyle}">
+      <div class="invoice-sheet" id="invoice-sheet-${idx}" style="${sheetStyle}">
         <div class="inv-body">
         <div class="inv-header">
           <div class="inv-header-left">
@@ -3271,6 +3292,7 @@ function buildInvoiceSheetBlock(inv, idx){
               <div class="meta-row"><span>Datum vystavení</span><span>${inv.issueDate||''}</span></div>
               <div class="meta-row"><span>Datum splatnosti</span><span>${inv.dueDate||''}</span></div>
               ${co.vatPayer!==false?`<div class="meta-row"><span>Zd. plnění</span><span>${inv.taxDate||''}</span></div>`:''}
+              ${(inv.currency && inv.currency!=='CZK' && inv.fxRate) ? `<div class="meta-row"><span>Použitý kurz</span><span>1 ${escapeHtml(inv.currency)} = ${fmt(inv.fxRate)} Kč</span></div>` : ''}
               ${inv.orderNumber?`<div class="meta-row"><span>Číslo objednávky</span><span>${escapeHtml(inv.orderNumber)}</span></div>`:''}
               ${invoiceDocType(inv)==='credit_note' && inv.relatedInvoiceId ? (function(){ const ri=state.invoices.find(x=>x.id===inv.relatedInvoiceId); return ri?`<div class="meta-row"><span>K faktuře</span><span>${escapeHtml(ri.number)}</span></div>`:''; })() : ''}
               ${invoiceDocType(inv)==='credit_note' && inv.creditReason ? `<div class="meta-row"><span>Důvod</span><span>${escapeHtml(inv.creditReason)}</span></div>` : ''}
@@ -4552,7 +4574,7 @@ function viewCompanyForm(){
       prefix:'', nextNumber:1, defaultDueDays:'', defaultNote:'',
       creditNotePrefix:'DOB-', creditNoteNextNumber:1,
       proformaPrefix:'ZF-', proformaNextNumber:1,
-      vsMode:'same_as_invoice', vsPrefix:'', vsNextNumber:1, ksMode:'manual', ksPrefix:'', ksNextNumber:1, showInvoiceBarcode:true, invoiceBarcodeType:'EAN13',
+      vsMode:'same_as_invoice', vsPrefix:'', vsNextNumber:1, ksMode:'manual', ksPrefix:'', ksNextNumber:1, showInvoiceBarcode:true, invoiceBarcodeType:'EAN13', fxMarginPercent:2,
       invoiceTerms:'',
       defaultPaymentMethod:'', vatPayer:true,
       logo:state.newCompanyDraft.logo, signature:state.newCompanyDraft.signature, stamp:state.newCompanyDraft.stamp,
@@ -4650,6 +4672,13 @@ function companyFormMarkup(co, opts){
         <select name="invoiceBarcodeType">
           ${BARCODE_TYPES.map(t=>`<option value="${t.value}" ${(co.invoiceBarcodeType||'EAN13')===t.value?'selected':''}>${escapeHtml(t.label)}</option>`).join('')}
         </select>
+      </div>
+
+      <div class="section-title">Cizí měny na fakturách</div>
+      <p style="font-size:12.5px;color:var(--ink-soft);margin-top:-6px;">Když fakturuješ v EUR/USD, program si sám natáhne aktuální kurz (ČNB/ECB) a přepočte podle něj ceny zadané v Kč. Kurz se navíc mírně upraví v tvůj prospěch — klient tak pokryje i to, co tě bude stát převod peněz zpátky na koruny.</p>
+      <div class="field" style="max-width:260px;">
+        <label>Marže na kurzu ve tvůj prospěch (%)</label>
+        <input type="number" step="0.1" min="0" max="20" name="fxMarginPercent" value="${co.fxMarginPercent??2}">
       </div>
       <div class="field-row">
         <div class="field"><label>Výchozí splatnost (dny)</label><input type="number" name="defaultDueDays" value="${co.defaultDueDays}"></div>
@@ -8525,6 +8554,7 @@ function afterRender(){
   if(invoiceForm){
     invoiceForm.addEventListener('submit', onSubmitInvoice);
   }
+  setupInvoiceFxRate();
   setupInvoiceCompanySelect();
   setupOrderNumberSync();
   const companyForm = document.getElementById('company-form');
@@ -9334,6 +9364,31 @@ function setupOrderNumberSync(){
   });
 }
 
+function setupInvoiceFxRate(){
+  const select = document.getElementById('invoice-currency-select');
+  const box = document.getElementById('fx-rate-box');
+  const info = document.getElementById('fx-rate-info');
+  if(!select || !box || !info) return;
+  async function refreshRate(force){
+    const cur = select.value;
+    if(!cur || cur==='CZK'){ box.style.display='none'; return; }
+    box.style.display='';
+    if(!force && state._currentInvoiceFxRate && state._currentInvoiceFxRate.currency===cur){
+      info.textContent = `Aktuální kurz: 1 ${cur} = ${fmt(state._currentInvoiceFxRate.rate)} Kč (tržní kurz ${fmt(state._currentInvoiceFxRate.marketRate)} Kč, ke dni ${state._currentInvoiceFxRate.date})`;
+      return;
+    }
+    info.textContent = 'Zjišťuji aktuální kurz…';
+    const co = companyById(state.formCompanyId) || state.companies[0];
+    const margin = co ? (co.fxMarginPercent??2) : 2;
+    const result = await fetchLiveFxRate(cur, margin);
+    if(!result){ info.textContent = 'Kurz se nepodařilo načíst — zkontroluj připojení k internetu.'; state._currentInvoiceFxRate=null; return; }
+    result.currency = cur;
+    state._currentInvoiceFxRate = result;
+    info.textContent = `Aktuální kurz: 1 ${cur} = ${fmt(result.rate)} Kč (tržní kurz ${fmt(result.marketRate)} Kč, ke dni ${result.date})`;
+  }
+  select.addEventListener('change', ()=>refreshRate(true));
+  if(select.value && select.value!=='CZK') refreshRate(false);
+}
 function setupInvoiceCompanySelect(){
   const select = document.getElementById('inv-company-select');
   const box = document.getElementById('new-company-box');
@@ -9658,7 +9713,7 @@ document.addEventListener('click', async (e)=>{
     state.authView='login'; state.view='dashboard';
     render();
   }
-  else if(action==='nav'){ state.view = el.getAttribute('data-view'); state.editingInvoiceId=null; state.editingClientId=null; state.viewingClientId=null; state.newClientDraftId=null; state.newClientDraftAttachments=[]; state.editingCompanyId=null; state.newCompanyDraftId=null; state.newCompanyDraft={logo:'',signature:'',stamp:''}; state.companyNotice=''; state.formItems=[]; state.formCompanyId=null; state.selectedInvoiceIds.clear(); state.selectedClientIds.clear(); state.editingSupplierId=null; state.viewingSupplierId=null; state.newSupplierDraftId=null; state.newSupplierDraftAttachments=[]; state.editingProductId=null; state.newProductDraftId=null; state.currentProductDraftPhoto=''; state.eanLookupStatus=''; state.selectedProductIds.clear(); closeProductContextMenu(); state.productColsPanelOpen=false; state.editingReceivedInvoiceId=null; state.receivedFormItems=[]; state.viewingReceivedInvoiceId=null; state.newInvoiceDocType='invoice'; state.newInvoiceRelatedId=null; state.newInvoiceClientId=null; state.stockMovementProductId=null; state.newMovementPanelOpen=false; render(); }
+  else if(action==='nav'){ state.view = el.getAttribute('data-view'); state.editingInvoiceId=null; state.editingClientId=null; state.viewingClientId=null; state.newClientDraftId=null; state.newClientDraftAttachments=[]; state.editingCompanyId=null; state.newCompanyDraftId=null; state.newCompanyDraft={logo:'',signature:'',stamp:''}; state.companyNotice=''; state.formItems=[]; state.formCompanyId=null; state.selectedInvoiceIds.clear(); state.selectedClientIds.clear(); state.editingSupplierId=null; state.viewingSupplierId=null; state.newSupplierDraftId=null; state.newSupplierDraftAttachments=[]; state.editingProductId=null; state.newProductDraftId=null; state.currentProductDraftPhoto=''; state.eanLookupStatus=''; state.selectedProductIds.clear(); closeProductContextMenu(); state.productColsPanelOpen=false; state.editingReceivedInvoiceId=null; state.receivedFormItems=[]; state.viewingReceivedInvoiceId=null; state.newInvoiceDocType='invoice'; state.newInvoiceRelatedId=null; state.newInvoiceClientId=null; state._currentInvoiceFxRate=null; state.stockMovementProductId=null; state.newMovementPanelOpen=false; render(); }
   else if(action==='new-invoice'){ state.view='invoice-form'; state.editingInvoiceId=null; state.formItems=[]; state.formCompanyId=null; state.newInvoiceDocType='invoice'; state.newInvoiceRelatedId=null; render(); }
   else if(action==='new-credit-note'){ state.view='invoice-form'; state.editingInvoiceId=null; state.formItems=[]; state.formCompanyId=null; state.newInvoiceDocType='credit_note'; state.newInvoiceRelatedId=null; render(); }
   else if(action==='new-proforma'){ state.view='invoice-form'; state.editingInvoiceId=null; state.formItems=[]; state.formCompanyId=null; state.newInvoiceDocType='proforma'; state.newInvoiceRelatedId=null; render(); }
@@ -10631,6 +10686,13 @@ document.addEventListener('click', async (e)=>{
     }
   }
   else if(action==='bulk-clear-selection'){ state.selectedInvoiceIds.clear(); state.selectedClientIds.clear(); state.selectedProductIds.clear(); render(); }
+  else if(action==='convert-items-to-fx'){
+    if(!state._currentInvoiceFxRate || !state._currentInvoiceFxRate.rate){ alert('Nejdřív se musí načíst aktuální kurz — zkus to za chvíli znovu.'); return; }
+    if(!confirm(`Přepočítat ceny všech položek z Kč podle kurzu 1 ${state._currentInvoiceFxRate.currency} = ${fmt(state._currentInvoiceFxRate.rate)} Kč? Přepíše to aktuální ceny v položkách.`)) return;
+    const rate = state._currentInvoiceFxRate.rate;
+    state.formItems.forEach(it=>{ it.price = Math.round((it.price/rate)*100)/100; });
+    render();
+  }
   else if(action==='bulk-print-barcodes'){ printProductBarcodes([...state.selectedProductIds], 1, true); }
   else if(action==='bulk-print-product-code'){ printProductCodeOnly([...state.selectedProductIds]); }
   else if(action==='bulk-save-product-code'){ await downloadProductCodeFiles([...state.selectedProductIds]); }
@@ -10780,6 +10842,8 @@ async function onSubmitInvoice(e){
     constantSymbol: fd.get('constantSymbol'),
     orderNumber: fd.get('orderNumber'),
     currency: fd.get('currency') || 'CZK',
+    fxRate: (fd.get('currency') && fd.get('currency')!=='CZK' && state._currentInvoiceFxRate && state._currentInvoiceFxRate.currency===fd.get('currency')) ? state._currentInvoiceFxRate.rate : null,
+    fxRateDate: (fd.get('currency') && fd.get('currency')!=='CZK' && state._currentInvoiceFxRate && state._currentInvoiceFxRate.currency===fd.get('currency')) ? state._currentInvoiceFxRate.date : null,
     discountType: fd.get('discountType') || 'none',
     discountValue: parseFloat(fd.get('discountValue'))||0,
     rounding: fd.get('rounding') || 'none',
@@ -10974,6 +11038,7 @@ async function onSubmitCompany(e){
     vsMode: fd.get('vsMode')||'same_as_invoice', vsPrefix: fd.get('vsPrefix')||'', vsNextNumber: parseInt(fd.get('vsNextNumber'))||1,
     ksMode: fd.get('ksMode')||'manual', ksPrefix: fd.get('ksPrefix')||'', ksNextNumber: parseInt(fd.get('ksNextNumber'))||1,
     showInvoiceBarcode: fd.get('showInvoiceBarcode')==='on', invoiceBarcodeType: fd.get('invoiceBarcodeType')||'EAN13',
+    fxMarginPercent: parseFloat(fd.get('fxMarginPercent'))||0,
     defaultDueDays: parseInt(fd.get('defaultDueDays'))||14, defaultNote: fd.get('defaultNote'),
     invoiceTerms: fd.get('invoiceTerms'), defaultPaymentMethod: fd.get('defaultPaymentMethod'),
     inventoryValuationMethod: fd.get('inventoryValuationMethod') || 'average',
