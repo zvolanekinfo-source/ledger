@@ -282,16 +282,13 @@
   }
   .invoice-sheet .inv-header-left{display:flex;align-items:center;gap:14px;min-width:0;}
   .invoice-sheet .inv-logo{height:48px;width:auto;max-width:170px;object-fit:contain;flex-shrink:0;}
-  .invoice-sheet .inv-logo-placeholder{
-    width:44px;height:44px;border-radius:10px;background:var(--paper);
-    border:1px dashed var(--line);display:flex;align-items:center;justify-content:center;
-    font-size:9px;color:var(--ink-soft);text-transform:uppercase;letter-spacing:0.5px;flex-shrink:0;text-align:center;
-  }
   .invoice-sheet .inv-co-name{font-family:'Inter',sans-serif;font-size:16px;font-weight:600;color:var(--ink);line-height:1.3;letter-spacing:-0.2px;}
   .invoice-sheet .inv-co-tagline{font-size:12px;color:var(--ink-soft);margin-top:2px;}
   .invoice-sheet .inv-header-right{text-align:right;flex-shrink:0;}
-  .invoice-sheet .inv-doctitle{font-family:'Inter',sans-serif;font-size:11px;font-weight:600;color:var(--ink-soft);letter-spacing:1.5px;text-transform:uppercase;}
-  .invoice-sheet .inv-docnum{font-family:'Inter',sans-serif;color:var(--ink);font-size:15px;font-weight:600;margin-top:4px;letter-spacing:-0.1px;}
+  .invoice-sheet .inv-barcode-img{height:44px;display:block;margin-left:auto;margin-bottom:8px;}
+  .invoice-sheet .inv-docline{font-family:'Inter',sans-serif;font-size:13px;white-space:nowrap;}
+  .invoice-sheet .inv-docline .inv-doctitle{font-weight:600;color:var(--ink-soft);letter-spacing:0.2px;}
+  .invoice-sheet .inv-docline .inv-docnum{font-weight:700;color:var(--ink);margin-left:5px;letter-spacing:-0.1px;}
   .invoice-sheet .paid-badge{
     display:inline-block;margin-top:10px;
     color:var(--inv-accent);background:var(--inv-accent-soft);
@@ -584,8 +581,9 @@
     body.printing-barcodes > #app{display:none !important;}
   }
 
-  .invoice-sheet.pdf-compact .inv-body{padding:18px 30px !important;}
+  .invoice-sheet.pdf-compact .inv-body{padding:26px 30px 18px 30px !important;}
   .invoice-sheet.pdf-compact .inv-header{padding-bottom:10px !important;margin-bottom:10px !important;}
+  .invoice-sheet.pdf-compact .inv-barcode-img{height:32px !important;margin-bottom:6px !important;}
   .invoice-sheet.pdf-compact .info-grid{margin-bottom:12px !important;}
   .invoice-sheet.pdf-compact .info-card{padding:10px 12px !important;font-size:11.5px !important;line-height:1.4 !important;}
   .invoice-sheet.pdf-compact table.lines{margin-bottom:10px !important;}
@@ -605,8 +603,9 @@
     #app{min-height:0 !important;}
     .preview-wrap{display:block;}
     .invoice-sheet{box-shadow:none;border:none;width:auto;border-radius:0;}
-    .invoice-sheet .inv-body{padding:22px 34px !important;}
+    .invoice-sheet .inv-body{padding:34px 34px 22px 34px !important;}
     .invoice-sheet .inv-header{padding-bottom:14px !important;margin-bottom:14px !important;}
+    .invoice-sheet .inv-barcode-img{height:36px !important;margin-bottom:6px !important;}
     .invoice-sheet .info-grid{margin-bottom:16px !important;}
     .invoice-sheet .info-card{padding:12px 14px !important;font-size:12px !important;line-height:1.45 !important;}
     .invoice-sheet table.lines td{padding:8px 10px !important;}
@@ -747,13 +746,15 @@ function buildInvoiceBarcodeMarkup(value, type){
   // Stejně jako u QR kódu (viz buildQrSvgMarkup výše) se vyhýbáme inline SVG
   // vloženému přímo do dokladu — přes canvas + PNG data URL je to spolehlivé
   // i při exportu do PDF a tisku napříč prohlížeči.
+  // Kreslí se ve 3× vyšším rozlišení, než se pak zobrazí (viz CSS .inv-barcode-img) —
+  // jinak je čárový kód při tisku/PDF rozmazaný/pixelovaný.
   if(!value || typeof JsBarcode === 'undefined') return '';
   try{
     const canvas = document.createElement('canvas');
     const { value: encoded, format } = buildBarcodeForType(value, type || 'EAN13');
-    JsBarcode(canvas, encoded, { format, displayValue:true, fontSize:11, height:34, margin:4, background:'#ffffff', lineColor:'#1A2233' });
+    JsBarcode(canvas, encoded, { format, displayValue:true, width:3, height:90, fontSize:30, margin:10, background:'#ffffff', lineColor:'#1A2233' });
     const dataUrl = canvas.toDataURL('image/png');
-    return `<img src="${dataUrl}" style="height:48px;display:block;margin-left:auto;" alt="Čárový kód objednávky">`;
+    return `<img src="${dataUrl}" class="inv-barcode-img" alt="Čárový kód faktury">`;
   }catch(e){ console.error('Invoice barcode render failed', e); return ''; }
 }
 function buildQrSvgMarkup(text, size){
@@ -3072,17 +3073,16 @@ function viewInvoicePreview(){
         <div class="inv-body">
         <div class="inv-header">
           <div class="inv-header-left">
-            ${showLogo ? `<img class="inv-logo" src="${co.logo}" alt="Logo" style="height:${Math.round(48*((co.logoScale||100)/100))}px;">` : `<div class="inv-logo-placeholder">LOGO</div>`}
+            ${showLogo ? `<img class="inv-logo" src="${co.logo}" alt="Logo" style="height:${Math.round(48*((co.logoScale||100)/100))}px;">` : ''}
             <div>
               <div class="inv-co-name">${escapeHtml(co.name||'Vaše firma')}</div>
               ${co.tagline?`<div class="inv-co-tagline">${escapeHtml(co.tagline)}</div>`:''}
             </div>
           </div>
           <div class="inv-header-right">
-            ${co.showInvoiceBarcode!==false ? `<div style="margin-bottom:8px;">${buildInvoiceBarcodeMarkup(inv.number, co.invoiceBarcodeType)}</div>` : ''}
-            ${co.vatPayer===false?'<div style="font-size:10.5px;font-weight:600;color:var(--ink-soft);margin-bottom:3px;">(neplátce DPH)</div>':''}
-            <div class="inv-doctitle">${docTypeLabel(invoiceDocType(inv))} číslo:</div>
-            <div class="inv-docnum">${escapeHtml(inv.number)}</div>
+            ${co.showInvoiceBarcode!==false ? buildInvoiceBarcodeMarkup(inv.number, co.invoiceBarcodeType) : ''}
+            <div class="inv-docline"><span class="inv-doctitle">${docTypeLabel(invoiceDocType(inv))} číslo:</span><span class="inv-docnum">${escapeHtml(inv.number)}</span></div>
+            ${co.vatPayer===false?'<div style="font-size:10.5px;font-weight:600;color:var(--ink-soft);margin-top:4px;">(neplátce DPH)</div>':''}
             ${inv.paid ? `<div class="paid-badge">Zaplaceno</div>` : ''}
           </div>
         </div>
@@ -3225,17 +3225,16 @@ function buildInvoiceSheetBlock(inv, idx){
         <div class="inv-body">
         <div class="inv-header">
           <div class="inv-header-left">
-            ${showLogo ? `<img class="inv-logo" src="${co.logo}" alt="Logo" style="height:${Math.round(48*((co.logoScale||100)/100))}px;">` : `<div class="inv-logo-placeholder">LOGO</div>`}
+            ${showLogo ? `<img class="inv-logo" src="${co.logo}" alt="Logo" style="height:${Math.round(48*((co.logoScale||100)/100))}px;">` : ''}
             <div>
               <div class="inv-co-name">${escapeHtml(co.name||'Vaše firma')}</div>
               ${co.tagline?`<div class="inv-co-tagline">${escapeHtml(co.tagline)}</div>`:''}
             </div>
           </div>
           <div class="inv-header-right">
-            ${co.showInvoiceBarcode!==false ? `<div style="margin-bottom:8px;">${buildInvoiceBarcodeMarkup(inv.number, co.invoiceBarcodeType)}</div>` : ''}
-            ${co.vatPayer===false?'<div style="font-size:10.5px;font-weight:600;color:var(--ink-soft);margin-bottom:3px;">(neplátce DPH)</div>':''}
-            <div class="inv-doctitle">${docTypeLabel(invoiceDocType(inv))} číslo:</div>
-            <div class="inv-docnum">${escapeHtml(inv.number)}</div>
+            ${co.showInvoiceBarcode!==false ? buildInvoiceBarcodeMarkup(inv.number, co.invoiceBarcodeType) : ''}
+            <div class="inv-docline"><span class="inv-doctitle">${docTypeLabel(invoiceDocType(inv))} číslo:</span><span class="inv-docnum">${escapeHtml(inv.number)}</span></div>
+            ${co.vatPayer===false?'<div style="font-size:10.5px;font-weight:600;color:var(--ink-soft);margin-top:4px;">(neplátce DPH)</div>':''}
             ${inv.paid ? `<div class="paid-badge">Zaplaceno</div>` : ''}
           </div>
         </div>
