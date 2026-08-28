@@ -179,14 +179,6 @@
   .field textarea{resize:vertical;min-height:60px;}
   .section-title{font-size:12px;text-transform:uppercase;letter-spacing:1px;color:var(--ink-soft);margin:24px 0 12px 0;border-top:1px solid var(--line);padding-top:18px;}
   .section-flash{animation:sectionFlash 2.6s ease-out;border-radius:var(--radius);}
-  .map-cell{aspect-ratio:1;border-radius:6px;display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;text-align:center;padding:4px;transition:transform .1s;}
-  .map-cell:hover{transform:scale(1.04);}
-  .map-cell.map-empty{border:1.5px dashed var(--line);color:var(--ink-soft);font-size:18px;}
-  .map-cell.map-filled{background:var(--accent-soft);border:1.5px solid var(--accent);}
-  .map-cell.map-filled.map-has-items{background:var(--accent);color:#fff;}
-  .map-cell.map-selected{box-shadow:0 0 0 3px var(--ink);}
-  .map-cell-label{font-size:11px;font-weight:700;line-height:1.2;word-break:break-word;}
-  .map-cell-count{font-size:9.5px;opacity:0.85;margin-top:2px;}
   @keyframes sectionFlash{
     0%{background:var(--amber-soft);box-shadow:0 0 0 3px var(--amber);}
     70%{background:var(--amber-soft);box-shadow:0 0 0 3px var(--amber);}
@@ -708,9 +700,6 @@ let state = {
   stockWarehouseId: null,
   stockMovementProductId: null,
   newMovementPanelOpen: false,
-  warehouseMapOpen: false,
-  mapSelectedWarehouseId: null,
-  mapSelectedCellKey: null,
   orders: [],
   editingOrderId: null,
   orderFormItems: [],
@@ -1345,7 +1334,7 @@ async function loadAll(){
   try{ const r = await window.storage.get('recurring-invoices', true); state.recurringInvoices = r ? JSON.parse(r.value) : []; }catch(e){ state.recurringInvoices = []; }
   try{ const r = await window.storage.get('warehouses', true); state.warehouses = r ? JSON.parse(r.value) : []; }catch(e){ state.warehouses = []; }
   if(!state.warehouses.length){ state.warehouses = [{ id: uid(), name:'Hlavní sklad', address:'', isDefault:true }]; }
-  state.warehouses.forEach(w=>{ if(!w.storageUnitTypes) w.storageUnitTypes = []; if(!w.mapGrid) w.mapGrid = {rows:4,cols:6,cells:{}}; });
+  state.warehouses.forEach(w=>{ if(!w.storageUnitTypes) w.storageUnitTypes = []; });
   // Jednotky pojmenované "paleta" (i ze starších verzí programu) dostanou rovnou
   // standardní rozměr euro palety, pokud ještě rozměr nemají zadaný. "Na" vs "do"
   // se pak vždy pozná znovu podle názvu (isPalletLikeUnit), nikde se to neukládá.
@@ -5888,7 +5877,7 @@ function setupRecurringForm(){
 }
 
 /* ---------- SKLADY (multi-sklad) ---------- */
-function blankWarehouse(){ return { id: uid(), name:'', address:'', isDefault:false, capacityValue:0, capacityUnitTypeId:null, capacityUnitCustomLabel:'', currentUsage:0, storageUnitTypes:[], mapGrid:{rows:4,cols:6,cells:{}} }; }
+function blankWarehouse(){ return { id: uid(), name:'', address:'', isDefault:false, capacityValue:0, capacityUnitTypeId:null, capacityUnitCustomLabel:'', currentUsage:0, storageUnitTypes:[] }; }
 function warehouseById(id){ return state.warehouses.find(w=>w.id===id); }
 function defaultWarehouse(){ return state.warehouses.find(w=>w.isDefault) || state.warehouses[0]; }
 function warehouseOptions(selectedId){
@@ -5940,71 +5929,6 @@ function computeWarehouseUsage(w){
       }
       return s;
     }, 0);
-}
-function productsAtMapLabel(warehouseId, label){
-  const q = stripDiacritics(label||'').toLowerCase().trim();
-  if(!q) return [];
-  return state.products.filter(p=>{
-    if(p.warehouseId!==warehouseId || p.archived) return false;
-    const rack = stripDiacritics((p.location&&p.location.rack)||'').toLowerCase().trim();
-    return rack===q;
-  });
-}
-function renderWarehouseMap(w){
-  const grid = w.mapGrid || {rows:4,cols:6,cells:{}};
-  let rows = '';
-  for(let r=0;r<grid.rows;r++){
-    for(let c=0;c<grid.cols;c++){
-      const key = r+'-'+c;
-      const cell = grid.cells[key];
-      const isSelected = state.mapSelectedWarehouseId===w.id && state.mapSelectedCellKey===key;
-      if(cell){
-        const productsHere = productsAtMapLabel(w.id, cell.label);
-        rows += `<div class="map-cell map-filled ${productsHere.length?'map-has-items':''} ${isSelected?'map-selected':''}" data-action="click-map-cell" data-warehouse-id="${w.id}" data-row="${r}" data-col="${c}">
-          <div class="map-cell-label">${escapeHtml(cell.label)}</div>
-          <div class="map-cell-count">${productsHere.length} pol.</div>
-        </div>`;
-      } else {
-        rows += `<div class="map-cell map-empty" data-action="click-map-cell" data-warehouse-id="${w.id}" data-row="${r}" data-col="${c}">+</div>`;
-      }
-    }
-  }
-  let detailHtml = '';
-  if(state.mapSelectedWarehouseId===w.id && state.mapSelectedCellKey){
-    const cell = grid.cells[state.mapSelectedCellKey];
-    if(cell){
-      const productsHere = productsAtMapLabel(w.id, cell.label);
-      detailHtml = `
-        <div class="client-detail-box" style="margin-top:16px;">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
-            <div class="mini-label" style="margin-top:0;">${escapeHtml(cell.label)}</div>
-            <div style="display:flex;gap:8px;">
-              <button type="button" class="btn-link" data-action="rename-map-cell" data-warehouse-id="${w.id}" data-cell-key="${state.mapSelectedCellKey}">Přejmenovat</button>
-              <button type="button" class="btn-link" data-action="delete-map-cell" data-warehouse-id="${w.id}" data-cell-key="${state.mapSelectedCellKey}" style="color:var(--red);">Smazat místo</button>
-            </div>
-          </div>
-          ${productsHere.length ? productsHere.map(p=>`
-            <div class="user-row" style="justify-content:flex-start;gap:14px;">
-              <span style="flex:1;">${escapeHtml(p.name)}</span>
-              <span style="color:var(--ink-soft);font-size:12.5px;">${p.stockCurrent||0} ${escapeHtml(p.unit||'ks')}</span>
-              <button class="btn-link" data-action="open-product" data-id="${p.id}">Otevřít</button>
-            </div>
-          `).join('') : `<p style="font-size:12.5px;color:var(--ink-soft);margin:0;">Žádný produkt tu podle svého umístění zatím není — nastavíš to u produktu ve „Skladovém pohybu" (pole Regál musí přesně odpovídat: „${escapeHtml(cell.label)}").</p>`}
-        </div>
-      `;
-    }
-  }
-  return `
-    <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;">
-      <label style="font-size:12.5px;color:var(--ink-soft);">Řádky <input type="number" id="map-rows-input" value="${grid.rows}" min="1" max="20" style="width:56px;padding:4px 6px;border:1px solid var(--line);border-radius:4px;margin-left:4px;"></label>
-      <label style="font-size:12.5px;color:var(--ink-soft);">Sloupce <input type="number" id="map-cols-input" value="${grid.cols}" min="1" max="20" style="width:56px;padding:4px 6px;border:1px solid var(--line);border-radius:4px;margin-left:4px;"></label>
-      <button type="button" class="btn secondary small" data-action="resize-warehouse-map" data-id="${w.id}">Uložit rozměr mapy</button>
-    </div>
-    <div style="display:grid;grid-template-columns:repeat(${grid.cols}, 68px);gap:6px;max-width:100%;overflow-x:auto;">
-      ${rows}
-    </div>
-    ${detailHtml}
-  `;
 }
 function viewWarehouseForm(){
   const editing = state.editingWarehouseId ? warehouseById(state.editingWarehouseId) : null;
@@ -7912,17 +7836,6 @@ function viewStock(){
     ` : ''}
     </div>
 
-    <div class="form-card" style="margin-bottom:24px;">
-      <div class="section-title" style="margin-top:0;padding-top:0;border-top:none;display:flex;justify-content:space-between;align-items:center;">
-        <span>Mapa skladu</span>
-        <button type="button" class="btn secondary small" data-action="toggle-warehouse-map">${state.warehouseMapOpen?'Skrýt mapu':'Zobrazit mapu'}</button>
-      </div>
-      <div id="warehouse-map-panel" style="display:${state.warehouseMapOpen?'':'none'};">
-        <p style="font-size:12.5px;color:var(--ink-soft);margin-top:0;">Naklikej si rozmístění skladu — klikni na prázdné místo a pojmenuj ho (např. „Regál 12"). Program pak u toho místa sám ukáže, jaké produkty tam podle svého umístění mají. Klikni na už pojmenované místo pro detail.</p>
-        ${renderWarehouseMap(w)}
-      </div>
-    </div>
-
     <div id="low-stock-section" style="margin-bottom:32px;">
       <div class="section-title" style="margin-top:0;">Nízký stav / vyprodáno</div>
       ${(low.length+out.length) ? renderProductTable([...out, ...low]) : emptyState('Vše v pořádku', 'Žádný produkt v tomhle skladu není pod minimálním stavem.')}
@@ -9700,7 +9613,7 @@ document.addEventListener('click', async (e)=>{
     state.authView='login'; state.view='dashboard';
     render();
   }
-  else if(action==='nav'){ state.view = el.getAttribute('data-view'); state.editingInvoiceId=null; state.editingClientId=null; state.viewingClientId=null; state.newClientDraftId=null; state.newClientDraftAttachments=[]; state.editingCompanyId=null; state.newCompanyDraftId=null; state.newCompanyDraft={logo:'',signature:'',stamp:''}; state.companyNotice=''; state.formItems=[]; state.formCompanyId=null; state.selectedInvoiceIds.clear(); state.selectedClientIds.clear(); state.editingSupplierId=null; state.viewingSupplierId=null; state.newSupplierDraftId=null; state.newSupplierDraftAttachments=[]; state.editingProductId=null; state.newProductDraftId=null; state.currentProductDraftPhoto=''; state.eanLookupStatus=''; state.selectedProductIds.clear(); closeProductContextMenu(); state.productColsPanelOpen=false; state.editingReceivedInvoiceId=null; state.receivedFormItems=[]; state.viewingReceivedInvoiceId=null; state.newInvoiceDocType='invoice'; state.newInvoiceRelatedId=null; state.newInvoiceClientId=null; state.stockMovementProductId=null; state.newMovementPanelOpen=false; state.warehouseMapOpen=false; state.mapSelectedWarehouseId=null; state.mapSelectedCellKey=null; render(); }
+  else if(action==='nav'){ state.view = el.getAttribute('data-view'); state.editingInvoiceId=null; state.editingClientId=null; state.viewingClientId=null; state.newClientDraftId=null; state.newClientDraftAttachments=[]; state.editingCompanyId=null; state.newCompanyDraftId=null; state.newCompanyDraft={logo:'',signature:'',stamp:''}; state.companyNotice=''; state.formItems=[]; state.formCompanyId=null; state.selectedInvoiceIds.clear(); state.selectedClientIds.clear(); state.editingSupplierId=null; state.viewingSupplierId=null; state.newSupplierDraftId=null; state.newSupplierDraftAttachments=[]; state.editingProductId=null; state.newProductDraftId=null; state.currentProductDraftPhoto=''; state.eanLookupStatus=''; state.selectedProductIds.clear(); closeProductContextMenu(); state.productColsPanelOpen=false; state.editingReceivedInvoiceId=null; state.receivedFormItems=[]; state.viewingReceivedInvoiceId=null; state.newInvoiceDocType='invoice'; state.newInvoiceRelatedId=null; state.newInvoiceClientId=null; state.stockMovementProductId=null; state.newMovementPanelOpen=false; render(); }
   else if(action==='new-invoice'){ state.view='invoice-form'; state.editingInvoiceId=null; state.formItems=[]; state.formCompanyId=null; state.newInvoiceDocType='invoice'; state.newInvoiceRelatedId=null; render(); }
   else if(action==='new-credit-note'){ state.view='invoice-form'; state.editingInvoiceId=null; state.formItems=[]; state.formCompanyId=null; state.newInvoiceDocType='credit_note'; state.newInvoiceRelatedId=null; render(); }
   else if(action==='new-proforma'){ state.view='invoice-form'; state.editingInvoiceId=null; state.formItems=[]; state.formCompanyId=null; state.newInvoiceDocType='proforma'; state.newInvoiceRelatedId=null; render(); }
@@ -10286,73 +10199,6 @@ document.addEventListener('click', async (e)=>{
   else if(action==='toggle-new-movement-panel'){
     state.newMovementPanelOpen = !state.newMovementPanelOpen;
     if(!state.newMovementPanelOpen) state.stockMovementProductId = null;
-    render();
-  }
-  else if(action==='toggle-warehouse-map'){
-    state.warehouseMapOpen = !state.warehouseMapOpen;
-    render();
-  }
-  else if(action==='click-map-cell'){
-    const warehouseId = el.getAttribute('data-warehouse-id');
-    const w = warehouseById(warehouseId);
-    if(!w) return;
-    if(!w.mapGrid) w.mapGrid = {rows:4,cols:6,cells:{}};
-    const key = el.getAttribute('data-row')+'-'+el.getAttribute('data-col');
-    const existing = w.mapGrid.cells[key];
-    if(existing){
-      state.mapSelectedWarehouseId = (state.mapSelectedWarehouseId===warehouseId && state.mapSelectedCellKey===key) ? null : warehouseId;
-      state.mapSelectedCellKey = (state.mapSelectedWarehouseId===warehouseId) ? key : null;
-      render();
-    } else {
-      const label = prompt('Označení tohoto místa (např. Regál 12):');
-      if(!label || !label.trim()) return;
-      w.mapGrid.cells[key] = { label: label.trim() };
-      saveWarehouses().catch(()=>alert('Uložení se nepovedlo.'));
-      state.mapSelectedWarehouseId = warehouseId;
-      state.mapSelectedCellKey = key;
-      render();
-    }
-  }
-  else if(action==='rename-map-cell'){
-    const warehouseId = el.getAttribute('data-warehouse-id');
-    const w = warehouseById(warehouseId);
-    const key = el.getAttribute('data-cell-key');
-    const cell = w && w.mapGrid && w.mapGrid.cells[key];
-    if(!cell) return;
-    const label = prompt('Nové označení místa:', cell.label);
-    if(!label || !label.trim()) return;
-    cell.label = label.trim();
-    try{ await saveWarehouses(); }catch(err){ alert('Uložení se nepovedlo.'); }
-    render();
-  }
-  else if(action==='delete-map-cell'){
-    const warehouseId = el.getAttribute('data-warehouse-id');
-    const w = warehouseById(warehouseId);
-    const key = el.getAttribute('data-cell-key');
-    if(!w || !w.mapGrid || !w.mapGrid.cells[key]) return;
-    if(!confirm('Smazat tohle místo z mapy? (Produkty samotné se tím nesmažou, jen se odebere místo z mapy.)')) return;
-    delete w.mapGrid.cells[key];
-    state.mapSelectedWarehouseId = null;
-    state.mapSelectedCellKey = null;
-    try{ await saveWarehouses(); }catch(err){ alert('Uložení se nepovedlo.'); }
-    render();
-  }
-  else if(action==='resize-warehouse-map'){
-    const w = warehouseById(id);
-    if(!w) return;
-    const rowsInput = document.getElementById('map-rows-input');
-    const colsInput = document.getElementById('map-cols-input');
-    const rows = Math.max(1, Math.min(20, parseInt((rowsInput||{}).value)||4));
-    const cols = Math.max(1, Math.min(20, parseInt((colsInput||{}).value)||6));
-    if(!w.mapGrid) w.mapGrid = {rows:4,cols:6,cells:{}};
-    w.mapGrid.rows = rows;
-    w.mapGrid.cols = cols;
-    // buňky mimo nový rozměr mapy odstraníme, ať nezůstanou "duchové" mimo viditelnou mřížku
-    Object.keys(w.mapGrid.cells).forEach(key=>{
-      const [r,c] = key.split('-').map(Number);
-      if(r>=rows || c>=cols) delete w.mapGrid.cells[key];
-    });
-    try{ await saveWarehouses(); }catch(err){ alert('Uložení se nepovedlo.'); }
     render();
   }
   else if(action==='edit-warehouse'){ state.editingWarehouseId=id; state.view='warehouse-form'; render(); }
