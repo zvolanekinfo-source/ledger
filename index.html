@@ -1428,6 +1428,35 @@ async function loadAll(){
     state._migrationPaletaBoxByWarehouse = paletaBoxByWarehouse; // pro migraci produktů níž
   }
   try{ const r = await window.storage.get('categories', true); state.categories = r ? JSON.parse(r.value) : []; }catch(e){ state.categories = []; }
+  try{ const r = await window.storage.get('price-levels', true); state.priceLevels = r ? JSON.parse(r.value) : null; }catch(e){ state.priceLevels = null; }
+  if(!state.priceLevels){
+    // první spuštění tohohle systému — založíme dvě typické hladiny, ať appka
+    // funguje rovnou; klidně se dají přejmenovat, smazat nebo přidat další.
+    state.priceLevels = [ { id: uid(), name:'Maloobchod' }, { id: uid(), name:'Velkoobchod' } ];
+    const maloId = state.priceLevels[0].id, velkoId = state.priceLevels[1].id;
+    let clientsChanged = false;
+    state.clients.forEach(c=>{
+      if(c.priceLevelId===undefined && c.priceLevel){
+        const norm = stripDiacritics(c.priceLevel).toLowerCase();
+        if(norm.includes('velk')) { c.priceLevelId = velkoId; clientsChanged = true; }
+        else if(norm.includes('malo')) { c.priceLevelId = maloId; clientsChanged = true; }
+        else {
+          // neznámý text — založíme mu vlastní hladinu se stejným názvem, ať se nic neztratí
+          const existing = state.priceLevels.find(pl=>pl.name===c.priceLevel);
+          const newId = existing ? existing.id : uid();
+          if(!existing) state.priceLevels.push({ id:newId, name:c.priceLevel });
+          c.priceLevelId = newId;
+          clientsChanged = true;
+        }
+      } else if(c.priceLevelId===undefined){
+        c.priceLevelId = '';
+      }
+    });
+    await storageSet('price-levels', JSON.stringify(state.priceLevels), true);
+    if(clientsChanged) await storageSet('clients', JSON.stringify(state.clients), true);
+  } else {
+    state.clients.forEach(c=>{ if(c.priceLevelId===undefined) c.priceLevelId=''; });
+  }
   try{ const r = await window.storage.get('orders', true); state.orders = r ? JSON.parse(r.value) : []; }catch(e){ state.orders = []; }
   try{
     const r = await window.storage.get('integrations', true);
@@ -1528,6 +1557,17 @@ async function saveReceivedInvoices(){ await storageSet('received-invoices', JSO
 async function saveRecurringInvoices(){ await storageSet('recurring-invoices', JSON.stringify(state.recurringInvoices), true); saveSnapshotBackup(); }
 async function saveWarehouses(){ await storageSet('warehouses', JSON.stringify(state.warehouses), true); saveSnapshotBackup(); }
 async function saveCategories(){ await storageSet('categories', JSON.stringify(state.categories), true); saveSnapshotBackup(); }
+async function savePriceLevels(){ await storageSet('price-levels', JSON.stringify(state.priceLevels), true); saveSnapshotBackup(); }
+function priceLevelById(id){ return (state.priceLevels||[]).find(pl=>pl.id===id); }
+function priceForClient(p, client){
+  // Cena produktu podle cenové hladiny odběratele — pokud ji odběratel nemá
+  // nastavenou, nebo produkt pro ni nemá zvláštní cenu, padá to na běžnou
+  // prodejní cenu produktu.
+  if(client && client.priceLevelId && p.pricesByLevel && p.pricesByLevel[client.priceLevelId]!=null){
+    return p.pricesByLevel[client.priceLevelId];
+  }
+  return p.salePrice||0;
+}
 
 async function saveOrders(){ await storageSet('orders', JSON.stringify(state.orders), true); saveSnapshotBackup(); }
 async function saveIntegrations(){ await storageSet('integrations', JSON.stringify(state.integrations), true); }
@@ -3150,6 +3190,8 @@ function viewInvoicePreview(){
                 <div>${c?nl2br(formatAddress(c.address)):''}</div>
                 ${c&&c.ico?`<div>IČO: ${escapeHtml(c.ico)}</div>`:''}
                 ${c&&c.dic?`<div>DIČ: ${escapeHtml(c.dic)}</div>`:''}
+                ${c&&c.paymentTerms?`<div>Splatnost: ${escapeHtml(c.paymentTerms)}</div>`:''}
+                ${c&&c.priceLevelId&&priceLevelById(c.priceLevelId)?`<div>Cenová hladina: ${escapeHtml(priceLevelById(c.priceLevelId).name)}</div>`:''}
               </div>
               <div>
                 ${c&&c.contactPerson?`<div>K rukám: ${escapeHtml(c.contactPerson)}</div>`:''}
@@ -3157,6 +3199,7 @@ function viewInvoicePreview(){
                 ${c&&c.contactPhone?`<div>${escapeHtml(c.contactPhone)}</div>`:''}
                 ${c&&c.website?`<div>${escapeHtml(c.website)}</div>`:''}
                 ${c&&formatAddress(c.deliveryAddress)?`<div style="margin-top:8px;"><span style="opacity:.7;">Dodací adresa:</span><br>${nl2br(formatAddress(c.deliveryAddress))}</div>`:''}
+                ${c&&(c.deliveryContactName||c.deliveryContact)?`<div style="margin-top:4px;">Kontakt na doručení: ${escapeHtml([c.deliveryContactName,c.deliveryContact].filter(Boolean).join(' · '))}</div>`:''}
               </div>
             </div>
           </div>
@@ -3310,6 +3353,8 @@ function buildInvoiceSheetBlock(inv, idx){
                 <div>${c?nl2br(formatAddress(c.address)):''}</div>
                 ${c&&c.ico?`<div>IČO: ${escapeHtml(c.ico)}</div>`:''}
                 ${c&&c.dic?`<div>DIČ: ${escapeHtml(c.dic)}</div>`:''}
+                ${c&&c.paymentTerms?`<div>Splatnost: ${escapeHtml(c.paymentTerms)}</div>`:''}
+                ${c&&c.priceLevelId&&priceLevelById(c.priceLevelId)?`<div>Cenová hladina: ${escapeHtml(priceLevelById(c.priceLevelId).name)}</div>`:''}
               </div>
               <div>
                 ${c&&c.contactPerson?`<div>K rukám: ${escapeHtml(c.contactPerson)}</div>`:''}
@@ -3317,6 +3362,7 @@ function buildInvoiceSheetBlock(inv, idx){
                 ${c&&c.contactPhone?`<div>${escapeHtml(c.contactPhone)}</div>`:''}
                 ${c&&c.website?`<div>${escapeHtml(c.website)}</div>`:''}
                 ${c&&formatAddress(c.deliveryAddress)?`<div style="margin-top:8px;"><span style="opacity:.7;">Dodací adresa:</span><br>${nl2br(formatAddress(c.deliveryAddress))}</div>`:''}
+                ${c&&(c.deliveryContactName||c.deliveryContact)?`<div style="margin-top:4px;">Kontakt na doručení: ${escapeHtml([c.deliveryContactName,c.deliveryContact].filter(Boolean).join(' · '))}</div>`:''}
               </div>
             </div>
           </div>
@@ -3480,7 +3526,7 @@ function viewClientDetail(){
   const unpaidSum = revenue - paidSum;
 
   const hasDelivery = formatAddress(c.deliveryAddress) || c.deliveryContact || c.deliveryContactName;
-  const hasBiz = c.priceLevel || c.paymentTerms;
+  const hasBiz = c.priceLevelId || c.paymentTerms;
 
   return `
     <div class="pagehead">
@@ -3517,7 +3563,7 @@ function viewClientDetail(){
       ${hasBiz ? `
       <div class="section-title">Obchodní nastavení</div>
       <div class="detail-grid">
-        ${detailRow('Cenová hladina', c.priceLevel)}
+        ${detailRow('Cenová hladina', c.priceLevelId && priceLevelById(c.priceLevelId) ? priceLevelById(c.priceLevelId).name : '')}
         ${detailRow('Splatnost', c.paymentTerms)}
       </div>` : ''}
 
@@ -3671,7 +3717,7 @@ function viewClientForm(){
       id: state.newClientDraftId,
       name:'', contactPerson:'', contactPhone:'', contactEmail:'', website:'',
       ico:'', dic:'', address:blankAddr(), bankAccount:'',
-      deliveryAddress:blankAddr(), deliveryContactName:'', deliveryContact:'', priceLevel:'', paymentTerms:'',
+      deliveryAddress:blankAddr(), deliveryContactName:'', deliveryContact:'', priceLevelId:'', paymentTerms:'',
       attachments: state.newClientDraftAttachments
     };
   }
@@ -3709,8 +3755,12 @@ function viewClientForm(){
       <div class="section-title">3. Obchodní nastavení</div>
       <div class="field-row">
         <div class="field"><label>Cenová hladina</label>
-          <input name="priceLevel" list="price-level-options" value="${escapeAttr(c.priceLevel||'')}" placeholder="např. Velkoobchod / Maloobchod">
-          <datalist id="price-level-options"><option value="Velkoobchod"><option value="Maloobchod"></datalist>
+          <select name="priceLevelId" id="client-price-level-select">
+            <option value="">— žádná (výchozí ceny) —</option>
+            ${(state.priceLevels||[]).map(pl=>`<option value="${pl.id}" ${c.priceLevelId===pl.id?'selected':''}>${escapeHtml(pl.name)}</option>`).join('')}
+            <option value="__new__">+ Nová cenová hladina…</option>
+          </select>
+          <p style="font-size:11px;color:var(--ink-soft);margin:4px 0 0 0;">Podle tohohle se u produktů automaticky vybere jejich cena pro danou hladinu (nastavuje se u produktu ve Skladovém pohybu).</p>
         </div>
         <div class="field"><label>Splatnost</label>
           <input name="paymentTerms" list="payment-terms-options" value="${escapeAttr(c.paymentTerms||'')}" placeholder="např. 14 dní / hotovost">
@@ -5209,6 +5259,14 @@ function renderStockMovementPanel(p, preferredWarehouseId){
         <div class="field"><label>Prodejní cena za kus (bez DPH)</label><input type="number" step="0.01" id="sm-sale-price" placeholder="${p?p.salePrice||0:0}"></div>
         <div class="field"><label>Sazba DPH (prodej)</label><input type="number" step="0.1" id="sm-sale-vat" placeholder="${p?(p.vatRate??21):21}"></div>
       </div>
+      ${(state.priceLevels||[]).length ? `
+      <div class="mini-label" style="margin-top:10px;">Ceny pro jednotlivé cenové hladiny (nepovinné — nech prázdné, pokud se u dané hladiny má použít prodejní cena výše)</div>
+      <div class="field-row">
+        ${state.priceLevels.map(pl=>`
+          <div class="field"><label>${escapeHtml(pl.name)} (bez DPH)</label><input type="number" step="0.01" class="sm-level-price-input" data-level-id="${pl.id}" placeholder="${p&&p.pricesByLevel&&p.pricesByLevel[pl.id]!=null?p.pricesByLevel[pl.id]:(p?p.salePrice||0:0)}"></div>
+        `).join('')}
+      </div>
+      ` : ''}
       <div class="field" style="max-width:260px;"><label>Náklady na dávku (doprava, balení…)</label><input type="number" step="0.01" id="sm-costs" placeholder="${p?p.costs||0:0}"></div>
       <div class="mini-label" style="margin-top:14px;">Kam se tahle dávka uskladní</div>
       <div class="field-row" style="grid-template-columns:repeat(4,1fr);">
@@ -5228,7 +5286,7 @@ function blankProduct(){
   return {
     id: uid(), number:'', ean:'', internalCode:'', name:'', description:'',
     category:'', manufacturer:'', supplierId:'', unit:'ks', vatRate:21, vatRatePurchase:21, note:'',
-    composition:'', dimensionUnit:'cm', dimensions:{width:0,height:0,depth:0}, packageDimensions:{width:0,height:0,depth:0}, unitsPerStorageType:{},
+    composition:'', dimensionUnit:'cm', dimensions:{width:0,height:0,depth:0}, packageDimensions:{width:0,height:0,depth:0}, unitsPerStorageType:{}, pricesByLevel:{},
     nutrition:{ per:'100g', energyKj:null, energyKcal:null, fat:null, saturatedFat:null, carbs:null, sugars:null, fiber:null, protein:null, salt:null },
     purchasePrice:0, salePrice:0, costs:0,
     warehouseId: (defaultWarehouse()||{}).id || '',
@@ -6197,7 +6255,7 @@ function viewOrderForm(){
       <div class="section-title" style="margin-top:0;padding-top:0;border-top:none;">Základní údaje</div>
       <div class="field-row">
         <div class="field"><label>Číslo objednávky</label><input name="number" value="${escapeAttr(o.number)}" required></div>
-        <div class="field"><label>Odběratel</label><select name="clientId">${state.clients.map(c=>`<option value="${c.id}" ${o.clientId===c.id?'selected':''}>${escapeHtml(c.name)}</option>`).join('')}</select></div>
+        <div class="field"><label>Odběratel</label><select name="clientId" id="order-client-select">${state.clients.map(c=>`<option value="${c.id}" ${o.clientId===c.id?'selected':''}>${escapeHtml(c.name)}</option>`).join('')}</select></div>
       </div>
       <div class="field-row">
         <div class="field"><label>Firma (vystavovatel budoucí faktury)</label><select name="companyId">${state.companies.map(co=>`<option value="${co.id}" ${o.companyId===co.id?'selected':''}>${escapeHtml(co.name||'(bez názvu)')}</option>`).join('')}</select></div>
@@ -6332,9 +6390,11 @@ function setupOrderForm(){
       if(!q) return true;
       return stripDiacritics(`${p.name} ${p.ean||''} ${p.number||''}`).toLowerCase().includes(q);
     }).slice(0,30);
+    const orderClientSelect = document.getElementById('order-client-select');
+    const selClientForOrder = orderClientSelect ? clientById(orderClientSelect.value) : null;
     list.innerHTML = matches.length ? matches.map(p=>`
       <div class="combo-item" data-id="${p.id}">
-        <div>${escapeHtml(p.name)} <span class="num" style="color:var(--ink-soft);">${fmt(p.salePrice||0)} Kč</span></div>
+        <div>${escapeHtml(p.name)} <span class="num" style="color:var(--ink-soft);">${fmt(priceForClient(p, selClientForOrder))} Kč</span></div>
         <div class="sub">${escapeHtml(p.number||'')}${p.ean?' · EAN '+escapeHtml(p.ean):''} · sklad ${stockAvailable(p)} ${escapeHtml(p.unit||'ks')}</div>
       </div>
     `).join('') : `<div class="combo-empty">Žádný produkt neodpovídá.</div>`;
@@ -6347,7 +6407,9 @@ function setupOrderForm(){
     if(!item) return;
     const p = productById(item.getAttribute('data-id'));
     if(p){
-      state.orderFormItems.push({ productId:p.id, desc:p.name, qty:1, unit:p.unit||'ks', price:p.salePrice||0, vat:p.vatRate??21, ean:p.ean||'', productNumber:p.number||'', scannedQty:0 });
+      const orderClientSelect2 = document.getElementById('order-client-select');
+      const selClientForOrder2 = orderClientSelect2 ? clientById(orderClientSelect2.value) : null;
+      state.orderFormItems.push({ productId:p.id, desc:p.name, qty:1, unit:p.unit||'ks', price:priceForClient(p, selClientForOrder2), vat:p.vatRate??21, ean:p.ean||'', productNumber:p.number||'', scannedQty:0 });
       input.value='';
       render();
     }
@@ -8615,7 +8677,24 @@ function afterRender(){
   const userNameForm = document.getElementById('user-name-form');
   if(userNameForm){ userNameForm.addEventListener('submit', onSubmitUserName); }
   const clientForm = document.getElementById('client-form');
-  if(clientForm){ clientForm.addEventListener('submit', onSubmitClient); }
+  if(clientForm){
+    clientForm.addEventListener('submit', onSubmitClient);
+    const priceLevelSelect = document.getElementById('client-price-level-select');
+    if(priceLevelSelect){
+      priceLevelSelect.addEventListener('change', async ()=>{
+        if(priceLevelSelect.value !== '__new__') return;
+        const name = prompt('Název nové cenové hladiny (např. VIP, Partner, Zaměstnanec…):');
+        if(!name || !name.trim()){ priceLevelSelect.value=''; return; }
+        const newLevel = { id: uid(), name: name.trim() };
+        state.priceLevels.push(newLevel);
+        try{ await savePriceLevels(); }catch(err){ alert('Uložení se nepovedlo.'); }
+        const opt = document.createElement('option');
+        opt.value = newLevel.id; opt.textContent = newLevel.name;
+        priceLevelSelect.insertBefore(opt, priceLevelSelect.querySelector('option[value="__new__"]'));
+        priceLevelSelect.value = newLevel.id;
+      });
+    }
+  }
   const supplierForm = document.getElementById('supplier-form');
   if(supplierForm){ supplierForm.addEventListener('submit', onSubmitSupplier); }
   setupProductForm();
@@ -9649,12 +9728,14 @@ function setupProductPicker(){
       if(!q) return true;
       return stripDiacritics(`${p.name} ${p.ean||''} ${p.number||''} ${p.internalCode||''}`).toLowerCase().includes(q);
     }).slice(0,30);
+    const clientSelectForList = document.getElementById('inv-client');
+    const selClientForList = clientSelectForList ? clientById(clientSelectForList.value) : null;
     if(!matches.length){
       list.innerHTML = `<div class="combo-empty">Žádný produkt neodpovídá.</div>`;
     } else {
       list.innerHTML = matches.map(p=>`
         <div class="combo-item" data-id="${p.id}">
-          <div>${escapeHtml(p.name)} <span class="num" style="color:var(--ink-soft);">${fmt(p.salePrice||0)} Kč</span></div>
+          <div>${escapeHtml(p.name)} <span class="num" style="color:var(--ink-soft);">${fmt(priceForClient(p, selClientForList))} Kč</span></div>
           <div class="sub">${escapeHtml(p.number||'')}${p.ean?' · EAN '+escapeHtml(p.ean):''} · sklad ${stockAvailable(p)} ${escapeHtml(p.unit||'ks')}</div>
         </div>
       `).join('');
@@ -9671,7 +9752,9 @@ function setupProductPicker(){
       const companySelect = document.getElementById('inv-company-select');
       const activeCo = companySelect ? companyById(companySelect.value) : null;
       const vatPayerNow = activeCo ? activeCo.vatPayer!==false : true;
-      state.formItems.push({ desc: p.name, qty:1, unit: p.unit||'ks', price: p.salePrice||0, vat: vatPayerNow ? (p.vatRate||0) : 0, productId: p.id, ean: p.ean||'', productNumber: p.number||'' });
+      const clientSelect = document.getElementById('inv-client');
+      const selClientForPrice = clientSelect ? clientById(clientSelect.value) : null;
+      state.formItems.push({ desc: p.name, qty:1, unit: p.unit||'ks', price: priceForClient(p, selClientForPrice), vat: vatPayerNow ? (p.vatRate||0) : 0, productId: p.id, ean: p.ean||'', productNumber: p.number||'' });
       input.value = '';
       render();
     }
@@ -10587,6 +10670,7 @@ document.addEventListener('click', async (e)=>{
     const newVatRaw = document.getElementById('sm-vat').value;
     const newSalePriceRaw = (document.getElementById('sm-sale-price')||{}).value ?? '';
     const newSaleVatRaw = (document.getElementById('sm-sale-vat')||{}).value ?? '';
+    const levelPriceInputs = document.querySelectorAll('.sm-level-price-input');
     const newCostsRaw = (document.getElementById('sm-costs')||{}).value ?? '';
     const newSupplierId = (document.getElementById('sm-supplier')||{}).value || '';
     const newWarehouseId = (document.getElementById('sm-warehouse')||{}).value || '';
@@ -10600,6 +10684,15 @@ document.addEventListener('click', async (e)=>{
     if(newVatRaw!==''){ p.vatRatePurchase = parseFloat(newVatRaw)||0; changedParts.push('DPH nákup '+p.vatRatePurchase+'%'); }
     if(newSalePriceRaw!==''){ p.salePrice = parseFloat(newSalePriceRaw)||0; changedParts.push('prodejní cena '+fmt(p.salePrice)+' Kč'); }
     if(newSaleVatRaw!==''){ p.vatRate = parseFloat(newSaleVatRaw)||0; changedParts.push('DPH prodej '+p.vatRate+'%'); }
+    if(!p.pricesByLevel) p.pricesByLevel = {};
+    levelPriceInputs.forEach(inputEl=>{
+      const levelId = inputEl.getAttribute('data-level-id');
+      if(inputEl.value!==''){
+        p.pricesByLevel[levelId] = parseFloat(inputEl.value)||0;
+        const lvl = priceLevelById(levelId);
+        changedParts.push(`cena pro „${lvl?lvl.name:levelId}“ ${fmt(p.pricesByLevel[levelId])} Kč`);
+      }
+    });
     if(newCostsRaw!==''){ p.costs = parseFloat(newCostsRaw)||0; changedParts.push('náklady '+fmt(p.costs)+' Kč'); }
     if(newSupplierId){ p.supplierId = newSupplierId; changedParts.push('dodavatel '+((supplierById(newSupplierId)||{}).name||'')); }
     const newLocation = { rack: newRack, shelf: newShelf, spot: newSpot };
@@ -10907,7 +11000,7 @@ async function onSubmitClient(e){
     ico: fd.get('ico'), dic: fd.get('dic'),
     address: gatherAddrField(fd,'client-address'), bankAccount: fd.get('bankAccount'),
     deliveryAddress: gatherAddrField(fd,'client-delivery-address'), deliveryContactName: fd.get('deliveryContactName'), deliveryContact: fd.get('deliveryContact'),
-    priceLevel: fd.get('priceLevel'), paymentTerms: fd.get('paymentTerms'),
+    priceLevelId: fd.get('priceLevelId')||'', paymentTerms: fd.get('paymentTerms'),
     createdAt: existing ? (existing.createdAt || new Date().toISOString()) : new Date().toISOString(),
     attachments: existing ? (existing.attachments||[]) : (state.newClientDraftAttachments||[])
   };
