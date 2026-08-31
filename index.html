@@ -762,7 +762,7 @@ function buildInvoiceBarcodeMarkup(value, type){
   if(!value || typeof JsBarcode === 'undefined') return '';
   try{
     const canvas = document.createElement('canvas');
-    const { value: encoded, format } = buildBarcodeForType(value, type || 'EAN13');
+    const { value: encoded, format } = buildBarcodeForType(value, type || 'CODE128');
     JsBarcode(canvas, encoded, { format, displayValue:false, width:3, height:120, margin:10, background:'#ffffff', lineColor:'#1A2233' });
     const dataUrl = canvas.toDataURL('image/png');
     return `<img src="${dataUrl}" class="inv-barcode-img" alt="Čárový kód faktury">`;
@@ -1476,7 +1476,7 @@ async function loadAll(){
     prefix:'', nextNumber:1, defaultDueDays:'', defaultNote:'',
     creditNotePrefix:'DOB-', creditNoteNextNumber:1,
     proformaPrefix:'ZF-', proformaNextNumber:1,
-    vsMode:'same_as_invoice', vsPrefix:'', vsNextNumber:1, ksMode:'manual', ksPrefix:'', ksNextNumber:1, showInvoiceBarcode:true, invoiceBarcodeType:'EAN13', fxMarginPercent:2, fulfillmentAutoPrintInvoice:false, fulfillmentRequireInvoiceScan:false, fulfillmentAutoShipping:true,
+    vsMode:'same_as_invoice', vsPrefix:'', vsNextNumber:1, ksMode:'manual', ksPrefix:'', ksNextNumber:1, showInvoiceBarcode:true, invoiceBarcodeType:'CODE128', fxMarginPercent:2, fulfillmentAutoPrintInvoice:false, fulfillmentRequireInvoiceScan:false, fulfillmentAutoShipping:true,
     invoiceTerms:'',
     defaultPaymentMethod:'', invoiceAccent:'#5B8DEF',
     logo:'', signature:'', stamp:'', showLogo:true, showStamp:true, showSignature:true, showQr:true,
@@ -3255,14 +3255,14 @@ function viewInvoiceForm(){
       <div class="client-detail-box" id="client-detail-box" style="${selClient?'':'display:none;'}">
         <div class="field-row">
           <div class="field"><label>Adresa odběratele</label><div id="client-detail-address" style="font-size:13px;color:var(--ink-soft);padding:9px 0;white-space:pre-line;">${selClient?escapeHtml(formatAddress(selClient.address))||'—':''}</div></div>
-          <div class="field"><label>IČO</label><input name="clientIco" id="client-detail-ico" value="${escapeAttr(selClient?selClient.ico||'':'')}"></div>
+          <div class="field"><label>IČO</label><input name="clientIco" id="client-detail-ico" autocomplete="off" value="${escapeAttr(selClient?selClient.ico||'':'')}"></div>
         </div>
         <div class="field-row">
-          <div class="field"><label>DIČ</label><input name="clientDic" id="client-detail-dic" value="${escapeAttr(selClient?selClient.dic||'':'')}"></div>
-          <div class="field"><label>Kontaktní e-mail</label><input name="clientEmail" id="client-detail-email" value="${escapeAttr(selClient?selClient.contactEmail||'':'')}"></div>
+          <div class="field"><label>DIČ</label><input name="clientDic" id="client-detail-dic" autocomplete="off" value="${escapeAttr(selClient?selClient.dic||'':'')}"></div>
+          <div class="field"><label>Kontaktní e-mail</label><input name="clientEmail" id="client-detail-email" autocomplete="off" value="${escapeAttr(selClient?selClient.contactEmail||'':'')}"></div>
         </div>
         <div class="field-row">
-          <div class="field"><label>Kontaktní telefon</label><input name="clientPhone" id="client-detail-phone" value="${escapeAttr(selClient?selClient.contactPhone||'':'')}"></div>
+          <div class="field"><label>Kontaktní telefon</label><input name="clientPhone" id="client-detail-phone" autocomplete="off" value="${escapeAttr(selClient?selClient.contactPhone||'':'')}"></div>
           <div class="field"></div>
         </div>
         <p style="font-size:11.5px;color:var(--ink-soft);margin:-8px 0 4px 0;">Adresu uprav v kartě odběratele. IČO/DIČ/kontakty tady se po uložení faktury promítnou i do karty odběratele.</p>
@@ -5099,7 +5099,7 @@ function viewCompanyForm(){
       prefix:'', nextNumber:1, defaultDueDays:'', defaultNote:'',
       creditNotePrefix:'DOB-', creditNoteNextNumber:1,
       proformaPrefix:'ZF-', proformaNextNumber:1,
-      vsMode:'same_as_invoice', vsPrefix:'', vsNextNumber:1, ksMode:'manual', ksPrefix:'', ksNextNumber:1, showInvoiceBarcode:true, invoiceBarcodeType:'EAN13', fxMarginPercent:2, fulfillmentAutoPrintInvoice:false, fulfillmentRequireInvoiceScan:false, fulfillmentAutoShipping:true,
+      vsMode:'same_as_invoice', vsPrefix:'', vsNextNumber:1, ksMode:'manual', ksPrefix:'', ksNextNumber:1, showInvoiceBarcode:true, invoiceBarcodeType:'CODE128', fxMarginPercent:2, fulfillmentAutoPrintInvoice:false, fulfillmentRequireInvoiceScan:false, fulfillmentAutoShipping:true,
       invoiceTerms:'',
       defaultPaymentMethod:'', vatPayer:true,
       logo:state.newCompanyDraft.logo, signature:state.newCompanyDraft.signature, stamp:state.newCompanyDraft.stamp,
@@ -5195,7 +5195,7 @@ function companyFormMarkup(co, opts){
       <div class="field" style="max-width:340px;">
         <label>Typ čárového kódu</label>
         <select name="invoiceBarcodeType">
-          ${BARCODE_TYPES.map(t=>`<option value="${t.value}" ${(co.invoiceBarcodeType||'EAN13')===t.value?'selected':''}>${escapeHtml(t.label)}</option>`).join('')}
+          ${BARCODE_TYPES.map(t=>`<option value="${t.value}" ${(co.invoiceBarcodeType||'CODE128')===t.value?'selected':''}>${escapeHtml(t.label)}</option>`).join('')}
         </select>
       </div>
 
@@ -7173,7 +7173,7 @@ function setupOrderFulfillment(){
       invScanInput.value = '';
       if(!inv){ return; }
       const co = companyById(o.companyId) || state.companies[0];
-      const expectedCode = buildBarcodeForType(inv.number, co.invoiceBarcodeType||'EAN13').value;
+      const expectedCode = buildBarcodeForType(inv.number, co.invoiceBarcodeType||'CODE128').value;
       if(code === expectedCode || code === inv.number){
         state.fulfillmentInvoiceConfirmed = true;
         if(statusEl) statusEl.textContent = 'Faktura ověřena, pokračuji na štítek…';
