@@ -143,7 +143,26 @@
   .pill.overdue{background:var(--red-soft);color:var(--red);}
   .pill.draft{background:var(--line);color:var(--ink-soft);}
 
-  /* FILTER BAR */
+  /* FILTER TOOLBAR (nový) — jeden plynulý pruh měkkých ovládacích prvků, bez
+     rámečků a křičících popisků (inspirováno čistým vzhledem appek jako Wolt).
+     Samostatná třída, ať nezasáhne stránky se starším .filter-bar/.filter-row
+     rozvržením, dokud se nepředělají taky. */
+  .filter-toolbar{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:20px;}
+  .filter-toolbar > .search-input{flex:1;min-width:240px;}
+  .filter-toolbar > select,
+  .filter-toolbar > input[type="date"],
+  .filter-toolbar > .search-input{
+    padding:10px 14px;border:none;border-radius:12px;background:var(--paper);
+    font-size:13.5px;color:var(--ink);height:40px;box-sizing:border-box;
+  }
+  .filter-toolbar > select{cursor:pointer;padding-right:30px;}
+  .filter-toolbar > select:focus,.filter-toolbar > input:focus{outline:2px solid var(--accent);outline-offset:-1px;}
+  .date-range-chip{display:flex;align-items:center;gap:6px;background:var(--paper);border-radius:12px;padding:0 12px;height:40px;}
+  .date-range-chip span{font-size:12px;color:var(--ink-soft);flex-shrink:0;}
+  .date-range-chip input[type="date"]{background:none;padding:0;height:auto;border-radius:0;font-size:13px;width:118px;}
+  .filter-toolbar .filter-clear{background:none;border:none;color:var(--ink-soft);text-decoration:underline;font-size:12.5px;padding:0 4px;height:40px;display:flex;align-items:center;}
+
+  /* FILTER BAR (starší, boxované rozvržení — používají zatím nepředělané stránky) */
   .filter-bar{background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:16px 18px;margin-bottom:20px;}
   .bulk-bar{display:flex;align-items:center;justify-content:space-between;gap:14px;background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:10px 16px;margin-bottom:14px;font-size:13.5px;color:var(--ink-soft);flex-wrap:wrap;}
   .bulk-actions-disabled{opacity:.4;pointer-events:none;}
@@ -3050,35 +3069,30 @@ function viewInvoices(){
         <button class="btn" data-action="new-invoice">+ Nová faktura</button>
       </div>
     </div>
-    <div class="filter-bar no-print">
-      <div class="search-row" style="margin-bottom:14px;display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;">
-        <input type="text" id="inv-search" class="search-input" placeholder="Hledat podle čísla faktury nebo odběratele…" value="${escapeAttr(f.search)}" style="flex:1;min-width:220px;">
-        <div class="field" style="margin-bottom:0;min-width:200px;">
-          <label>Řazení</label>
-          <select id="inv-sort">
-            <option value="date-desc" ${sortKey==='date-desc'?'selected':''}>Datum vystavení — od nejnovější</option>
-            <option value="date-asc" ${sortKey==='date-asc'?'selected':''}>Datum vystavení — od nejstarší</option>
-            <option value="number-desc" ${sortKey==='number-desc'?'selected':''}>Číslo faktury — sestupně</option>
-            <option value="number-asc" ${sortKey==='number-asc'?'selected':''}>Číslo faktury — vzestupně</option>
-            <option value="amount-desc" ${sortKey==='amount-desc'?'selected':''}>Částka — nejvyšší</option>
-            <option value="amount-asc" ${sortKey==='amount-asc'?'selected':''}>Částka — nejnižší</option>
-            <option value="due-asc" ${sortKey==='due-asc'?'selected':''}>Splatnost — nejbližší</option>
-            <option value="due-desc" ${sortKey==='due-desc'?'selected':''}>Splatnost — nejvzdálenější</option>
-          </select>
-        </div>
+    <div class="filter-toolbar no-print">
+      <input type="text" id="inv-search" class="search-input" placeholder="Hledat podle čísla faktury nebo odběratele…" value="${escapeAttr(f.search)}">
+      <select id="inv-sort">
+        <option value="date-desc" ${sortKey==='date-desc'?'selected':''}>Datum vystavení — od nejnovější</option>
+        <option value="date-asc" ${sortKey==='date-asc'?'selected':''}>Datum vystavení — od nejstarší</option>
+        <option value="number-desc" ${sortKey==='number-desc'?'selected':''}>Číslo faktury — sestupně</option>
+        <option value="number-asc" ${sortKey==='number-asc'?'selected':''}>Číslo faktury — vzestupně</option>
+        <option value="amount-desc" ${sortKey==='amount-desc'?'selected':''}>Částka — nejvyšší</option>
+        <option value="amount-asc" ${sortKey==='amount-asc'?'selected':''}>Částka — nejnižší</option>
+        <option value="due-asc" ${sortKey==='due-asc'?'selected':''}>Splatnost — nejbližší</option>
+        <option value="due-desc" ${sortKey==='due-desc'?'selected':''}>Splatnost — nejvzdálenější</option>
+      </select>
+      <div class="date-range-chip">
+        <span>Od</span><input type="date" id="inv-from" value="${f.from||''}">
+        <span>do</span><input type="date" id="inv-to" value="${f.to||''}">
       </div>
-      <div class="filter-row">
-        <div class="field"><label>Od</label><input type="date" id="inv-from" value="${f.from||''}"></div>
-        <div class="field"><label>Do</label><input type="date" id="inv-to" value="${f.to||''}"></div>
-        <div class="field"><label>Odběratel</label><select id="inv-client">${clientOptions(f.clientId)}</select></div>
-        <div class="field"><label>Stav</label><select id="inv-status">${statusOptions(f.status)}</select></div>
-        <div class="field"><label>Typ dokladu</label><select id="inv-doctype">
-          <option value="">Všechny typy</option>
-          <option value="invoice" ${f.docType==='invoice'?'selected':''}>Faktura</option>
-          <option value="credit_note" ${f.docType==='credit_note'?'selected':''}>Dobropis</option>
-          <option value="proforma" ${f.docType==='proforma'?'selected':''}>Zálohová faktura</option>
-        </select></div>
-      </div>
+      <select id="inv-client">${clientOptions(f.clientId)}</select>
+      <select id="inv-status">${statusOptions(f.status)}</select>
+      <select id="inv-doctype">
+        <option value="">Všechny typy</option>
+        <option value="invoice" ${f.docType==='invoice'?'selected':''}>Faktura</option>
+        <option value="credit_note" ${f.docType==='credit_note'?'selected':''}>Dobropis</option>
+        <option value="proforma" ${f.docType==='proforma'?'selected':''}>Zálohová faktura</option>
+      </select>
       ${anyFilterActive?`<button type="button" class="filter-clear" data-action="inv-clear-filters">Zrušit filtry</button>`:''}
     </div>
     ${renderBulkBar(state.selectedInvoiceIds.size, 'faktur', `
