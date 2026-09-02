@@ -637,6 +637,10 @@ let state = {
   auditLog: [],
   auditLogFilter: { userId:'', action:'' },
   discountCodes: [],
+  warehouseLocations: [],
+  locationScanBuffer: { productId:null, locationId:null },
+  locationScanMessage: '',
+  locationLabelsPanelOpen: false,
   editingDiscountCodeId: null,
   currentUser: null,
   currentUserId: null,
@@ -1576,6 +1580,7 @@ async function loadAll(){
     state.clients.forEach(c=>{ if(c.priceLevelId===undefined) c.priceLevelId=''; });
   }
   try{ const r = await window.storage.get('discount-codes', true); state.discountCodes = r ? JSON.parse(r.value) : []; }catch(e){ state.discountCodes = []; }
+  try{ const r = await window.storage.get('warehouse-locations', true); state.warehouseLocations = r ? JSON.parse(r.value) : []; }catch(e){ state.warehouseLocations = []; }
   try{ const r = await window.storage.get('orders', true); state.orders = r ? JSON.parse(r.value) : []; }catch(e){ state.orders = []; }
   try{
     const r = await window.storage.get('integrations', true);
@@ -1679,6 +1684,19 @@ async function saveWarehouses(){ await storageSet('warehouses', JSON.stringify(s
 async function saveCategories(){ await storageSet('categories', JSON.stringify(state.categories), true); saveSnapshotBackup(); }
 async function savePriceLevels(){ await storageSet('price-levels', JSON.stringify(state.priceLevels), true); saveSnapshotBackup(); }
 async function saveDiscountCodes(){ await storageSet('discount-codes', JSON.stringify(state.discountCodes), true); saveSnapshotBackup(); }
+async function saveWarehouseLocations(){ await storageSet('warehouse-locations', JSON.stringify(state.warehouseLocations), true); saveSnapshotBackup(); }
+function generateLocationCode(){
+  // Náhodný unikátní číselný kód pro štítek umístění — jednoduše skenovatelný,
+  // uživatel ho po vygenerování může ještě přepsat vlastním, pokud chce.
+  let code;
+  do{ code = String(Math.floor(100000000 + Math.random()*900000000)); }
+  while((state.warehouseLocations||[]).some(l=>l.code===code));
+  return code;
+}
+function locationByCode(code){
+  const q = (code||'').trim();
+  return (state.warehouseLocations||[]).find(l=>l.code===q);
+}
 function discountCodeByCode(code){
   const q = (code||'').trim().toUpperCase();
   return (state.discountCodes||[]).find(d=> (d.code||'').trim().toUpperCase()===q);
@@ -1741,7 +1759,7 @@ async function saveSnapshotBackup(){
       warehouses: state.warehouses, categories: state.categories, orders: state.orders,
       integrations: state.integrations, productSettings: state.productSettings,
       inventorySettings: state.inventorySettings, productColumns: state.productColumns,
-      expirySettings: state.expirySettings, userPermissions: state.userPermissions, auditLog: state.auditLog, discountCodes: state.discountCodes,
+      expirySettings: state.expirySettings, userPermissions: state.userPermissions, auditLog: state.auditLog, discountCodes: state.discountCodes, warehouseLocations: state.warehouseLocations,
       dashboardWidgets: state.dashboardWidgets
     });
     await window.storage.set('backup:'+date, payload, true);
@@ -1773,7 +1791,7 @@ function exportBackupFile(){
     warehouses: state.warehouses, categories: state.categories, orders: state.orders,
     integrations: state.integrations, productSettings: state.productSettings,
     inventorySettings: state.inventorySettings, productColumns: state.productColumns,
-    expirySettings: state.expirySettings, userPermissions: state.userPermissions, auditLog: state.auditLog, discountCodes: state.discountCodes,
+    expirySettings: state.expirySettings, userPermissions: state.userPermissions, auditLog: state.auditLog, discountCodes: state.discountCodes, warehouseLocations: state.warehouseLocations,
     dashboardWidgets: state.dashboardWidgets
   };
   const blob = new Blob([JSON.stringify(payload, null, 2)], { type:'application/json' });
@@ -1808,6 +1826,7 @@ async function restoreFromBackupObject(data, label){
     if(data.expirySettings){ state.expirySettings = data.expirySettings; await saveExpirySettings(); }
     if(data.userPermissions){ state.userPermissions = data.userPermissions; await saveUserPermissions(); }
     if(Array.isArray(data.discountCodes)){ state.discountCodes = data.discountCodes; await saveDiscountCodes(); }
+    if(Array.isArray(data.warehouseLocations)){ state.warehouseLocations = data.warehouseLocations; await saveWarehouseLocations(); }
     if(data.dashboardWidgets){ state.dashboardWidgets = data.dashboardWidgets; await saveDashboardWidgets(); }
     alert('Data byla obnovena ze zálohy.');
     render();
@@ -2964,6 +2983,7 @@ function renderView(){
     case 'product-form': return viewProductForm();
     case 'stock': return viewStock();
     case 'warehouse-form': return viewWarehouseForm();
+    case 'location-scan': return viewLocationScan();
     default: return '';
   }
 }
@@ -6536,6 +6556,83 @@ function computeWarehouseUsage(w){
       return s;
     }, 0);
 }
+function viewLocationScan(){
+  const buf = state.locationScanBuffer || { productId:null, locationId:null };
+  const product = buf.productId ? productById(buf.productId) : null;
+  const location = buf.locationId ? (state.warehouseLocations||[]).find(l=>l.id===buf.locationId) : null;
+  return `
+    <div class="pagehead">
+      <div><h1>Skenovat a přiřadit umístění</h1><p class="desc">Naskenuj produkt a štítek umístění, v libovolném pořadí — program je sám spáruje a rovnou uloží.</p></div>
+      <button class="btn secondary" data-action="nav" data-view="stock">← Zpět na sklad</button>
+    </div>
+    <div class="form-card" style="text-align:center;padding:32px;">
+      <div style="display:flex;gap:20px;justify-content:center;margin-bottom:24px;flex-wrap:wrap;">
+        <div style="min-width:220px;padding:16px 20px;border-radius:10px;background:${product?'var(--accent-soft)':'var(--paper)'};">
+          <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.5px;color:var(--ink-soft);margin-bottom:6px;">Produkt</div>
+          <div style="font-size:15px;font-weight:600;color:var(--ink);">${product?escapeHtml(product.name):'— zatím nenaskenováno —'}</div>
+        </div>
+        <div style="min-width:220px;padding:16px 20px;border-radius:10px;background:${location?'var(--accent-soft)':'var(--paper)'};">
+          <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.5px;color:var(--ink-soft);margin-bottom:6px;">Umístění</div>
+          <div style="font-size:15px;font-weight:600;color:var(--ink);">${location?escapeHtml(formatLocation(location)):'— zatím nenaskenováno —'}</div>
+        </div>
+      </div>
+      <input type="text" id="location-scan-input" autocomplete="off" placeholder="Naskenuj produkt nebo štítek umístění…" style="width:100%;max-width:420px;padding:16px 18px;font-size:19px;border:2px solid var(--accent);border-radius:var(--radius);text-align:center;margin-bottom:12px;">
+      <div id="location-scan-status" style="font-size:14px;min-height:20px;color:var(--ink-soft);">${escapeHtml(state.locationScanMessage||'')}</div>
+      <div style="display:flex;gap:10px;justify-content:center;margin-top:16px;flex-wrap:wrap;">
+        <button type="button" class="btn secondary" data-action="location-camera-scan">Skenovat kamerou</button>
+        <button type="button" class="btn-link" data-action="location-scan-reset">Vymazat a začít znovu</button>
+      </div>
+      <video id="location-scan-video" style="display:none;max-width:340px;margin:16px auto 0 auto;border-radius:8px;" playsinline muted></video>
+      <div id="location-scan-camera-cancel-box" style="display:none;margin-top:8px;">
+        <button type="button" class="btn-link" data-action="location-camera-cancel">Zavřít kameru</button>
+      </div>
+    </div>
+  `;
+}
+function processLocationScan(code){
+  code = (code||'').trim();
+  if(!code) return;
+  const buf = state.locationScanBuffer;
+  const statusEl = document.getElementById('location-scan-status');
+  const matchedProduct = state.products.find(p=>!p.archived && ((p.ean && p.ean===code) || (p.number && p.number===code) || (p.internalCode && p.internalCode===code)));
+  const matchedLocation = locationByCode(code);
+  if(matchedProduct){
+    buf.productId = matchedProduct.id;
+    state.locationScanMessage = `Naskenován produkt: ${matchedProduct.name}`;
+  } else if(matchedLocation){
+    buf.locationId = matchedLocation.id;
+    state.locationScanMessage = `Naskenováno umístění: ${formatLocation(matchedLocation)}`;
+  } else {
+    state.locationScanMessage = 'Kód nepatří žádnému produktu ani štítku umístění — zkus to znovu.';
+    if(statusEl) statusEl.textContent = state.locationScanMessage;
+    return;
+  }
+  if(buf.productId && buf.locationId){
+    const p = productById(buf.productId);
+    const loc = (state.warehouseLocations||[]).find(l=>l.id===buf.locationId);
+    if(p && loc){
+      p.location = { rack: loc.rack, shelf: loc.shelf, spot: loc.spot };
+      if(loc.warehouseId) p.warehouseId = loc.warehouseId;
+      saveProducts().catch(()=>{});
+      logAuditEvent('Přiřazeno umístění skenováním', 'product', p.name, formatLocation(loc));
+      state.locationScanMessage = `Hotovo — ${p.name} → ${formatLocation(loc)}. Naskenuj další produkt.`;
+    }
+    state.locationScanBuffer = { productId:null, locationId:null };
+  }
+  render();
+}
+function setupLocationScan(){
+  const input = document.getElementById('location-scan-input');
+  if(input){
+    input.focus();
+    input.addEventListener('keydown', (e)=>{
+      if(e.key!=='Enter') return;
+      e.preventDefault();
+      processLocationScan(input.value);
+      input.value = '';
+    });
+  }
+}
 function viewWarehouseForm(){
   const editing = state.editingWarehouseId ? warehouseById(state.editingWarehouseId) : null;
   const w = editing || blankWarehouse();
@@ -6916,16 +7013,14 @@ function viewOrderFulfillment(){
       <div class="form-card" style="text-align:center;padding:32px;">
         ${p && p.photo ? `<img src="${p.photo}" style="max-width:340px;max-height:340px;width:100%;object-fit:contain;border-radius:8px;background:var(--paper);margin-bottom:20px;">` : `<div style="width:240px;height:240px;margin:0 auto 20px auto;background:var(--paper);border-radius:8px;display:flex;align-items:center;justify-content:center;color:var(--ink-soft);font-size:13px;">Bez fotky</div>`}
         <h2 style="margin:0 0 6px 0;font-size:22px;">${escapeHtml(item.desc)}</h2>
-        <p style="color:var(--ink-soft);font-size:14px;margin:0 0 4px 0;">SKU: <strong>${escapeHtml(item.productNumber||'—')}</strong>${item.ean?` · EAN: <strong>${escapeHtml(item.ean)}</strong>`:''}</p>
         <p style="color:var(--ink-soft);font-size:14px;margin:0 0 20px 0;">Sklad: <strong>${escapeHtml((warehouseById(o.warehouseId)||{}).name||'—')}</strong>${p?` · Umístění: <strong>${escapeHtml(formatLocation(p.location))||'—'}</strong>`:''}</p>
         <p style="font-size:28px;font-weight:700;margin:0 0 20px 0;">${item.scannedQty||0} / ${item.qty} ${escapeHtml(item.unit||'ks')} naskenováno</p>
-        <input type="text" id="fulfill-scan-input" autocomplete="off" placeholder="Naskenuj čtečkou nebo napiš kód a stiskni Enter…" style="width:100%;max-width:420px;padding:14px 16px;font-size:18px;border:2px solid var(--accent);border-radius:var(--radius);text-align:center;margin-bottom:8px;">
-        <p style="font-size:11.5px;color:var(--ink-soft);max-width:420px;margin:0 auto 14px auto;">Do tohohle pole zapisuje kód automaticky každá čtečka připojená přes USB, nebo přes Bluetooth spárovaná v nastavení zařízení jako klávesnice (nejběžnější typ, funguje bez dalšího nastavování). Pro kameru zařízení nebo Bluetooth čtečku s vlastním rozhraním použij tlačítka níž.</p>
+        <input type="text" id="fulfill-scan-input" autocomplete="off" placeholder="Naskenuj čtečkou nebo kamerou…" style="width:100%;max-width:420px;padding:16px 18px;font-size:19px;border:2px solid var(--accent);border-radius:var(--radius);text-align:center;margin-bottom:8px;">
+        <p style="font-size:11.5px;color:var(--ink-soft);max-width:420px;margin:0 auto 14px auto;">Do tohohle pole zapisuje kód automaticky každá čtečka připojená přes USB, nebo přes Bluetooth spárovaná v nastavení zařízení jako klávesnice. Pro kameru zařízení nebo Bluetooth čtečku s vlastním rozhraním použij tlačítka níž. Kód se musí naskenovat ze skutečného produktu — schválně tu proto není napsaný, aby šlo jen opsat z obrazovky.</p>
         <div id="fulfill-scan-status" style="font-size:13px;color:var(--ink-soft);min-height:20px;margin-bottom:16px;"></div>
         <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap;">
           <button type="button" class="btn secondary" data-action="fulfill-camera-scan">Skenovat kamerou</button>
           <button type="button" class="btn secondary" data-action="fulfill-bluetooth-scan">Připojit Bluetooth čtečku</button>
-          <button type="button" class="btn secondary" data-action="fulfill-manual-confirm" data-id="${item.productId}">Potvrdit ručně (+1 ${escapeHtml(item.unit||'ks')})</button>
         </div>
         <video id="fulfill-camera-video" style="display:none;max-width:340px;margin:16px auto 0 auto;border-radius:8px;" playsinline muted></video>
         <div id="fulfill-camera-cancel-box" style="display:none;margin-top:8px;">
@@ -7064,7 +7159,7 @@ function processScan(code){
     if(statusEl) statusEl.textContent = 'Naskenováno';
     render();
   } else {
-    if(statusEl) statusEl.textContent = 'Kód neodpovídá téhle položce — zkus znovu, nebo potvrď ručně.';
+    if(statusEl) statusEl.textContent = 'Kód neodpovídá téhle položce — zkus to znovu.';
   }
 }
 async function startBluetoothScan(){
@@ -7089,9 +7184,9 @@ async function startBluetoothScan(){
     if(statusEl) statusEl.textContent = 'Připojení se nepovedlo nebo bylo zrušeno. Nejspolehlivější je spárovat čtečku přímo v Bluetooth nastavení zařízení jako klávesnici.';
   }
 }
-async function startCameraScan(){
-  const video = document.getElementById('fulfill-camera-video');
-  const cancelBox = document.getElementById('fulfill-camera-cancel-box');
+async function startCameraScanGeneric(videoId, cancelBoxId, onResult){
+  const video = document.getElementById(videoId);
+  const cancelBox = cancelBoxId ? document.getElementById(cancelBoxId) : null;
   if(!video) return;
 
   if('BarcodeDetector' in window){
@@ -7109,7 +7204,7 @@ async function startCameraScan(){
         if(video.style.display==='none' || !document.body.contains(video)) { stream.getTracks().forEach(t=>t.stop()); return; }
         try{
           const codes = await detector.detect(video);
-          if(codes.length){ processScan(codes[0].rawValue); stop(); return; }
+          if(codes.length){ onResult(codes[0].rawValue); stop(); return; }
         }catch(err){}
         requestAnimationFrame(scanLoop);
       };
@@ -7142,7 +7237,7 @@ async function startCameraScan(){
       video,
       (result)=>{
         if(result && state._zxingReader){
-          processScan(result.getText());
+          onResult(result.getText());
           state._stopCameraScan();
         }
       }
@@ -7153,6 +7248,8 @@ async function startCameraScan(){
     alert('Přístup ke kameře se nepovedlo získat. Na iPhonu appku otevři v Safari a v nastavení webu povol přístup ke kameře.');
   }
 }
+function startCameraScan(){ return startCameraScanGeneric('fulfill-camera-video', 'fulfill-camera-cancel-box', processScan); }
+function startLocationCameraScan(){ return startCameraScanGeneric('location-scan-video', 'location-scan-camera-cancel-box', processLocationScan); }
 function stopCameraScanIfActive(){
   if(state._stopCameraScan){ state._stopCameraScan(); state._stopCameraScan = null; }
 }
@@ -8600,6 +8697,48 @@ function viewStock(){
     ` : ''}
     </div>
 
+    <div class="form-card" style="margin-bottom:32px;">
+      <div class="section-title" style="margin-top:0;padding-top:0;border-top:none;display:flex;justify-content:space-between;align-items:center;">
+        <span>Štítky umístění</span>
+        <div style="display:flex;gap:8px;">
+          <button type="button" class="btn small" data-action="nav" data-view="location-scan">Skenovat a přiřadit umístění</button>
+          <button type="button" class="btn secondary small" data-action="toggle-location-labels-panel">${state.locationLabelsPanelOpen?'Skrýt':'Spravovat štítky'}</button>
+        </div>
+      </div>
+      <p style="font-size:12.5px;color:var(--ink-soft);margin-top:0;">Vytiskni štítek s čárovým kódem na regál, polici nebo krabici. Pak stačí naskenovat produkt a štítek na místě, kam ho ukládáš — program mu sám přiřadí umístění, bez psaní.</p>
+      <div id="location-labels-panel" style="display:${state.locationLabelsPanelOpen?'':'none'};">
+        <form id="location-label-form" class="field-row" style="align-items:flex-end;">
+          <input type="hidden" name="warehouseId" value="${w.id}">
+          <div class="field"><label>Regál</label><input name="rack" placeholder="např. 12"></div>
+          <div class="field"><label>Police</label><input name="shelf" placeholder="např. 2"></div>
+          <div class="field"><label>Místo</label><input name="spot" placeholder="např. 5"></div>
+        </form>
+        <div class="field-row">
+          <div class="field"><label>Kód štítku</label><input form="location-label-form" name="code" id="location-label-code" value="${generateLocationCode()}"></div>
+          <div class="field" style="display:flex;align-items:flex-end;">
+            <button type="submit" form="location-label-form" class="btn small">+ Přidat a vytisknout štítek</button>
+          </div>
+        </div>
+        ${(state.warehouseLocations||[]).filter(l=>l.warehouseId===w.id).length ? `
+        <table class="items-table" style="max-width:640px;">
+          <thead><tr><th>Umístění</th><th>Kód</th><th></th></tr></thead>
+          <tbody>
+            ${state.warehouseLocations.filter(l=>l.warehouseId===w.id).map(l=>`
+              <tr>
+                <td>${escapeHtml(formatLocation(l)||'—')}</td>
+                <td style="font-family:monospace;">${escapeHtml(l.code)}</td>
+                <td class="actions-cell">
+                  <button type="button" class="btn-link" data-action="print-location-label" data-id="${l.id}">Vytisknout</button>
+                  <button type="button" class="btn-link" data-action="delete-location-label" data-id="${l.id}" style="color:var(--red);">Smazat</button>
+                </td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+        ` : `<p style="font-size:12.5px;color:var(--ink-soft);">Zatím žádné štítky v tomhle skladu.</p>`}
+      </div>
+    </div>
+
     <div id="low-stock-section" style="margin-bottom:32px;">
       <div class="section-title" style="margin-top:0;">Nízký stav / vyprodáno</div>
       ${(low.length+out.length) ? renderProductTable([...out, ...low]) : emptyState('Vše v pořádku', 'Žádný produkt v tomhle skladu není pod minimálním stavem.')}
@@ -8658,6 +8797,35 @@ function viewStock(){
 }
 
 /* ---------- ČÁROVÉ KÓDY: TISK / EXPORT ---------- */
+function buildLocationLabelsHtml(locations){
+  let html = '';
+  locations.forEach(l=>{
+    html += `<div class="barcode-label">
+      <div class="bl-name">${escapeHtml(formatLocation(l)||'Umístění')}</div>
+      <svg class="bl-svg" data-barcode-source="${escapeAttr(l.code)}" data-barcode-type="CODE128"></svg>
+    </div>`;
+  });
+  return html;
+}
+function printLocationLabels(ids){
+  const locations = ids.map(id=>(state.warehouseLocations||[]).find(l=>l.id===id)).filter(Boolean);
+  if(!locations.length) return;
+  let sheet = document.getElementById('barcode-print-sheet');
+  if(!sheet){ sheet = document.createElement('div'); sheet.id='barcode-print-sheet'; document.body.appendChild(sheet); }
+  sheet.innerHTML = buildLocationLabelsHtml(locations);
+  sheet.querySelectorAll('svg[data-barcode-source]').forEach(svg=>{
+    renderBarcodeToSvg(svg, svg.getAttribute('data-barcode-source'), svg.getAttribute('data-barcode-type'));
+  });
+  sheet.classList.add('printing');
+  document.body.classList.add('printing-barcodes');
+  const cleanup = ()=>{
+    sheet.classList.remove('printing');
+    document.body.classList.remove('printing-barcodes');
+    window.removeEventListener('afterprint', cleanup);
+  };
+  window.addEventListener('afterprint', cleanup);
+  setTimeout(()=> window.print(), 60);
+}
 function buildBarcodeLabelsHtml(products, qtyEach, showPrice){
   let html = '';
   products.forEach(p=>{
@@ -9276,6 +9444,8 @@ function afterRender(){
   }
   const discountCodeForm = document.getElementById('discount-code-form');
   if(discountCodeForm){ discountCodeForm.addEventListener('submit', onSubmitDiscountCode); }
+  const locationLabelForm = document.getElementById('location-label-form');
+  if(locationLabelForm){ locationLabelForm.addEventListener('submit', onSubmitLocationLabel); }
   const auditFilterUser = document.getElementById('audit-filter-user');
   const auditFilterAction = document.getElementById('audit-filter-action');
   if(auditFilterUser){ auditFilterUser.addEventListener('change', ()=>{ state.auditLogFilter.userId = auditFilterUser.value; render(); }); }
@@ -9322,6 +9492,7 @@ function afterRender(){
   const orderForm = document.getElementById('order-form');
   if(orderForm){ orderForm.addEventListener('submit', onSubmitOrder); setupOrderForm(); }
   if(state.view==='order-fulfillment') setupOrderFulfillment();
+  if(state.view==='location-scan') setupLocationScan();
   const colleagueForm = document.getElementById('colleague-form');
   if(colleagueForm){ colleagueForm.addEventListener('submit', onSubmitColleague); }
   const userCredsForm = document.getElementById('user-creds-form');
@@ -10448,7 +10619,7 @@ document.addEventListener('click', async (e)=>{
     state.authView='login'; state.view='dashboard';
     render();
   }
-  else if(action==='nav'){ stopCameraScanIfActive(); state.view = el.getAttribute('data-view'); state.editingInvoiceId=null; state.editingClientId=null; state.viewingClientId=null; state.newClientDraftId=null; state.newClientDraftAttachments=[]; state.editingCompanyId=null; state.newCompanyDraftId=null; state.newCompanyDraft={logo:'',signature:'',stamp:''}; state.companyNotice=''; state.formItems=[]; state.formCompanyId=null; state.selectedInvoiceIds.clear(); state.selectedClientIds.clear(); state.editingSupplierId=null; state.viewingSupplierId=null; state.newSupplierDraftId=null; state.newSupplierDraftAttachments=[]; state.editingProductId=null; state.newProductDraftId=null; state.currentProductDraftPhoto=''; state.eanLookupStatus=''; state.selectedProductIds.clear(); closeProductContextMenu(); state.productColsPanelOpen=false; state.editingReceivedInvoiceId=null; state.receivedFormItems=[]; state.viewingReceivedInvoiceId=null; state.newInvoiceDocType='invoice'; state.newInvoiceRelatedId=null; state.newInvoiceClientId=null; state._currentInvoiceFxRate=null; state.stockMovementProductId=null; state.newMovementPanelOpen=false; render(); }
+  else if(action==='nav'){ stopCameraScanIfActive(); state.view = el.getAttribute('data-view'); state.editingInvoiceId=null; state.editingClientId=null; state.viewingClientId=null; state.newClientDraftId=null; state.newClientDraftAttachments=[]; state.editingCompanyId=null; state.newCompanyDraftId=null; state.newCompanyDraft={logo:'',signature:'',stamp:''}; state.companyNotice=''; state.formItems=[]; state.formCompanyId=null; state.selectedInvoiceIds.clear(); state.selectedClientIds.clear(); state.editingSupplierId=null; state.viewingSupplierId=null; state.newSupplierDraftId=null; state.newSupplierDraftAttachments=[]; state.editingProductId=null; state.newProductDraftId=null; state.currentProductDraftPhoto=''; state.eanLookupStatus=''; state.selectedProductIds.clear(); closeProductContextMenu(); state.productColsPanelOpen=false; state.editingReceivedInvoiceId=null; state.receivedFormItems=[]; state.viewingReceivedInvoiceId=null; state.newInvoiceDocType='invoice'; state.newInvoiceRelatedId=null; state.newInvoiceClientId=null; state._currentInvoiceFxRate=null; state.stockMovementProductId=null; state.newMovementPanelOpen=false; state.locationScanBuffer={productId:null,locationId:null}; state.locationScanMessage=''; render(); }
   else if(action==='new-invoice'){ state.view='invoice-form'; state.editingInvoiceId=null; state.formItems=[]; state.formCompanyId=null; state.newInvoiceDocType='invoice'; state.newInvoiceRelatedId=null; render(); }
   else if(action==='new-credit-note'){ state.view='invoice-form'; state.editingInvoiceId=null; state.formItems=[]; state.formCompanyId=null; state.newInvoiceDocType='credit_note'; state.newInvoiceRelatedId=null; render(); }
   else if(action==='new-proforma'){ state.view='invoice-form'; state.editingInvoiceId=null; state.formItems=[]; state.formCompanyId=null; state.newInvoiceDocType='proforma'; state.newInvoiceRelatedId=null; render(); }
@@ -10908,16 +11079,11 @@ document.addEventListener('click', async (e)=>{
   }
   else if(action==='open-order'){ stopCameraScanIfActive(); state.fulfillingOrderId=id; state.fulfillmentStage=null; state.fulfillmentInvoiceConfirmed=false; state.view='order-fulfillment'; render(); }
   else if(action==='remove-order-item'){ const idx=parseInt(el.getAttribute('data-index')); state.orderFormItems.splice(idx,1); render(); }
-  else if(action==='fulfill-manual-confirm'){
-    const o = state.orders.find(x=>x.id===state.fulfillingOrderId);
-    if(o){
-      const item = (o.items||[]).find(it=>it.productId===id);
-      if(item){ item.scannedQty=(item.scannedQty||0)+1; if(o.status==='new') o.status='picking'; try{ await saveOrders(); }catch(err){} }
-    }
-    render();
-  }
   else if(action==='fulfill-camera-scan'){ startCameraScan(); }
   else if(action==='fulfill-camera-cancel'){ stopCameraScanIfActive(); }
+  else if(action==='location-camera-scan'){ startLocationCameraScan(); }
+  else if(action==='location-camera-cancel'){ stopCameraScanIfActive(); }
+  else if(action==='location-scan-reset'){ state.locationScanBuffer = { productId:null, locationId:null }; state.locationScanMessage=''; render(); }
   else if(action==='fulfill-bluetooth-scan'){ startBluetoothScan(); }
   else if(action==='fulfill-create-invoice'){
     const o = state.orders.find(x=>x.id===id);
@@ -11116,6 +11282,14 @@ document.addEventListener('click', async (e)=>{
   else if(action==='toggle-new-movement-panel'){
     state.newMovementPanelOpen = !state.newMovementPanelOpen;
     if(!state.newMovementPanelOpen) state.stockMovementProductId = null;
+    render();
+  }
+  else if(action==='toggle-location-labels-panel'){ state.locationLabelsPanelOpen = !state.locationLabelsPanelOpen; render(); }
+  else if(action==='print-location-label'){ printLocationLabels([id]); }
+  else if(action==='delete-location-label'){
+    if(!confirm('Smazat tenhle štítek umístění?')) return;
+    state.warehouseLocations = state.warehouseLocations.filter(l=>l.id!==id);
+    try{ await saveWarehouseLocations(); }catch(err){ alert('Uložení se nepovedlo.'); }
     render();
   }
   else if(action==='edit-warehouse'){ state.editingWarehouseId=id; state.view='warehouse-form'; render(); }
@@ -11716,6 +11890,24 @@ async function onSubmitInvoice(e){
   render();
 }
 
+async function onSubmitLocationLabel(e){
+  e.preventDefault();
+  const fd = new FormData(e.target);
+  const rack = (fd.get('rack')||'').trim();
+  const shelf = (fd.get('shelf')||'').trim();
+  const spot = (fd.get('spot')||'').trim();
+  const code = (fd.get('code')||'').trim();
+  const warehouseId = fd.get('warehouseId');
+  if(!rack && !shelf && !spot){ alert('Vyplň aspoň jedno z polí (regál, police, místo).'); return; }
+  if(!code){ alert('Kód štítku nesmí být prázdný.'); return; }
+  if(state.warehouseLocations.some(l=>l.code===code)){ alert('Tenhle kód už používá jiné umístění — zvol jiný.'); return; }
+  const entry = { id: uid(), warehouseId, rack, shelf, spot, code };
+  state.warehouseLocations.push(entry);
+  try{ await saveWarehouseLocations(); }catch(err){ alert('Uložení se nepovedlo.'); return; }
+  logAuditEvent('Přidán štítek umístění', 'location', formatLocation(entry), '');
+  render();
+  printLocationLabels([entry.id]);
+}
 async function onSubmitDiscountCode(e){
   e.preventDefault();
   const fd = new FormData(e.target);
