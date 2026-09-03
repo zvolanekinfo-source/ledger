@@ -8295,8 +8295,17 @@ function setupProductForm(){
         const name = prompt('Název nové skladové jednotky (např. Paleta, Regál, Přihrádka):');
         if(!name || !name.trim()){ addUnitSelect.value=''; return; }
         const trimmed = name.trim();
-        const fields = isPalletLikeUnit({name:trimmed}) ? {width:120,depth:80,height:14.4} : {width:0,height:0,depth:0};
-        unit = { id: uid(), name: trimmed, ...fields };
+        const isPallet = isPalletLikeUnit({name:trimmed});
+        // Rovnou se zeptáme i na rozměry, ať nemusíš odcházet do Sklad → Upravit
+        // sklad jen kvůli tomuhle — u palety appka rozměr rovnou navrhne (euro
+        // paleta), stačí potvrdit nebo přepsat.
+        const widthRaw = prompt(`Šířka „${trimmed}" v cm (nepovinné):`, isPallet?'120':'');
+        if(widthRaw===null){ addUnitSelect.value=''; return; }
+        const heightRaw = prompt(`Výška „${trimmed}" v cm (nepovinné):`, isPallet?'14.4':'');
+        if(heightRaw===null){ addUnitSelect.value=''; return; }
+        const depthRaw = prompt(`Hloubka „${trimmed}" v cm (nepovinné):`, isPallet?'80':'');
+        if(depthRaw===null){ addUnitSelect.value=''; return; }
+        unit = { id: uid(), name: trimmed, width: parseFloat(widthRaw)||0, height: parseFloat(heightRaw)||0, depth: parseFloat(depthRaw)||0 };
         if(!pw.storageUnitTypes) pw.storageUnitTypes = [];
         pw.storageUnitTypes.push(unit);
         try{ await saveWarehouses(); }catch(err){ alert('Uložení se nepovedlo.'); addUnitSelect.value=''; return; }
