@@ -5,7 +5,8 @@
 <meta name="viewport" content="width=1280">
 <title>ledgers — podnikový systém</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://use.typekit.net/ewd2civ.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.12.1/html2pdf.bundle.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
@@ -18,19 +19,19 @@
     --paper:#F4F6F9;
     --surface:#FFFFFF;
     --line:#E3E8EF;
-    --accent:#5B8DEF;
-    --accent-soft:#EAF1FE;
+    --accent:#009DE0;
+    --accent-soft:#E3F5FC;
     --amber:#B8802B;
     --amber-soft:#F3E6CD;
     --red:#C0392B;
     --red-soft:#F8E2DE;
-    --inv-accent:#5B8DEF;
-    --inv-accent-soft:#EAF1FE;
-    --inv-accent-tint:rgba(91,141,239,0.07);
-    --panel-dark:#20365C;
-    --radius:6px;
-    --radius-lg:8px;
-    --radius-pill:20px;
+    --inv-accent:#009DE0;
+    --inv-accent-soft:#E3F5FC;
+    --inv-accent-tint:rgba(0,157,224,0.07);
+    --panel-dark:#12182B;
+    --radius:12px;
+    --radius-lg:16px;
+    --radius-pill:24px;
   }
   *{box-sizing:border-box;}
   html,body{margin:0;padding:0;}
@@ -41,7 +42,7 @@
     min-height:100vh;
   }
   .num{font-family:'IBM Plex Mono',monospace;}
-  h1,h2,h3,.display{font-family:'Plus Jakarta Sans',sans-serif;}
+  h1,h2,h3,.display{font-family:"omnes-pro",sans-serif;}
   button{font-family:inherit;cursor:pointer;}
   input,select,textarea{font-family:inherit;}
 
@@ -67,7 +68,7 @@
     border-bottom:1px solid rgba(255,255,255,0.12);
     margin-bottom:16px;
   }
-  .brand .display{font-size:22px;font-weight:600;letter-spacing:0.3px;color:#fff;}
+  .brand .display{font-size:22px;font-weight:700;letter-spacing:0.3px;color:#fff;}
   .brand .sub{font-size:11px;color:#FFFFFF;opacity:0.7;text-transform:uppercase;letter-spacing:1.5px;margin-top:2px;}
   .navitem{
     display:flex;align-items:center;gap:10px;
@@ -95,7 +96,7 @@
   .sub-tab-bar .sub-tab:hover{color:var(--ink);}
   .sub-tab-bar .sub-tab.active{color:var(--ink);font-weight:600;border-bottom-color:var(--accent);}
   .pagehead{display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:28px;}
-  .pagehead h1{font-size:28px;margin:0 0 4px 0;font-weight:600;}
+  .pagehead h1{font-size:28px;margin:0 0 4px 0;font-weight:700;letter-spacing:-0.4px;}
   .pagehead .desc{color:var(--ink-soft);font-size:14px;margin:0;}
   .btn{
     border:1px solid var(--accent);
@@ -104,10 +105,10 @@
     padding:10px 18px;
     border-radius:var(--radius);
     font-size:14px;
-    font-weight:500;
+    font-weight:600;
     transition:background .15s,border-color .15s;
   }
-  .btn:hover{background:#4677D9;border-color:#4677D9;}
+  .btn:hover{background:#0080B8;border-color:#0080B8;}
   .btn.secondary{background:transparent;color:var(--ink);border:1px solid var(--line);}
   .btn.secondary:hover{background:#fff;border-color:var(--ink-soft);}
   .btn.danger{background:transparent;color:var(--red);border:1px solid var(--red-soft);}
@@ -170,7 +171,7 @@
   /* CHART */
   .chart-card{background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:20px 22px;margin-bottom:24px;}
   .chart-card .chart-head{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:14px;}
-  .chart-card .chart-head .display{font-size:16px;font-weight:600;}
+  .chart-card .chart-head .display{font-size:16px;font-weight:700;}
   .chart-card .chart-head .chart-total{font-family:'IBM Plex Mono',monospace;font-weight:700;font-size:18px;color:var(--accent);}
 
   /* FORMS */
@@ -377,7 +378,7 @@
   #report-print-sheet{display:none;}
   .report-sheet{background:#fff;width:760px;padding:32px 40px;}
   .report-sheet .report-header{display:flex;justify-content:space-between;align-items:flex-end;border-bottom:2px solid var(--ink);padding-bottom:12px;margin-bottom:18px;}
-  .report-sheet .report-title{font-family:'Plus Jakarta Sans',sans-serif;font-size:24px;font-weight:600;}
+  .report-sheet .report-title{font-family:"omnes-pro",sans-serif;font-size:24px;font-weight:700;}
   .report-sheet .report-meta{font-size:12px;color:var(--ink-soft);text-align:right;}
   .report-sheet .report-widget{margin-bottom:16px;page-break-inside:avoid;break-inside:avoid;}
   .report-sheet .widget-table tr{page-break-inside:avoid;break-inside:avoid;}
@@ -400,7 +401,7 @@
 
   /* VÝBĚR PLÁNU / FAKTURAČNÍ ÚDAJE / ČEKÁNÍ NA PLATBU */
   .plan-wrap{min-height:100vh;width:100%;background:var(--paper);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:70px 24px;box-sizing:border-box;overflow-y:auto;}
-  .plan-mark{display:inline-flex;align-items:center;justify-content:center;width:52px;height:52px;border-radius:14px;background:var(--ink);color:#fff;font-family:'Plus Jakarta Sans',sans-serif;font-weight:600;font-size:22px;margin:0 auto 22px auto;}
+  .plan-mark{display:inline-flex;align-items:center;justify-content:center;width:52px;height:52px;border-radius:14px;background:var(--ink);color:#fff;font-family:"omnes-pro",sans-serif;font-weight:700;font-size:22px;margin:0 auto 22px auto;}
   .plan-head{text-align:center;margin-bottom:40px;max-width:560px;}
   .plan-head .display{font-size:28px;margin-bottom:10px;}
   .plan-head .sub{color:var(--ink-soft);font-size:14.5px;line-height:1.6;margin:0 auto;}
@@ -410,7 +411,7 @@
   .plan-card:hover{transform:translateY(-3px);box-shadow:0 14px 30px rgba(24,36,32,0.09);}
   .plan-card.featured{border-color:var(--accent);box-shadow:0 10px 26px rgba(31,92,77,0.13);position:relative;}
   .plan-badge{position:absolute;top:-12px;left:50%;transform:translateX(-50%);background:var(--accent);color:#fff;font-size:10.5px;font-weight:700;letter-spacing:0.4px;text-transform:uppercase;padding:4px 12px;border-radius:20px;}
-  .plan-name{font-family:'Plus Jakarta Sans',sans-serif;font-size:23px;font-weight:600;}
+  .plan-name{font-family:"omnes-pro",sans-serif;font-size:23px;font-weight:700;}
   .plan-period{color:var(--ink-soft);font-size:11.5px;text-transform:uppercase;letter-spacing:0.6px;margin-top:5px;font-weight:600;}
   .plan-price{font-size:28px;font-weight:700;margin:22px 0 8px 0;font-family:'IBM Plex Mono',monospace;color:var(--ink);white-space:nowrap;}
   .plan-price span{display:block;white-space:normal;font-size:13px;font-weight:400;color:var(--ink-soft);margin-top:4px;}
@@ -444,10 +445,10 @@
     display:inline-flex;align-items:center;justify-content:center;
     width:44px;height:44px;border-radius:11px;
     background:rgba(203,222,255,0.14);border:1px solid rgba(203,222,255,0.24);
-    font-family:'Plus Jakarta Sans',sans-serif;font-weight:600;font-size:19px;color:#fff;
+    font-family:"omnes-pro",sans-serif;font-weight:700;font-size:19px;color:#fff;
     margin-bottom:22px;
   }
-  .login-side .side-brand{font-family:'Plus Jakarta Sans',sans-serif;font-size:30px;font-weight:600;color:#fff;margin-bottom:8px;}
+  .login-side .side-brand{font-family:"omnes-pro",sans-serif;font-size:30px;font-weight:700;color:#fff;margin-bottom:8px;}
   .login-side .side-sub{font-size:14.5px;color:#FFFFFF;max-width:320px;line-height:1.55;}
   .login-side .side-foot{position:relative;z-index:1;font-size:12px;color:#FFFFFF;letter-spacing:0.3px;opacity:0.75;}
   .login-form-side{
@@ -457,7 +458,7 @@
   }
   .login-card{width:100%;max-width:380px;padding:0;}
   .login-card .brand-head{margin-bottom:26px;}
-  .login-card .display{font-size:24px;margin-bottom:3px;font-weight:600;}
+  .login-card .display{font-size:24px;margin-bottom:3px;font-weight:700;}
   .login-card .sub{color:var(--ink-soft);font-size:13.5px;margin-bottom:0;}
   .login-card .field{margin-bottom:14px;}
   .login-card .switch{font-size:13px;color:var(--ink-soft);margin-top:14px;text-align:center;}
@@ -567,7 +568,7 @@
   .pinfo-sheet .pi-doc-footer{display:flex;justify-content:space-between;margin-top:16px;padding-top:10px;border-top:1px solid var(--line);font-size:10.5px;color:var(--ink-soft);}
   .pinfo-sheet .pi-head{display:flex;gap:16px;align-items:flex-start;margin-bottom:14px;}
   .pinfo-sheet .pi-photo{width:80px;height:80px;object-fit:cover;border-radius:8px;border:1px solid var(--line);flex-shrink:0;}
-  .pinfo-sheet .pi-name{font-family:'Plus Jakarta Sans',sans-serif;font-size:19px;font-weight:600;margin-bottom:4px;}
+  .pinfo-sheet .pi-name{font-family:"omnes-pro",sans-serif;font-size:19px;font-weight:700;margin-bottom:4px;}
   .pinfo-sheet .pi-row{display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--line);font-size:12.5px;}
   .pinfo-sheet .pi-row span:first-child{color:var(--ink-soft);}
   .pinfo-sheet .pi-row span:last-child{font-weight:600;}
