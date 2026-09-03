@@ -717,6 +717,8 @@ let state = {
   recurringInvoices: [],
   editingRecurringId: null,
   recurringFormItems: [],
+  newRecurringDraft: null,
+  recurringSourceInvoiceId: null,
   warehouses: [],
   categories: [],
   editingStorageUnitTypeId: null,
@@ -6440,13 +6442,30 @@ function viewRecurringInvoices(){
 }
 function viewRecurringInvoiceForm(){
   const editing = state.editingRecurringId ? state.recurringInvoices.find(t=>t.id===state.editingRecurringId) : null;
-  const t = editing || blankRecurring();
+  if(!editing && !state.newRecurringDraft){
+    return `
+      <div class="pagehead"><div><h1>Nová opakovaná faktura</h1><p class="desc">Vyber fakturu, kterou jsi už vystavil — appka z ní udělá šablonu. Nové faktury se pak budou generovat samy, vždy s aktuálním číslem, daty i symboly.</p></div></div>
+      <div class="form-card">
+        <div class="field combo-field" style="max-width:460px;">
+          <label>Vzorová faktura</label>
+          <input type="text" id="recurring-source-invoice-input" placeholder="Hledej podle čísla faktury nebo odběratele…" autocomplete="off">
+          <div class="combo-list" id="recurring-source-invoice-list"></div>
+        </div>
+        <p style="font-size:12px;color:var(--ink-soft);margin-top:10px;">Appka zkopíruje odběratele, firmu, položky, formu úhrady i splatnost. Zbývá jen nastavit interval a datum příštího vystavení.</p>
+        <div class="formfoot" style="justify-content:flex-start;">
+          <button type="button" class="btn secondary" data-action="nav" data-view="recurring-invoices">Zrušit</button>
+        </div>
+      </div>
+    `;
+  }
+  const t = editing || state.newRecurringDraft;
+  const sourceInvoice = (!editing && state.recurringSourceInvoiceId) ? state.invoices.find(i=>i.id===state.recurringSourceInvoiceId) : null;
   if(!state.recurringFormItems.length){
     state.recurringFormItems = editing ? JSON.parse(JSON.stringify(editing.items||[])) : JSON.parse(JSON.stringify(t.items));
   }
   const c = clientById(t.clientId);
   return `
-    <div class="pagehead"><div><h1>${editing?'Upravit šablonu':'Nová opakovaná faktura'}</h1></div></div>
+    <div class="pagehead"><div><h1>${editing?'Upravit šablonu':'Nová opakovaná faktura'}</h1>${sourceInvoice?`<p class="desc">Vytvořeno podle faktury #${escapeHtml(sourceInvoice.number)} — <button type="button" class="btn-link" data-action="reset-recurring-source">Vybrat jinou fakturu</button></p>`:''}</div></div>
     <form id="recurring-form" class="form-card">
       <div class="section-title" style="margin-top:0;padding-top:0;border-top:none;">Základní údaje</div>
       <div class="field-row">
@@ -6524,8 +6543,58 @@ async function onSubmitRecurring(e){
   try{ await saveRecurringInvoices(); }catch(err){ alert('Uložení se nepovedlo, zkus to prosím znovu.'); return; }
   state.editingRecurringId = null;
   state.recurringFormItems = [];
+  state.newRecurringDraft = null;
+  state.recurringSourceInvoiceId = null;
   state.view = 'recurring-invoices';
   render();
+}
+function selectRecurringSourceInvoice(inv){
+  const dueDays = (inv.issueDate && inv.dueDate) ? Math.max(0, Math.round((new Date(inv.dueDate) - new Date(inv.issueDate))/86400000)) : 14;
+  state.newRecurringDraft = {
+    id: uid(), clientId: inv.clientId, companyId: inv.companyId,
+    items: JSON.parse(JSON.stringify(inv.items||[])),
+    interval:'monthly', startDate: todayISO(), nextRunDate: todayISO(), dueDays,
+    paymentMethod: inv.paymentMethod||'Bankovním převodem', currency: inv.currency||'CZK',
+    note: inv.note||'', active:true,
+    createdCount:0, lastGeneratedAt:null, lastGeneratedInvoiceId:null
+  };
+  state.recurringFormItems = JSON.parse(JSON.stringify(inv.items||[]));
+  state.recurringSourceInvoiceId = inv.id;
+  render();
+}
+function setupRecurringSourcePicker(){
+  const input = document.getElementById('recurring-source-invoice-input');
+  const list = document.getElementById('recurring-source-invoice-list');
+  if(!input || !list) return;
+  input.focus();
+  function renderList(query){
+    const matches = state.invoices.filter(inv=>{
+      if(invoiceDocType(inv)!=='invoice') return false; // jen řádné faktury, ne dobropisy/zálohy
+      if(!query) return true;
+      const cl = clientById(inv.clientId);
+      return fuzzyMatch(`${inv.number} ${cl?cl.name:''}`, query);
+    }).sort((a,b)=> (b.issueDate||'').localeCompare(a.issueDate||'')).slice(0,30);
+    list.innerHTML = matches.length ? matches.map(inv=>{
+      const cl = clientById(inv.clientId);
+      return `<div class="combo-item" data-id="${inv.id}">
+        <div>#${escapeHtml(inv.number)} <span class="num" style="color:var(--ink-soft);">${fmt(invoiceSignedTotal(inv))} Kč</span></div>
+        <div class="sub">${cl?escapeHtml(cl.name):'—'} · ${inv.issueDate||''}</div>
+      </div>`;
+    }).join('') : `<div class="combo-empty">Žádná faktura neodpovídá.</div>`;
+    list.classList.add('open');
+  }
+  input.addEventListener('focus', ()=>renderList(input.value));
+  input.addEventListener('input', ()=>renderList(input.value));
+  list.addEventListener('mousedown', (e)=>{
+    const item = e.target.closest('.combo-item');
+    if(!item) return;
+    const inv = state.invoices.find(i=>i.id===item.getAttribute('data-id'));
+    if(inv) selectRecurringSourceInvoice(inv);
+    list.classList.remove('open');
+  });
+  document.addEventListener('click', (e)=>{
+    if(e.target!==input && !list.contains(e.target)) list.classList.remove('open');
+  });
 }
 function setupRecurringForm(){
   const itemsBody = document.getElementById('recurring-items-body');
@@ -9671,6 +9740,7 @@ function afterRender(){
   setupReceivedQuickUpload();
   const recurringForm = document.getElementById('recurring-form');
   if(recurringForm){ recurringForm.addEventListener('submit', onSubmitRecurring); setupRecurringForm(); }
+  setupRecurringSourcePicker();
   const warehouseForm = document.getElementById('warehouse-form');
   if(warehouseForm){
     warehouseForm.addEventListener('submit', onSubmitWarehouse);
@@ -10844,7 +10914,7 @@ document.addEventListener('click', async (e)=>{
     state.authView='login'; state.view='dashboard';
     render();
   }
-  else if(action==='nav'){ stopCameraScanIfActive(); state.view = el.getAttribute('data-view'); state.sidebarOpen = false; state.editingInvoiceId=null; state.editingClientId=null; state.viewingClientId=null; state.newClientDraftId=null; state.newClientDraftAttachments=[]; state.editingCompanyId=null; state.newCompanyDraftId=null; state.newCompanyDraft={logo:'',signature:'',stamp:''}; state.companyNotice=''; state.formItems=[]; state.formCompanyId=null; state.selectedInvoiceIds.clear(); state.selectedClientIds.clear(); state.editingSupplierId=null; state.viewingSupplierId=null; state.newSupplierDraftId=null; state.newSupplierDraftAttachments=[]; state.editingProductId=null; state.newProductDraftId=null; state.currentProductDraftPhoto=''; state.eanLookupStatus=''; state.selectedProductIds.clear(); closeProductContextMenu(); state.productColsPanelOpen=false; state.editingReceivedInvoiceId=null; state.receivedFormItems=[]; state.viewingReceivedInvoiceId=null; state.newInvoiceDocType='invoice'; state.newInvoiceRelatedId=null; state.newInvoiceClientId=null; state._currentInvoiceFxRate=null; state.stockMovementProductId=null; state.newMovementPanelOpen=false; state.locationScanBuffer={productId:null,locationId:null}; state.locationScanMessage=''; state.stockScanSession=[]; render(); }
+  else if(action==='nav'){ stopCameraScanIfActive(); state.view = el.getAttribute('data-view'); state.sidebarOpen = false; state.editingInvoiceId=null; state.editingClientId=null; state.viewingClientId=null; state.newClientDraftId=null; state.newClientDraftAttachments=[]; state.editingCompanyId=null; state.newCompanyDraftId=null; state.newCompanyDraft={logo:'',signature:'',stamp:''}; state.companyNotice=''; state.formItems=[]; state.formCompanyId=null; state.selectedInvoiceIds.clear(); state.selectedClientIds.clear(); state.editingSupplierId=null; state.viewingSupplierId=null; state.newSupplierDraftId=null; state.newSupplierDraftAttachments=[]; state.editingProductId=null; state.newProductDraftId=null; state.currentProductDraftPhoto=''; state.eanLookupStatus=''; state.selectedProductIds.clear(); closeProductContextMenu(); state.productColsPanelOpen=false; state.editingReceivedInvoiceId=null; state.receivedFormItems=[]; state.viewingReceivedInvoiceId=null; state.newInvoiceDocType='invoice'; state.newInvoiceRelatedId=null; state.newInvoiceClientId=null; state._currentInvoiceFxRate=null; state.stockMovementProductId=null; state.newMovementPanelOpen=false; state.locationScanBuffer={productId:null,locationId:null}; state.locationScanMessage=''; state.stockScanSession=[]; state.editingRecurringId=null; state.recurringFormItems=[]; state.newRecurringDraft=null; state.recurringSourceInvoiceId=null; render(); }
   else if(action==='new-invoice'){ state.view='invoice-form'; state.editingInvoiceId=null; state.formItems=[]; state.formCompanyId=null; state.newInvoiceDocType='invoice'; state.newInvoiceRelatedId=null; render(); }
   else if(action==='new-credit-note'){ state.view='invoice-form'; state.editingInvoiceId=null; state.formItems=[]; state.formCompanyId=null; state.newInvoiceDocType='credit_note'; state.newInvoiceRelatedId=null; render(); }
   else if(action==='new-proforma'){ state.view='invoice-form'; state.editingInvoiceId=null; state.formItems=[]; state.formCompanyId=null; state.newInvoiceDocType='proforma'; state.newInvoiceRelatedId=null; render(); }
@@ -11395,8 +11465,9 @@ document.addEventListener('click', async (e)=>{
     render();
   }
   /* --- Opakované faktury --- */
-  else if(action==='new-recurring'){ state.editingRecurringId=null; state.recurringFormItems=[]; state.view='recurring-invoice-form'; render(); }
-  else if(action==='edit-recurring'){ state.editingRecurringId=id; state.recurringFormItems=[]; state.view='recurring-invoice-form'; render(); }
+  else if(action==='new-recurring'){ state.editingRecurringId=null; state.recurringFormItems=[]; state.newRecurringDraft=null; state.recurringSourceInvoiceId=null; state.view='recurring-invoice-form'; render(); }
+  else if(action==='edit-recurring'){ state.editingRecurringId=id; state.recurringFormItems=[]; state.newRecurringDraft=null; state.recurringSourceInvoiceId=null; state.view='recurring-invoice-form'; render(); }
+  else if(action==='reset-recurring-source'){ state.newRecurringDraft=null; state.recurringSourceInvoiceId=null; state.recurringFormItems=[]; render(); }
   else if(action==='delete-recurring'){
     if(!confirm('Smazat tuto šablonu opakované faktury?')) return;
     state.recurringInvoices = state.recurringInvoices.filter(t=>t.id!==id);
