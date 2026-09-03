@@ -646,6 +646,8 @@ let state = {
   warehouseLocations: [],
   locationScanBuffer: { productId:null, locationId:null },
   locationScanMessage: '',
+  stockScanMode: 'in',
+  stockScanSession: [],
   locationLabelsPanelOpen: false,
   editingDiscountCodeId: null,
   currentUser: null,
@@ -6599,15 +6601,23 @@ function computeWarehouseUsage(w){
     }, 0);
 }
 function viewLocationScan(){
+  const mode = state.stockScanMode || 'in';
   const buf = state.locationScanBuffer || { productId:null, locationId:null };
   const product = buf.productId ? productById(buf.productId) : null;
   const location = buf.locationId ? (state.warehouseLocations||[]).find(l=>l.id===buf.locationId) : null;
+  const session = state.stockScanSession || [];
+  const modeLabels = { in:'Naskladnění (příjem)', out:'Vyskladnění (výdej)', location:'Přiřadit umístění' };
   return `
     <div class="pagehead">
-      <div><h1>Skenovat a přiřadit umístění</h1><p class="desc">Naskenuj produkt a štítek umístění, v libovolném pořadí — program je sám spáruje a rovnou uloží.</p></div>
+      <div><h1>Skenovací režim</h1><p class="desc">Vyber činnost a rovnou skenuj — program udělá zbytek sám.</p></div>
       <button class="btn secondary" data-action="nav" data-view="stock">← Zpět na sklad</button>
     </div>
+    <div class="sub-tab-bar" style="margin-bottom:24px;">
+      ${Object.entries(modeLabels).map(([key,label])=>`<div class="sub-tab ${mode===key?'active':''}" data-action="set-scan-mode" data-mode="${key}">${label}</div>`).join('')}
+    </div>
+    ${mode==='location' ? `
     <div class="form-card" style="text-align:center;padding:32px;">
+      <p style="font-size:13.5px;color:var(--ink-soft);margin:0 0 20px 0;">Naskenuj produkt a štítek umístění, v libovolném pořadí — program je sám spáruje a rovnou uloží.</p>
       <div style="display:flex;gap:20px;justify-content:center;margin-bottom:24px;flex-wrap:wrap;">
         <div style="min-width:220px;padding:16px 20px;border-radius:10px;background:${product?'var(--accent-soft)':'var(--paper)'};">
           <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.5px;color:var(--ink-soft);margin-bottom:6px;">Produkt</div>
@@ -6629,6 +6639,29 @@ function viewLocationScan(){
         <button type="button" class="btn-link" data-action="location-camera-cancel">Zavřít kameru</button>
       </div>
     </div>
+    ` : `
+    <div class="form-card" style="text-align:center;padding:32px;">
+      <p style="font-size:13.5px;color:var(--ink-soft);margin:0 0 20px 0;">Každé naskenování produktu ${mode==='in'?'přidá':'odebere'} <strong>1 ${mode==='in'?'ks na sklad':'ks ze skladu'}</strong> a rovnou se uloží — žádné další klikání.</p>
+      <input type="text" id="stock-scan-input" autocomplete="off" placeholder="Naskenuj produkt…" style="width:100%;max-width:420px;padding:16px 18px;font-size:19px;border:2px solid var(--accent);border-radius:var(--radius);text-align:center;margin-bottom:12px;">
+      <div id="stock-scan-status" style="font-size:14px;min-height:20px;color:var(--ink-soft);">${escapeHtml(state.locationScanMessage||'')}</div>
+      <div style="display:flex;gap:10px;justify-content:center;margin-top:16px;flex-wrap:wrap;">
+        <button type="button" class="btn secondary" data-action="stock-scan-camera">Skenovat kamerou</button>
+      </div>
+      <video id="stock-scan-video" style="display:none;max-width:340px;margin:16px auto 0 auto;border-radius:8px;" playsinline muted></video>
+      <div id="stock-scan-camera-cancel-box" style="display:none;margin-top:8px;">
+        <button type="button" class="btn-link" data-action="stock-scan-camera-cancel">Zavřít kameru</button>
+      </div>
+    </div>
+    ${session.length ? `
+    <div class="mini-label">Naskenováno v téhle session</div>
+    <table class="items-table" style="max-width:600px;">
+      <thead><tr><th>Produkt</th><th class="num">Změna</th><th class="num">Teď skladem</th></tr></thead>
+      <tbody>
+        ${session.slice(0,20).map(s=>`<tr><td>${escapeHtml(s.name)}</td><td class="num">${s.qtyDelta>0?'+':''}${s.qtyDelta}</td><td class="num">${fmt(s.resultingStock)}</td></tr>`).join('')}
+      </tbody>
+    </table>
+    ` : ''}
+    `}
   `;
 }
 function processLocationScan(code){
@@ -6663,6 +6696,29 @@ function processLocationScan(code){
   }
   render();
 }
+function processStockScan(code){
+  code = (code||'').trim();
+  if(!code) return;
+  const mode = state.stockScanMode || 'in';
+  const statusEl = document.getElementById('stock-scan-status');
+  const p = state.products.find(pr=>!pr.archived && ((pr.ean && pr.ean===code) || (pr.number && pr.number===code) || (pr.internalCode && pr.internalCode===code)));
+  if(!p){
+    state.locationScanMessage = 'Kód nepatří žádnému produktu — zkus to znovu.';
+    if(statusEl) statusEl.textContent = state.locationScanMessage;
+    return;
+  }
+  const qty = mode==='in' ? 1 : -1;
+  const resulting = (p.stockCurrent||0) + qty;
+  p.stockCurrent = resulting;
+  p.movements = p.movements || [];
+  p.movements.push({ id: uid(), type: mode==='in'?'příjem':'výdej', qty, reason: mode==='in'?'Naskenováno — příjem':'Naskenováno — výdej', note:'', date: new Date().toISOString(), user: state.currentUser, resultingStock: resulting, unitCost: p.purchasePrice||0 });
+  saveProducts().catch(()=>{});
+  logAuditEvent(mode==='in'?'Skenovaný příjem':'Skenovaný výdej', 'product', p.name, `${qty>0?'+':''}${qty} ks, teď ${resulting} ks`);
+  state.stockScanSession = state.stockScanSession || [];
+  state.stockScanSession.unshift({ productId:p.id, name:p.name, qtyDelta:qty, resultingStock:resulting });
+  state.locationScanMessage = `✓ ${p.name} — ${qty>0?'+1':'-1'}, teď skladem ${fmt(resulting)} ks. Naskenuj další.`;
+  render();
+}
 function setupLocationScan(){
   const input = document.getElementById('location-scan-input');
   if(input){
@@ -6672,6 +6728,16 @@ function setupLocationScan(){
       e.preventDefault();
       processLocationScan(input.value);
       input.value = '';
+    });
+  }
+  const stockInput = document.getElementById('stock-scan-input');
+  if(stockInput){
+    stockInput.focus();
+    stockInput.addEventListener('keydown', (e)=>{
+      if(e.key!=='Enter') return;
+      e.preventDefault();
+      processStockScan(stockInput.value);
+      stockInput.value = '';
     });
   }
 }
@@ -7292,6 +7358,7 @@ async function startCameraScanGeneric(videoId, cancelBoxId, onResult){
 }
 function startCameraScan(){ return startCameraScanGeneric('fulfill-camera-video', 'fulfill-camera-cancel-box', processScan); }
 function startLocationCameraScan(){ return startCameraScanGeneric('location-scan-video', 'location-scan-camera-cancel-box', processLocationScan); }
+function startStockCameraScan(){ return startCameraScanGeneric('stock-scan-video', 'stock-scan-camera-cancel-box', processStockScan); }
 function stopCameraScanIfActive(){
   if(state._stopCameraScan){ state._stopCameraScan(); state._stopCameraScan = null; }
 }
@@ -8700,6 +8767,11 @@ function viewStock(){
           <span>Skladový pohyb</span>
           <button type="button" class="btn secondary small" data-action="toggle-new-movement-panel">+ Nový pohyb</button>
         </div>
+        <div style="background:var(--accent-soft);border-radius:10px;padding:14px 16px;margin-bottom:14px;">
+          <p style="font-size:13px;font-weight:600;margin:0 0 4px 0;color:var(--ink);">Skenovací režim — naskladnění, vyskladnění nebo umístění jedním tahem</p>
+          <p style="font-size:12px;color:var(--ink-soft);margin:0 0 10px 0;">Vyber činnost, naskenuj a program to rovnou udělá — žádné vyplňování formulářů.</p>
+          <button type="button" class="btn small" data-action="nav" data-view="location-scan">Otevřít skenovací režim</button>
+        </div>
         <div id="new-movement-panel" style="display:${state.newMovementPanelOpen?'':'none'};">
           <p style="font-size:12.5px;color:var(--ink-soft);margin-top:0;">Vyber produkt — program zobrazí formulář na zápis pohybu. Sklad se předvyplní na ${escapeHtml(w.name)}, jde ale změnit.</p>
           <div class="field combo-field" style="max-width:460px;">
@@ -8743,7 +8815,7 @@ function viewStock(){
       <div class="section-title" style="margin-top:0;padding-top:0;border-top:none;display:flex;justify-content:space-between;align-items:center;">
         <span>Štítky umístění</span>
         <div style="display:flex;gap:8px;">
-          <button type="button" class="btn small" data-action="nav" data-view="location-scan">Skenovat a přiřadit umístění</button>
+          <button type="button" class="btn small" data-action="open-location-scan-mode">Skenovat a přiřadit umístění</button>
           <button type="button" class="btn secondary small" data-action="toggle-location-labels-panel">${state.locationLabelsPanelOpen?'Skrýt':'Spravovat štítky'}</button>
         </div>
       </div>
@@ -10661,7 +10733,7 @@ document.addEventListener('click', async (e)=>{
     state.authView='login'; state.view='dashboard';
     render();
   }
-  else if(action==='nav'){ stopCameraScanIfActive(); state.view = el.getAttribute('data-view'); state.sidebarOpen = false; state.editingInvoiceId=null; state.editingClientId=null; state.viewingClientId=null; state.newClientDraftId=null; state.newClientDraftAttachments=[]; state.editingCompanyId=null; state.newCompanyDraftId=null; state.newCompanyDraft={logo:'',signature:'',stamp:''}; state.companyNotice=''; state.formItems=[]; state.formCompanyId=null; state.selectedInvoiceIds.clear(); state.selectedClientIds.clear(); state.editingSupplierId=null; state.viewingSupplierId=null; state.newSupplierDraftId=null; state.newSupplierDraftAttachments=[]; state.editingProductId=null; state.newProductDraftId=null; state.currentProductDraftPhoto=''; state.eanLookupStatus=''; state.selectedProductIds.clear(); closeProductContextMenu(); state.productColsPanelOpen=false; state.editingReceivedInvoiceId=null; state.receivedFormItems=[]; state.viewingReceivedInvoiceId=null; state.newInvoiceDocType='invoice'; state.newInvoiceRelatedId=null; state.newInvoiceClientId=null; state._currentInvoiceFxRate=null; state.stockMovementProductId=null; state.newMovementPanelOpen=false; state.locationScanBuffer={productId:null,locationId:null}; state.locationScanMessage=''; render(); }
+  else if(action==='nav'){ stopCameraScanIfActive(); state.view = el.getAttribute('data-view'); state.sidebarOpen = false; state.editingInvoiceId=null; state.editingClientId=null; state.viewingClientId=null; state.newClientDraftId=null; state.newClientDraftAttachments=[]; state.editingCompanyId=null; state.newCompanyDraftId=null; state.newCompanyDraft={logo:'',signature:'',stamp:''}; state.companyNotice=''; state.formItems=[]; state.formCompanyId=null; state.selectedInvoiceIds.clear(); state.selectedClientIds.clear(); state.editingSupplierId=null; state.viewingSupplierId=null; state.newSupplierDraftId=null; state.newSupplierDraftAttachments=[]; state.editingProductId=null; state.newProductDraftId=null; state.currentProductDraftPhoto=''; state.eanLookupStatus=''; state.selectedProductIds.clear(); closeProductContextMenu(); state.productColsPanelOpen=false; state.editingReceivedInvoiceId=null; state.receivedFormItems=[]; state.viewingReceivedInvoiceId=null; state.newInvoiceDocType='invoice'; state.newInvoiceRelatedId=null; state.newInvoiceClientId=null; state._currentInvoiceFxRate=null; state.stockMovementProductId=null; state.newMovementPanelOpen=false; state.locationScanBuffer={productId:null,locationId:null}; state.locationScanMessage=''; state.stockScanSession=[]; render(); }
   else if(action==='new-invoice'){ state.view='invoice-form'; state.editingInvoiceId=null; state.formItems=[]; state.formCompanyId=null; state.newInvoiceDocType='invoice'; state.newInvoiceRelatedId=null; render(); }
   else if(action==='new-credit-note'){ state.view='invoice-form'; state.editingInvoiceId=null; state.formItems=[]; state.formCompanyId=null; state.newInvoiceDocType='credit_note'; state.newInvoiceRelatedId=null; render(); }
   else if(action==='new-proforma'){ state.view='invoice-form'; state.editingInvoiceId=null; state.formItems=[]; state.formCompanyId=null; state.newInvoiceDocType='proforma'; state.newInvoiceRelatedId=null; render(); }
@@ -11127,6 +11199,16 @@ document.addEventListener('click', async (e)=>{
   else if(action==='location-camera-scan'){ startLocationCameraScan(); }
   else if(action==='location-camera-cancel'){ stopCameraScanIfActive(); }
   else if(action==='location-scan-reset'){ state.locationScanBuffer = { productId:null, locationId:null }; state.locationScanMessage=''; render(); }
+  else if(action==='stock-scan-camera'){ startStockCameraScan(); }
+  else if(action==='stock-scan-camera-cancel'){ stopCameraScanIfActive(); }
+  else if(action==='open-location-scan-mode'){ state.stockScanMode='location'; state.view='location-scan'; state.sidebarOpen=false; render(); }
+  else if(action==='set-scan-mode'){
+    stopCameraScanIfActive();
+    state.stockScanMode = el.getAttribute('data-mode');
+    state.locationScanBuffer = { productId:null, locationId:null };
+    state.locationScanMessage = '';
+    render();
+  }
   else if(action==='fulfill-bluetooth-scan'){ startBluetoothScan(); }
   else if(action==='fulfill-create-invoice'){
     const o = state.orders.find(x=>x.id===id);
