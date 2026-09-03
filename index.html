@@ -88,6 +88,12 @@
 
   /* MAIN */
   .main{flex:1;padding:36px 44px;max-width:1900px;}
+  .hamburger-btn{background:#fff;border:1px solid var(--line);border-radius:8px;width:38px;height:38px;display:flex;align-items:center;justify-content:center;color:var(--ink);margin-bottom:20px;}
+  .hamburger-btn:hover{background:var(--paper);}
+  .sub-tab-bar{display:flex;gap:4px;margin-bottom:28px;border-bottom:1px solid var(--line);}
+  .sub-tab-bar .sub-tab{padding:10px 16px;font-size:13.5px;color:var(--ink-soft);cursor:pointer;border-bottom:2px solid transparent;font-weight:500;}
+  .sub-tab-bar .sub-tab:hover{color:var(--ink);}
+  .sub-tab-bar .sub-tab.active{color:var(--ink);font-weight:600;border-bottom-color:var(--accent);}
   .pagehead{display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:28px;}
   .pagehead h1{font-size:28px;margin:0 0 4px 0;font-weight:600;}
   .pagehead .desc{color:var(--ink-soft);font-size:14px;margin:0;}
@@ -644,6 +650,7 @@ let state = {
   editingDiscountCodeId: null,
   currentUser: null,
   currentUserId: null,
+  sidebarOpen: true,
   tenantId: null,
   myMemberships: [],
   subscription: null, // { plan, billing_period, status, current_period_end }
@@ -1222,8 +1229,40 @@ const VIEW_TO_TAB = {
   clients:'clients', 'client-form':'clients', 'client-detail':'clients',
   suppliers:'suppliers', 'supplier-form':'suppliers', 'supplier-detail':'suppliers',
   products:'products', 'product-form':'products',
-  stock:'stock', warehouses:'stock', 'warehouse-form':'stock'
+  stock:'stock', warehouses:'stock', 'warehouse-form':'stock', 'location-scan':'stock'
 };
+const NAV_GROUPS = [
+  { label:'Přehled', primaryView:'dashboard', tabKey:'dashboard', views:['dashboard'] },
+  { label:'Faktury', primaryView:'invoices', tabKey:'invoices',
+    views:['invoices','invoice-form','invoice-preview','bulk-import','recurring-invoices','recurring-invoice-form','received-invoices','received-invoice-form','received-invoice-detail'],
+    subTabs:[
+      { tabKey:'invoices', label:'Faktury', view:'invoices', activeViews:['invoices','invoice-form','invoice-preview','bulk-import'] },
+      { tabKey:'recurring-invoices', label:'Opakované faktury', view:'recurring-invoices', activeViews:['recurring-invoices','recurring-invoice-form'] },
+      { tabKey:'received-invoices', label:'Přijaté faktury', view:'received-invoices', activeViews:['received-invoices','received-invoice-form','received-invoice-detail'] },
+    ]
+  },
+  { label:'Objednávky', primaryView:'orders', tabKey:'orders', views:['orders','order-form','order-fulfillment'] },
+  { label:'Odběratelé', primaryView:'clients', tabKey:'clients', views:['clients','client-form','client-detail'] },
+  { label:'Dodavatelé', primaryView:'suppliers', tabKey:'suppliers', views:['suppliers','supplier-form','supplier-detail'] },
+  { label:'Produkty', primaryView:'products', tabKey:'products',
+    views:['products','product-form','stock','warehouses','warehouse-form','location-scan'],
+    subTabs:[
+      { tabKey:'products', label:'Produkty', view:'products', activeViews:['products','product-form'] },
+      { tabKey:'stock', label:'Sklad', view:'stock', activeViews:['stock','warehouses','warehouse-form','location-scan'] },
+    ]
+  },
+  { label:'Nastavení', primaryView:'settings', tabKey:null, views:['settings','company-form','account-form','colleague-form','user-creds-form'] },
+];
+function findNavGroupForView(view){
+  return NAV_GROUPS.find(g=>g.views.includes(view));
+}
+function renderSubTabBar(group){
+  const tabs = (group.subTabs||[]).filter(st=>canAccessTab(st.tabKey));
+  if(tabs.length<2) return '';
+  return `<div class="sub-tab-bar no-print">
+    ${tabs.map(st=>`<div class="sub-tab ${st.activeViews.includes(state.view)?'active':''}" data-action="nav" data-view="${st.view}">${st.label}</div>`).join('')}
+  </div>`;
+}
 const ROLE_PRESETS = {
   admin: { label:'Administrátor (vše)', tabs:{dashboard:true,invoices:true,'recurring-invoices':true,'received-invoices':true,orders:true,clients:true,suppliers:true,products:true,stock:true}, hidePrices:false, canDelete:true, canEditPrices:true },
   ucetni: { label:'Účetní', tabs:{dashboard:true,invoices:true,'recurring-invoices':true,'received-invoices':true,orders:false,clients:true,suppliers:true,products:false,stock:false}, hidePrices:false, canDelete:false, canEditPrices:false },
@@ -2628,7 +2667,9 @@ function render(){
   if(neededTab && !canAccessTab(neededTab)){
     state.view = firstAccessibleView();
   }
+  const currentGroup = findNavGroupForView(state.view);
   app.innerHTML = `
+    ${state.sidebarOpen ? `
     <div class="sidebar">
       <div class="brand">
         <img src="${LOGO_DATA_URI}" alt="Ledgers.cz" style="height:26px;width:auto;display:block;margin-bottom:8px;">
@@ -2641,16 +2682,12 @@ function render(){
         </select>
       </div>
       ` : ''}
-      ${canAccessTab('dashboard')?`<div class="navitem ${state.view==='dashboard'?'active':''}" data-action="nav" data-view="dashboard">Přehled</div>`:''}
-      ${canAccessTab('invoices')?`<div class="navitem ${state.view==='invoices'||state.view==='invoice-form'||state.view==='invoice-preview'?'active':''}" data-action="nav" data-view="invoices">Faktury</div>`:''}
-      ${canAccessTab('recurring-invoices')?`<div class="navitem ${state.view==='recurring-invoices'||state.view==='recurring-invoice-form'?'active':''}" data-action="nav" data-view="recurring-invoices">Opakované faktury</div>`:''}
-      ${canAccessTab('received-invoices')?`<div class="navitem ${state.view==='received-invoices'||state.view==='received-invoice-form'||state.view==='received-invoice-detail'?'active':''}" data-action="nav" data-view="received-invoices">Přijaté faktury</div>`:''}
-      ${canAccessTab('orders')?`<div class="navitem ${state.view==='orders'||state.view==='order-form'||state.view==='order-fulfillment'?'active':''}" data-action="nav" data-view="orders">Objednávky</div>`:''}
-      ${canAccessTab('clients')?`<div class="navitem ${state.view==='clients'||state.view==='client-form'||state.view==='client-detail'?'active':''}" data-action="nav" data-view="clients">Odběratelé</div>`:''}
-      ${canAccessTab('suppliers')?`<div class="navitem ${state.view==='suppliers'||state.view==='supplier-form'||state.view==='supplier-detail'?'active':''}" data-action="nav" data-view="suppliers">Dodavatelé</div>`:''}
-      ${canAccessTab('products')?`<div class="navitem ${state.view==='products'||state.view==='product-form'?'active':''}" data-action="nav" data-view="products">Produkty</div>`:''}
-      ${canAccessTab('stock')?`<div class="navitem ${state.view==='stock'?'active':''}" data-action="nav" data-view="stock">Sklad</div>`:''}
-      <div class="navitem ${['settings','company-form','account-form','colleague-form','user-creds-form'].includes(state.view)?'active':''}" data-action="nav" data-view="settings">Nastavení</div>
+      ${NAV_GROUPS.map(g=>{
+        const hasAccess = g.tabKey ? (canAccessTab(g.tabKey) || (g.subTabs||[]).some(st=>canAccessTab(st.tabKey))) : true;
+        if(!hasAccess) return '';
+        const isActive = g.views.includes(state.view);
+        return `<div class="navitem ${isActive?'active':''}" data-action="nav" data-view="${g.primaryView}">${g.label}</div>`;
+      }).join('')}
       <div class="sidebar-foot">
         <div class="whoami">
           <span class="name" title="${escapeAttr(state.currentUser)}">${escapeHtml(state.currentUser)}</span>
@@ -2658,11 +2695,16 @@ function render(){
         </div>
       </div>
     </div>
+    ` : ''}
     <div class="main">
+      ${!state.sidebarOpen ? `<button type="button" class="hamburger-btn no-print" data-action="toggle-sidebar" title="Zobrazit menu">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+      </button>` : ''}
       <div id="pending-writes-banner" class="no-print" style="display:none;align-items:center;gap:10px;background:var(--amber-soft);color:var(--amber);padding:9px 16px;font-size:12.5px;font-weight:600;">
         <span class="pw-text"></span>
         <button type="button" class="btn-link" data-action="retry-pending-writes" style="color:var(--amber);text-decoration:underline;">Zkusit hned</button>
       </div>
+      ${currentGroup ? renderSubTabBar(currentGroup) : ''}
       ${renderView()}
     </div>
   `;
@@ -10619,7 +10661,7 @@ document.addEventListener('click', async (e)=>{
     state.authView='login'; state.view='dashboard';
     render();
   }
-  else if(action==='nav'){ stopCameraScanIfActive(); state.view = el.getAttribute('data-view'); state.editingInvoiceId=null; state.editingClientId=null; state.viewingClientId=null; state.newClientDraftId=null; state.newClientDraftAttachments=[]; state.editingCompanyId=null; state.newCompanyDraftId=null; state.newCompanyDraft={logo:'',signature:'',stamp:''}; state.companyNotice=''; state.formItems=[]; state.formCompanyId=null; state.selectedInvoiceIds.clear(); state.selectedClientIds.clear(); state.editingSupplierId=null; state.viewingSupplierId=null; state.newSupplierDraftId=null; state.newSupplierDraftAttachments=[]; state.editingProductId=null; state.newProductDraftId=null; state.currentProductDraftPhoto=''; state.eanLookupStatus=''; state.selectedProductIds.clear(); closeProductContextMenu(); state.productColsPanelOpen=false; state.editingReceivedInvoiceId=null; state.receivedFormItems=[]; state.viewingReceivedInvoiceId=null; state.newInvoiceDocType='invoice'; state.newInvoiceRelatedId=null; state.newInvoiceClientId=null; state._currentInvoiceFxRate=null; state.stockMovementProductId=null; state.newMovementPanelOpen=false; state.locationScanBuffer={productId:null,locationId:null}; state.locationScanMessage=''; render(); }
+  else if(action==='nav'){ stopCameraScanIfActive(); state.view = el.getAttribute('data-view'); state.sidebarOpen = false; state.editingInvoiceId=null; state.editingClientId=null; state.viewingClientId=null; state.newClientDraftId=null; state.newClientDraftAttachments=[]; state.editingCompanyId=null; state.newCompanyDraftId=null; state.newCompanyDraft={logo:'',signature:'',stamp:''}; state.companyNotice=''; state.formItems=[]; state.formCompanyId=null; state.selectedInvoiceIds.clear(); state.selectedClientIds.clear(); state.editingSupplierId=null; state.viewingSupplierId=null; state.newSupplierDraftId=null; state.newSupplierDraftAttachments=[]; state.editingProductId=null; state.newProductDraftId=null; state.currentProductDraftPhoto=''; state.eanLookupStatus=''; state.selectedProductIds.clear(); closeProductContextMenu(); state.productColsPanelOpen=false; state.editingReceivedInvoiceId=null; state.receivedFormItems=[]; state.viewingReceivedInvoiceId=null; state.newInvoiceDocType='invoice'; state.newInvoiceRelatedId=null; state.newInvoiceClientId=null; state._currentInvoiceFxRate=null; state.stockMovementProductId=null; state.newMovementPanelOpen=false; state.locationScanBuffer={productId:null,locationId:null}; state.locationScanMessage=''; render(); }
   else if(action==='new-invoice'){ state.view='invoice-form'; state.editingInvoiceId=null; state.formItems=[]; state.formCompanyId=null; state.newInvoiceDocType='invoice'; state.newInvoiceRelatedId=null; render(); }
   else if(action==='new-credit-note'){ state.view='invoice-form'; state.editingInvoiceId=null; state.formItems=[]; state.formCompanyId=null; state.newInvoiceDocType='credit_note'; state.newInvoiceRelatedId=null; render(); }
   else if(action==='new-proforma'){ state.view='invoice-form'; state.editingInvoiceId=null; state.formItems=[]; state.formCompanyId=null; state.newInvoiceDocType='proforma'; state.newInvoiceRelatedId=null; render(); }
@@ -11003,6 +11045,7 @@ document.addEventListener('click', async (e)=>{
     if(fixed) logAuditEvent('Oprava osiřelého odkazu', type, id, '');
     render();
   }
+  else if(action==='toggle-sidebar'){ state.sidebarOpen = !state.sidebarOpen; render(); }
   else if(action==='retry-pending-writes'){
     const banner = document.getElementById('pending-writes-banner');
     if(banner) banner.querySelector('.pw-text').textContent = 'Zkouším odeslat…';
