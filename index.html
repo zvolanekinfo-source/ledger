@@ -6556,6 +6556,27 @@ function warehouseOptions(selectedId){
 function storageUnitTypeInWarehouse(w, id){ return w && (w.storageUnitTypes||[]).find(u=>u.id===id); }
 function isPalletLikeUnit(u){ return !!(u && /palet/i.test(stripDiacritics(u.name||''))); } // zboží se na paletu SKLÁDÁ, nejde dovnitř jako u boxu
 function isRackLikeUnit(u){ return !!(u && /reg[aá]l/i.test(stripDiacritics(u.name||''))); } // jen do regálu se dávají celé palety
+function buildUnitTypeFieldHtml(u, p){
+  const isPallet = isPalletLikeUnit(u);
+  const isRack = isRackLikeUnit(u);
+  return `
+    <div class="field" data-unit-type-field="${u.id}">
+      <label>Kusů ${isPallet?'na':'do'} „${escapeHtml(u.name)}" <button type="button" class="btn-link" data-action="remove-unit-type-field" data-id="${u.id}" style="font-size:10px;color:var(--red);margin-left:4px;">odebrat</button></label>
+      <input type="number" step="1" min="0" name="unitsPerStorageType_${u.id}" ${isPallet?`class="pallet-units-input" data-pallet-unit-id="${u.id}"`:''} value="${(p&&p.unitsPerStorageType&&p.unitsPerStorageType[u.id])||''}">
+      ${isPallet ? `<div id="pallet-height-note-${u.id}" style="font-size:11px;color:var(--ink-soft);margin-top:4px;"></div>` : ''}
+      ${isRack ? `<div style="font-size:11px;color:var(--ink-soft);margin-top:4px;">Nemusíš vyplňovat — pokud necháš prázdné, program to spočítá sám z „Kusů na Paletu" a z toho, kolik palet se vejde do regálu.</div>` : ''}
+    </div>
+  `;
+}
+function buildPriceLevelRowHtml(pl, p){
+  return `
+    <tr data-price-level-row="${pl.id}">
+      <td>${escapeHtml(pl.name)}</td>
+      <td><input type="number" step="0.01" name="priceLevel_${pl.id}" value="${p&&p.pricesByLevel&&p.pricesByLevel[pl.id]!=null?p.pricesByLevel[pl.id]:''}" placeholder="${fmt((p&&p.salePrice)||0)}" ${!canEditPrices()?'disabled':''} style="width:100%;padding:6px 8px;border:1px solid var(--line);border-radius:4px;"></td>
+      <td><button type="button" class="btn-link" data-action="remove-price-level-row" data-id="${pl.id}" style="color:var(--red);font-size:11px;">odebrat</button></td>
+    </tr>
+  `;
+}
 function warehouseCapacityUnitLabel(w){
   if(w.capacityUnitTypeId){
     const t = storageUnitTypeInWarehouse(w, w.capacityUnitTypeId);
@@ -8062,7 +8083,6 @@ function viewProductForm(){
           ${PRODUCT_UNITS.map(u=>`<option value="${u}" ${(p.unit||'ks')===u?'selected':''}>${u}</option>`).join('')}
         </select></div>
       </div>
-      <div class="field"><label>Poznámka</label><textarea name="note">${escapeHtml(p.note||'')}</textarea></div>
       <div class="field"><label>Složení</label><textarea name="composition" placeholder="např. seznam ingrediencí/materiálů">${escapeHtml(p.composition||'')}</textarea></div>
 
       <div class="section-title">Rozměry a balení</div>
@@ -8080,18 +8100,24 @@ function viewProductForm(){
         <div class="field"><label>Hloubka</label><input type="number" step="0.1" min="0" name="pkgDepth" value="${(p.packageDimensions&&p.packageDimensions.depth)||''}"></div>
       </div>
       <div class="mini-label" style="margin-top:14px;">Kolik kusů se vejde do jedné skladové jednotky (pro výpočet kapacity skladu — jednotky patří skladu „${productWarehouse?escapeHtml(productWarehouse.name):''}", spravuje se v jeho nastavení)</div>
-      <div class="field-row">
-        ${(productWarehouse&&productWarehouse.storageUnitTypes||[]).map(u=>{
-          const isPallet = isPalletLikeUnit(u);
-          const isRack = isRackLikeUnit(u);
-          return `
-          <div class="field">
-            <label>Kusů ${isPallet?'na':'do'} „${escapeHtml(u.name)}"</label>
-            <input type="number" step="1" min="0" name="unitsPerStorageType_${u.id}" ${isPallet?`class="pallet-units-input" data-pallet-unit-id="${u.id}"`:''} value="${(p.unitsPerStorageType&&p.unitsPerStorageType[u.id])||''}">
-            ${isPallet ? `<div id="pallet-height-note-${u.id}" style="font-size:11px;color:var(--ink-soft);margin-top:4px;"></div>` : ''}
-            ${isRack ? `<div style="font-size:11px;color:var(--ink-soft);margin-top:4px;">Nemusíš vyplňovat — pokud necháš prázdné, program to spočítá sám z „Kusů na Paletu" a z toho, kolik palet se vejde do regálu.</div>` : ''}
-          </div>
-        `;}).join('') || '<p style="font-size:12px;color:var(--ink-soft);">Tenhle sklad zatím nemá definované žádné skladové jednotky — přidej je v jeho nastavení (Sklad → Upravit sklad).</p>'}
+      <div class="field-row" id="units-per-storage-fields">
+        ${(function(){
+          const allUnitTypes = (productWarehouse&&productWarehouse.storageUnitTypes)||[];
+          const existingIds = new Set(Object.keys(p.unitsPerStorageType||{}));
+          const shown = allUnitTypes.filter(u=>existingIds.has(u.id));
+          return shown.map(u=>buildUnitTypeFieldHtml(u,p)).join('');
+        })()}
+      </div>
+      <div style="margin-top:8px;max-width:260px;">
+        <select id="add-storage-unit-select">
+          <option value="">+ Přidat jednotku…</option>
+          ${(function(){
+            const allUnitTypes = (productWarehouse&&productWarehouse.storageUnitTypes)||[];
+            const existingIds = new Set(Object.keys(p.unitsPerStorageType||{}));
+            return allUnitTypes.filter(u=>!existingIds.has(u.id)).map(u=>`<option value="${u.id}">${escapeHtml(u.name)}</option>`).join('');
+          })()}
+          <option value="__new__">+ Nová jednotka…</option>
+        </select>
       </div>
 
       <div class="section-title">Nutriční údaje</div>
@@ -8135,21 +8161,28 @@ function viewProductForm(){
         <div class="mb-item"><div class="mb-label">Obchodní přirážka</div><div class="mb-value" id="mb-markup-pct">${margin.markupPct.toFixed(1)}%</div></div>
       </div>
       ` : ''}
-      ${(state.priceLevels||[]).length ? `
       <div class="mini-label" style="margin-top:14px;">Ceny pro jednotlivé cenové hladiny</div>
       <p style="font-size:11.5px;color:var(--ink-soft);margin:2px 0 8px 0;">Nepovinné — nech prázdné a použije se prodejní cena výše.</p>
-      <table class="items-table" style="max-width:460px;">
-        <thead><tr><th>Hladina</th><th style="width:150px;">Cena (bez DPH)</th></tr></thead>
-        <tbody>
-          ${state.priceLevels.map(pl=>`
-            <tr>
-              <td>${escapeHtml(pl.name)}</td>
-              <td><input type="number" step="0.01" name="priceLevel_${pl.id}" value="${p.pricesByLevel&&p.pricesByLevel[pl.id]!=null?p.pricesByLevel[pl.id]:''}" placeholder="${fmt(p.salePrice||0)}" ${!canEditPrices()?'disabled':''} style="width:100%;padding:6px 8px;border:1px solid var(--line);border-radius:4px;"></td>
-            </tr>
-          `).join('')}
+      <table class="items-table" style="max-width:520px;">
+        <thead><tr><th>Hladina</th><th style="width:150px;">Cena (bez DPH)</th><th></th></tr></thead>
+        <tbody id="price-level-rows">
+          ${(function(){
+            const existingIds = new Set(Object.keys(p.pricesByLevel||{}));
+            const shown = (state.priceLevels||[]).filter(pl=>existingIds.has(pl.id));
+            return shown.map(pl=>buildPriceLevelRowHtml(pl,p)).join('');
+          })()}
         </tbody>
       </table>
-      ` : ''}
+      <div style="margin-top:8px;max-width:260px;">
+        <select id="add-price-level-select">
+          <option value="">+ Přidat cenovou hladinu…</option>
+          ${(function(){
+            const existingIds = new Set(Object.keys(p.pricesByLevel||{}));
+            return (state.priceLevels||[]).filter(pl=>!existingIds.has(pl.id)).map(pl=>`<option value="${pl.id}">${escapeHtml(pl.name)}</option>`).join('');
+          })()}
+          <option value="__new__">+ Nová hladina…</option>
+        </select>
+      </div>
 
       <div class="section-title">Sklad</div>
       ${editing ? `
@@ -8241,10 +8274,68 @@ function setupProductForm(){
     const el = form.querySelector(`[name="${n}"]`);
     if(el) el.addEventListener('input', updatePalletHeightEstimates);
   });
-  form.querySelectorAll('.pallet-units-input').forEach(el=>{
-    el.addEventListener('input', updatePalletHeightEstimates);
-  });
+  const unitsContainer = document.getElementById('units-per-storage-fields');
+  if(unitsContainer){
+    unitsContainer.addEventListener('input', (e)=>{
+      if(e.target.classList && e.target.classList.contains('pallet-units-input')) updatePalletHeightEstimates();
+    });
+  }
   updatePalletHeightEstimates();
+
+  const addUnitSelect = document.getElementById('add-storage-unit-select');
+  if(addUnitSelect){
+    addUnitSelect.addEventListener('change', async ()=>{
+      const val = addUnitSelect.value;
+      if(!val) return;
+      const existingP = state.editingProductId ? productById(state.editingProductId) : null;
+      const pw = warehouseById(existingP ? existingP.warehouseId : null) || defaultWarehouse();
+      if(!pw){ addUnitSelect.value=''; return; }
+      let unit;
+      if(val==='__new__'){
+        const name = prompt('Název nové skladové jednotky (např. Paleta, Regál, Přihrádka):');
+        if(!name || !name.trim()){ addUnitSelect.value=''; return; }
+        const trimmed = name.trim();
+        const fields = isPalletLikeUnit({name:trimmed}) ? {width:120,depth:80,height:14.4} : {width:0,height:0,depth:0};
+        unit = { id: uid(), name: trimmed, ...fields };
+        if(!pw.storageUnitTypes) pw.storageUnitTypes = [];
+        pw.storageUnitTypes.push(unit);
+        try{ await saveWarehouses(); }catch(err){ alert('Uložení se nepovedlo.'); addUnitSelect.value=''; return; }
+      } else {
+        unit = (pw.storageUnitTypes||[]).find(u=>u.id===val);
+      }
+      if(!unit || !unitsContainer){ addUnitSelect.value=''; return; }
+      unitsContainer.insertAdjacentHTML('beforeend', buildUnitTypeFieldHtml(unit, existingP));
+      const opt = addUnitSelect.querySelector(`option[value="${val}"]`);
+      if(opt) opt.remove();
+      addUnitSelect.value = '';
+      updatePalletHeightEstimates();
+    });
+  }
+  const priceLevelRows = document.getElementById('price-level-rows');
+  const addLevelSelect = document.getElementById('add-price-level-select');
+  if(addLevelSelect){
+    addLevelSelect.addEventListener('change', async ()=>{
+      const val = addLevelSelect.value;
+      if(!val) return;
+      let level;
+      if(val==='__new__'){
+        const name = prompt('Název nové cenové hladiny (např. VIP, Partner…):');
+        if(!name || !name.trim()){ addLevelSelect.value=''; return; }
+        level = { id: uid(), name: name.trim() };
+        state.priceLevels = state.priceLevels||[];
+        state.priceLevels.push(level);
+        try{ await savePriceLevels(); }catch(err){ alert('Uložení se nepovedlo.'); addLevelSelect.value=''; return; }
+      } else {
+        level = (state.priceLevels||[]).find(pl=>pl.id===val);
+      }
+      if(!level || !priceLevelRows){ addLevelSelect.value=''; return; }
+      const existingP = state.editingProductId ? productById(state.editingProductId) : null;
+      priceLevelRows.insertAdjacentHTML('beforeend', buildPriceLevelRowHtml(level, existingP));
+      const opt = addLevelSelect.querySelector(`option[value="${val}"]`);
+      if(opt) opt.remove();
+      addLevelSelect.value = '';
+    });
+  }
 
   const nutritionCheckbox = document.getElementById('has-nutrition-checkbox');
   const nutritionBox = document.getElementById('nutrition-fields-box');
@@ -8426,7 +8517,7 @@ async function onSubmitProduct(e){
     warehouseId: existing ? existing.warehouseId : ((defaultWarehouse()||{}).id||''),
     vatRate: canEditPrices() ? (parseFloat(fd.get('vatRate'))||0) : (existing?(existing.vatRate??21):21),
     vatRatePurchase: canEditPrices() ? (parseFloat(fd.get('vatRatePurchase'))||0) : (existing?(existing.vatRatePurchase??21):21),
-    note: fd.get('note')||'',
+    note: existing ? (existing.note||'') : '',
     purchasePrice: canEditPrices() ? (parseFloat(fd.get('purchasePrice'))||0) : (existing?(existing.purchasePrice||0):0),
     salePrice: canEditPrices() ? (parseFloat(fd.get('salePrice'))||0) : (existing?(existing.salePrice||0):0),
     costs: existing ? (existing.costs||0) : 0,
@@ -10709,6 +10800,16 @@ document.addEventListener('click', async (e)=>{
   const id = el.getAttribute('data-id');
 
   if(action==='auth-switch'){ state.authView = el.getAttribute('data-view'); state.authError=''; state.authNotice=''; render(); }
+  else if(action==='remove-unit-type-field'){
+    // Bez render() — je to uprostřed rozepsaného formuláře produktu, celé
+    // překreslení by smazalo cokoli, co uživatel zatím napsal jinam.
+    const field = el.closest('[data-unit-type-field]');
+    if(field) field.remove();
+  }
+  else if(action==='remove-price-level-row'){
+    const row = el.closest('tr[data-price-level-row]');
+    if(row) row.remove();
+  }
   else if(action==='choose-plan'){
     state.selectedPlan = el.getAttribute('data-plan');
     state.authView = 'billing-details';
