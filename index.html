@@ -692,6 +692,7 @@ let state = {
   accountError: '',
   accountNotice: '',
   companyNotice: '',
+  invoicingSettingsNotice: '',
   colleagueError: '',
   editingUserCredsId: null,
   editingUserNameId: null,
@@ -1456,10 +1457,11 @@ const NAV_GROUPS = [
     ]
   },
   { label:'Nastavení', primaryView:'settings', tabKey:null,
-    views:['settings','settings-team','settings-integrations','settings-notifications','settings-backup','settings-data-health','settings-discounts','settings-audit','settings-billing','settings-danger','company-form','account-form','colleague-form','user-creds-form','factory-reset'],
+    views:['settings','settings-invoicing','settings-team','settings-integrations','settings-notifications','settings-backup','settings-data-health','settings-discounts','settings-audit','settings-billing','settings-danger','company-form','account-form','colleague-form','user-creds-form','factory-reset'],
     subTabs:[
       { tabKey:null, label:'Předplatné', view:'settings-billing', activeViews:['settings-billing'] },
       { tabKey:null, label:'Firma', view:'settings', activeViews:['settings','company-form'] },
+      { tabKey:null, label:'Faktury', view:'settings-invoicing', activeViews:['settings-invoicing'] },
       { tabKey:null, label:'Kolegové', view:'settings-team', activeViews:['settings-team','account-form','colleague-form','user-creds-form'] },
       { tabKey:null, label:'Integrace', view:'settings-integrations', activeViews:['settings-integrations'] },
       { tabKey:null, label:'Upozornění', view:'settings-notifications', activeViews:['settings-notifications'] },
@@ -3350,6 +3352,7 @@ function renderView(){
     case 'client-detail': return viewClientDetail();
     case 'settings': return viewSettings();
     case 'settings-billing': return viewSettingsBilling();
+    case 'settings-invoicing': return viewSettingsInvoicing();
     case 'settings-team': return viewSettingsTeam();
     case 'settings-integrations': return viewSettingsIntegrations();
     case 'settings-notifications': return viewSettingsNotifications();
@@ -5279,7 +5282,7 @@ function viewSettings(){
     <div class="pagehead"><div><h1>Firma</h1><p class="desc">Hlavní firma a případné další firmy pro fakturaci.</p></div></div>
 
     <div class="section-title" style="margin-top:0;padding-top:0;border-top:none;">Hlavní firma <span class="badge">výchozí ve fakturách</span></div>
-    ${companyFormMarkup(primary, { showCancel:false, submitLabel:'Uložit hlavní firmu', notice: state.companyNotice })}
+    ${companyIdentityFormMarkup(primary, { submitLabel:'Uložit hlavní firmu', notice: state.companyNotice })}
 
     <div class="section-title" style="margin-top:30px;">Další firmy</div>
     <div class="form-card">
@@ -5302,6 +5305,13 @@ function viewSettings(){
         <button type="button" class="btn secondary" data-action="new-company">+ Přidat firmu</button>
       </div>
     </div>
+  `;
+}
+function viewSettingsInvoicing(){
+  const primary = state.companies[0];
+  return `
+    <div class="pagehead"><div><h1>Faktury</h1><p class="desc">Číslování, symboly, čárový kód, měny a chování při fakturaci — pro hlavní firmu.</p></div></div>
+    ${companyInvoicingFormMarkup(primary, { submitLabel:'Uložit nastavení faktur', notice: state.invoicingSettingsNotice })}
   `;
 }
 function viewSettingsBilling(){
@@ -5712,6 +5722,196 @@ function viewCompanyForm(){
   `;
 }
 
+function companyIdentityFormMarkup(co, opts){
+  opts = opts || {};
+  return `
+    <form id="company-identity-form" class="form-card">
+      <div class="section-title" style="margin-top:0;padding-top:0;border-top:none;">Firma</div>
+      <div class="field combo-field">
+        <label>Název firmy / jméno OSVČ</label>
+        <input name="name" id="co-name" value="${escapeAttr(co.name)}" placeholder="Začni psát a ledgers nabídne shody z ARES…" autocomplete="off" required>
+        <div class="combo-list" id="co-name-list"></div>
+      </div>
+      <p id="co-ares-status" style="font-size:12px;color:var(--ink-soft);margin:-6px 0 14px 0;"></p>
+      <div class="field-row">
+        <div class="field"><label>IČO</label><input name="ico" id="co-ico" value="${escapeAttr(co.ico)}"></div>
+        <div class="field"><label>DIČ</label><input name="dic" id="co-dic" value="${escapeAttr(co.dic)}"></div>
+      </div>
+      ${addressFieldGroup('co-address','Adresa',co.address)}
+      <div class="field-row">
+        <div class="field"><label>Email</label><input type="email" name="email" value="${escapeAttr(co.email)}"></div>
+        <div class="field"><label>Telefon</label><input name="phone" value="${escapeAttr(co.phone)}"></div>
+      </div>
+      <div class="field">
+        <div class="field"><label>Web</label><input name="website" value="${escapeAttr(co.website)}" placeholder="www.firma.cz" style="max-width:320px;"></div>
+      </div>
+
+      <div class="section-title">Platby</div>
+      <div class="field-row">
+        <div class="field"><label>Číslo účtu</label><input name="account" value="${escapeAttr(co.account)}" placeholder="123456789/0300"></div>
+        <div class="field"><label>Banka</label><input name="bankName" value="${escapeAttr(co.bankName)}"></div>
+      </div>
+      <div class="field-row">
+        <div class="field"><label>IBAN (pro QR platbu)</label><input name="iban" value="${escapeAttr(co.iban)}" placeholder="CZ..."></div>
+        <div class="field"><label>SWIFT / BIC</label><input name="swift" value="${escapeAttr(co.swift)}"></div>
+      </div>
+
+      <div class="toggle-row"><input type="checkbox" name="vatPayer" id="chk-vatPayer" value="1" ${co.vatPayer?'checked':''}><label for="chk-vatPayer">Firma je plátce DPH</label></div>
+      <p style="font-size:11.5px;color:var(--ink-soft);margin:-6px 0 14px 0;">Když firma není plátce DPH, faktury z ní se vystaví automaticky bez DPH a nastavení sazby se na nich nezobrazí.</p>
+
+      <div class="section-title">Zápis v obchodním rejstříku</div>
+      <div class="toggle-row"><input type="checkbox" name="showRegistration" id="chk-showRegistration" value="1" ${co.showRegistration?'checked':''}><label for="chk-showRegistration">Zobrazovat zápis v obchodním rejstříku na faktuře</label></div>
+      <div class="field-row">
+        <div class="field"><label>Zápis obchodní rejstřík: dne</label><input type="date" name="regDate" value="${escapeAttr(co.regDate||'')}"></div>
+        <div class="field"><label>Městským soudem v</label><input name="regCourt" value="${escapeAttr(co.regCourt||'')}" placeholder="např. Praze"></div>
+      </div>
+      <div class="field-row">
+        <div class="field"><label>Oddíl</label><input name="regSection" value="${escapeAttr(co.regSection||'')}" placeholder="např. C"></div>
+        <div class="field"><label>Vložka</label><input name="regInsert" value="${escapeAttr(co.regInsert||'')}" placeholder="např. 12345"></div>
+      </div>
+      <p style="font-size:11.5px;color:var(--ink-soft);margin:-6px 0 4px 0;">Na faktuře se z toho poskládá věta: „Zapsáno v obchodním rejstříku vedeném Městským soudem v [soud], oddíl [oddíl], vložka [vložka], dne [datum].“</p>
+
+      <div class="section-title">Vzhled faktury</div>
+      <div class="brand-grid">
+        ${brandSlot(co,'logo','Logo firmy','Zobrazí se v hlavičce faktury.','Logo firmy')}
+        ${brandSlot(co,'signature','Elektronický podpis','Foto nebo scan podpisu.','Podpis')}
+        ${brandSlot(co,'stamp','Razítko','Foto razítka firmy.','Razítko')}
+      </div>
+      <input type="file" id="branding-file-input" accept="image/*" style="display:none;">
+      <div class="toggle-row" style="margin-top:14px;"><input type="checkbox" name="showLogo" id="chk-showLogo" value="1" ${co.showLogo?'checked':''}><label for="chk-showLogo">Zobrazovat logo na fakturách</label></div>
+      <div class="toggle-row"><input type="checkbox" name="showStamp" id="chk-showStamp" value="1" ${co.showStamp?'checked':''}><label for="chk-showStamp">Zobrazovat razítko na fakturách</label></div>
+      <div class="toggle-row"><input type="checkbox" name="showSignature" id="chk-showSignature" value="1" ${co.showSignature?'checked':''}><label for="chk-showSignature">Zobrazovat elektronický podpis na fakturách</label></div>
+      <div class="toggle-row"><input type="checkbox" name="showQr" id="chk-showQr" value="1" ${co.showQr?'checked':''}><label for="chk-showQr">Zobrazovat QR platbu (vyžaduje vyplněný IBAN)</label></div>
+
+      <div class="formfoot" style="align-items:center;">
+        <button type="submit" class="btn">${opts.submitLabel||'Uložit firmu'}</button>
+        ${opts.notice?`<span style="font-size:13px;color:var(--accent);">${escapeHtml(opts.notice)}</span>`:''}
+      </div>
+      <input type="hidden" name="id" value="${co.id||''}">
+    </form>
+  `;
+}
+function companyInvoicingFormMarkup(co, opts){
+  opts = opts || {};
+  return `
+    <form id="company-invoicing-form" class="form-card">
+      <div class="section-title" style="margin-top:0;padding-top:0;border-top:none;">Fakturace</div>
+      <div class="field-row">
+        <div class="field"><label>Prefix čísla faktury</label><input name="prefix" value="${escapeAttr(co.prefix)}"></div>
+        <div class="field"><label>Další pořadové číslo</label><input type="number" name="nextNumber" value="${co.nextNumber}"></div>
+      </div>
+      <div class="field-row">
+        <div class="field"><label>Prefix čísla dobropisu</label><input name="creditNotePrefix" value="${escapeAttr(co.creditNotePrefix||'DOB-')}"></div>
+        <div class="field"><label>Další pořadové číslo dobropisu</label><input type="number" name="creditNoteNextNumber" value="${co.creditNoteNextNumber||1}"></div>
+      </div>
+      <div class="field-row">
+        <div class="field"><label>Prefix čísla zálohové faktury</label><input name="proformaPrefix" value="${escapeAttr(co.proformaPrefix||'ZF-')}"></div>
+        <div class="field"><label>Další pořadové číslo zálohové faktury</label><input type="number" name="proformaNextNumber" value="${co.proformaNextNumber||1}"></div>
+      </div>
+
+      <div class="section-title">Číslování objednávek</div>
+      <p style="font-size:12.5px;color:var(--ink-soft);margin-top:-6px;">Určuje, jaké číslo dostane nová objednávka v modulu Objednávky.</p>
+      <div class="field">
+        <label>Jak se má číslovat nová objednávka</label>
+        <select name="orderNumberMode" id="company-order-number-mode">
+          <option value="own_sequence" ${(co.orderNumberMode||'own_sequence')==='own_sequence'?'selected':''}>Vlastní číselná řada</option>
+          <option value="same_as_invoice" ${co.orderNumberMode==='same_as_invoice'?'selected':''}>Stejné jako číslo faktury</option>
+        </select>
+      </div>
+      <p style="font-size:11.5px;color:var(--ink-soft);margin:-6px 0 14px 0;">
+        Při volbě „Stejné jako číslo faktury“ se v okamžiku uložení nové objednávky rovnou vystaví i faktura a objednávka dostane stejné číslo jako ona.
+      </p>
+      <div id="company-order-number-sequence-box" class="field-row" style="display:${(co.orderNumberMode||'own_sequence')==='same_as_invoice'?'none':''};">
+        <div class="field"><label>Prefix čísla objednávky</label><input name="orderNumberPrefix" value="${escapeAttr(co.orderNumberPrefix||'OBJ-')}"></div>
+        <div class="field"><label>Další pořadové číslo objednávky</label><input type="number" name="orderNumberNextNumber" value="${co.orderNumberNextNumber||1}"></div>
+      </div>
+
+      <div class="section-title">Variabilní a konstantní symbol</div>
+      <div class="field">
+        <label>Jak se má vyplňovat variabilní symbol</label>
+        <select name="vsMode" id="company-vs-mode">
+          <option value="same_as_invoice" ${(co.vsMode||'same_as_invoice')==='same_as_invoice'?'selected':''}>Stejný jako číslo faktury (jen číslice)</option>
+          <option value="separate_sequence" ${co.vsMode==='separate_sequence'?'selected':''}>Vlastní číselná řada</option>
+          <option value="manual" ${co.vsMode==='manual'?'selected':''}>Nevyplňovat automaticky, doplním ručně</option>
+        </select>
+      </div>
+      <div id="company-vs-sequence-box" class="field-row" style="display:${co.vsMode==='separate_sequence'?'':'none'};">
+        <div class="field"><label>Prefix variabilního symbolu</label><input name="vsPrefix" value="${escapeAttr(co.vsPrefix||'')}" placeholder="nepovinné"></div>
+        <div class="field"><label>Další pořadové číslo VS</label><input type="number" name="vsNextNumber" value="${co.vsNextNumber||1}"></div>
+      </div>
+      <div class="field">
+        <label>Jak se má vyplňovat konstantní symbol</label>
+        <select name="ksMode" id="company-ks-mode">
+          <option value="same_as_invoice" ${co.ksMode==='same_as_invoice'?'selected':''}>Stejný jako číslo faktury (jen číslice)</option>
+          <option value="separate_sequence" ${co.ksMode==='separate_sequence'?'selected':''}>Vlastní číselná řada</option>
+          <option value="manual" ${(co.ksMode||'manual')==='manual'?'selected':''}>Nevyplňovat automaticky, doplním ručně</option>
+        </select>
+      </div>
+      <div id="company-ks-sequence-box" class="field-row" style="display:${co.ksMode==='separate_sequence'?'':'none'};">
+        <div class="field"><label>Prefix konstantního symbolu</label><input name="ksPrefix" value="${escapeAttr(co.ksPrefix||'')}" placeholder="nepovinné"></div>
+        <div class="field"><label>Další pořadové číslo KS</label><input type="number" name="ksNextNumber" value="${co.ksNextNumber||1}"></div>
+      </div>
+
+      <div class="section-title">Čárový kód na faktuře</div>
+      <label style="display:flex;align-items:center;gap:8px;font-size:14px;margin:6px 0 14px 0;">
+        <input type="checkbox" name="showInvoiceBarcode" ${co.showInvoiceBarcode!==false?'checked':''}> Zobrazovat čárový kód čísla faktury vpravo nahoře
+      </label>
+      <div class="field" style="max-width:340px;">
+        <label>Typ čárového kódu</label>
+        <select name="invoiceBarcodeType">
+          ${BARCODE_TYPES.map(t=>`<option value="${t.value}" ${(co.invoiceBarcodeType||'CODE128')===t.value?'selected':''}>${escapeHtml(t.label)}</option>`).join('')}
+        </select>
+      </div>
+
+      <div class="section-title">Cizí měny na fakturách</div>
+      <p style="font-size:12.5px;color:var(--ink-soft);margin-top:-6px;">Když fakturuješ v EUR/USD, program si sám natáhne aktuální kurz (ČNB/ECB) a přepočte podle něj ceny zadané v Kč. Kurz se navíc mírně upraví v tvůj prospěch — klient tak pokryje i to, co tě bude stát převod peněz zpátky na koruny.</p>
+      <div class="field" style="max-width:260px;">
+        <label>Marže na kurzu ve tvůj prospěch (%)</label>
+        <input type="number" step="0.1" min="0" max="20" name="fxMarginPercent" value="${co.fxMarginPercent??2}">
+      </div>
+
+      <div class="section-title">Postup při vychystávání objednávek</div>
+      <p style="font-size:12.5px;color:var(--ink-soft);margin-top:-6px;">Nastav si, co se má stát automaticky a co má vyžadovat tvoje potvrzení, ať postup sedí na to, jak to u vás ve skladu doopravdy funguje.</p>
+      <label style="display:flex;align-items:center;gap:8px;font-size:14px;margin:6px 0 12px 0;">
+        <input type="checkbox" name="fulfillmentAutoPrintInvoice" ${co.fulfillmentAutoPrintInvoice?'checked':''}> Jakmile jsou naskenované všechny položky, fakturu rovnou automaticky vytisknout
+      </label>
+      <label style="display:flex;align-items:center;gap:8px;font-size:14px;margin:0 0 12px 0;">
+        <input type="checkbox" name="fulfillmentRequireInvoiceScan" ${co.fulfillmentRequireInvoiceScan?'checked':''}> Než se přejde na štítek, vyžadovat naskenování čárového kódu na vytištěné faktuře (pojistka, že jde s balíkem správná faktura)
+      </label>
+      <label style="display:flex;align-items:center;gap:8px;font-size:14px;margin:0 0 14px 0;">
+        <input type="checkbox" name="fulfillmentAutoShipping" ${co.fulfillmentAutoShipping!==false?'checked':''}> Po fakturaci (nebo jejím potvrzení) rovnou automaticky vytvořit zásilku u dopravce a vytisknout štítek
+      </label>
+
+      <div class="field-row">
+        <div class="field"><label>Výchozí splatnost (dny)</label><input type="number" name="defaultDueDays" value="${co.defaultDueDays}"></div>
+        <div class="field"><label>Výchozí forma úhrady</label>
+          <select name="defaultPaymentMethod">
+            <option value="" ${!co.defaultPaymentMethod?'selected':''}>— nevybráno —</option>
+            ${['Bankovním převodem','Hotově','Kartou'].map(m=>`<option value="${m}" ${co.defaultPaymentMethod===m?'selected':''}>${m}</option>`).join('')}
+          </select>
+        </div>
+      </div>
+      <div class="field"><label>Výchozí poznámka (na fakturu)</label><input name="defaultNote" value="${escapeAttr(co.defaultNote)}"></div>
+      <div class="field"><label>Platební podmínky / patička faktury</label><textarea name="invoiceTerms" style="min-height:70px;">${co.invoiceTerms||''}</textarea></div>
+
+      <div class="section-title">Oceňování skladu</div>
+      <div class="field" style="max-width:360px;">
+        <label>Metoda oceňování</label>
+        <select name="inventoryValuationMethod">
+          <option value="average" ${(co.inventoryValuationMethod||'average')==='average'?'selected':''}>Průměrné náklady (vážený průměr)</option>
+          <option value="fifo" ${co.inventoryValuationMethod==='fifo'?'selected':''}>FIFO (první dovnitř, první ven)</option>
+        </select>
+        <p style="font-size:11px;color:var(--ink-soft);margin:4px 0 0 0;">Jak počítat hodnotu skladu, když se nákupní cena v čase mění. Platí metoda hlavní firmy.</p>
+      </div>
+
+      <div class="formfoot" style="align-items:center;">
+        <button type="submit" class="btn">${opts.submitLabel||'Uložit nastavení faktur'}</button>
+        ${opts.notice?`<span style="font-size:13px;color:var(--accent);">${escapeHtml(opts.notice)}</span>`:''}
+      </div>
+      <input type="hidden" name="id" value="${co.id||''}">
+    </form>
+  `;
+}
 function companyFormMarkup(co, opts){
   opts = opts || {};
   return `
@@ -10300,6 +10500,16 @@ function afterRender(){
   const companyForm = document.getElementById('company-form');
   if(companyForm){
     companyForm.addEventListener('submit', onSubmitCompany);
+  }
+  const companyIdentityForm = document.getElementById('company-identity-form');
+  if(companyIdentityForm){
+    companyIdentityForm.addEventListener('submit', onSubmitCompanyIdentity);
+  }
+  const companyInvoicingForm = document.getElementById('company-invoicing-form');
+  if(companyInvoicingForm){
+    companyInvoicingForm.addEventListener('submit', onSubmitCompanyInvoicing);
+  }
+  if(companyForm || companyInvoicingForm){
     const vsModeSelect = document.getElementById('company-vs-mode');
     if(vsModeSelect){
       vsModeSelect.addEventListener('change', ()=>{
@@ -11542,7 +11752,7 @@ document.addEventListener('click', async (e)=>{
     state.authView='login'; state.view='dashboard';
     render();
   }
-  else if(action==='nav'){ stopCameraScanIfActive(); state.view = el.getAttribute('data-view'); state.editingInvoiceId=null; state.editingClientId=null; state.viewingClientId=null; state.newClientDraftId=null; state.newClientDraftAttachments=[]; state.editingCompanyId=null; state.newCompanyDraftId=null; state.newCompanyDraft={logo:'',signature:'',stamp:''}; state.companyNotice=''; state.formItems=[]; state.formCompanyId=null; state.selectedInvoiceIds.clear(); state.selectedClientIds.clear(); state.editingSupplierId=null; state.viewingSupplierId=null; state.newSupplierDraftId=null; state.newSupplierDraftAttachments=[]; state.editingProductId=null; state.newProductDraftId=null; state.currentProductDraftPhoto=''; state.eanLookupStatus=''; state.selectedProductIds.clear(); closeProductContextMenu(); state.productColsPanelOpen=false; state.editingReceivedInvoiceId=null; state.receivedFormItems=[]; state.viewingReceivedInvoiceId=null; state.newInvoiceDocType='invoice'; state.newInvoiceRelatedId=null; state.newInvoiceClientId=null; state._currentInvoiceFxRate=null; state.stockMovementProductId=null; state.newMovementPanelOpen=false; state.locationScanBuffer={productId:null,locationId:null}; state.locationScanMessage=''; state.stockScanSession=[]; state.editingRecurringId=null; state.recurringFormItems=[]; state.newRecurringDraft=null; state.recurringSourceInvoiceId=null; render(); }
+  else if(action==='nav'){ stopCameraScanIfActive(); state.view = el.getAttribute('data-view'); state.editingInvoiceId=null; state.editingClientId=null; state.viewingClientId=null; state.newClientDraftId=null; state.newClientDraftAttachments=[]; state.editingCompanyId=null; state.newCompanyDraftId=null; state.newCompanyDraft={logo:'',signature:'',stamp:''}; state.companyNotice=''; state.invoicingSettingsNotice=''; state.formItems=[]; state.formCompanyId=null; state.selectedInvoiceIds.clear(); state.selectedClientIds.clear(); state.editingSupplierId=null; state.viewingSupplierId=null; state.newSupplierDraftId=null; state.newSupplierDraftAttachments=[]; state.editingProductId=null; state.newProductDraftId=null; state.currentProductDraftPhoto=''; state.eanLookupStatus=''; state.selectedProductIds.clear(); closeProductContextMenu(); state.productColsPanelOpen=false; state.editingReceivedInvoiceId=null; state.receivedFormItems=[]; state.viewingReceivedInvoiceId=null; state.newInvoiceDocType='invoice'; state.newInvoiceRelatedId=null; state.newInvoiceClientId=null; state._currentInvoiceFxRate=null; state.stockMovementProductId=null; state.newMovementPanelOpen=false; state.locationScanBuffer={productId:null,locationId:null}; state.locationScanMessage=''; state.stockScanSession=[]; state.editingRecurringId=null; state.recurringFormItems=[]; state.newRecurringDraft=null; state.recurringSourceInvoiceId=null; render(); }
   else if(action==='new-invoice'){ state.view='invoice-form'; state.editingInvoiceId=null; state.formItems=[]; state.formCompanyId=null; state.newInvoiceDocType='invoice'; state.newInvoiceRelatedId=null; render(); }
   else if(action==='new-credit-note'){ state.view='invoice-form'; state.editingInvoiceId=null; state.formItems=[]; state.formCompanyId=null; state.newInvoiceDocType='credit_note'; state.newInvoiceRelatedId=null; render(); }
   else if(action==='new-proforma'){ state.view='invoice-form'; state.editingInvoiceId=null; state.formItems=[]; state.formCompanyId=null; state.newInvoiceDocType='proforma'; state.newInvoiceRelatedId=null; render(); }
@@ -13165,6 +13375,58 @@ async function onSubmitUserName(e){
   }
 }
 
+async function onSubmitCompanyIdentity(e){
+  e.preventDefault();
+  const fd = new FormData(e.target);
+  const id = fd.get('id');
+  const existing = companyById(id);
+  if(!existing){ alert('Firma nenalezena.'); return; }
+  const co = {
+    ...existing,
+    name: fd.get('name'), ico: fd.get('ico'), dic: fd.get('dic'), address: gatherAddrField(fd,'co-address'),
+    email: fd.get('email'), phone: fd.get('phone'), website: fd.get('website'),
+    account: fd.get('account'), bankName: fd.get('bankName'), iban: fd.get('iban'), swift: fd.get('swift'),
+    vatPayer: fd.get('vatPayer')==='1',
+    showRegistration: fd.get('showRegistration')==='1',
+    regDate: fd.get('regDate'), regCourt: fd.get('regCourt'), regSection: fd.get('regSection'), regInsert: fd.get('regInsert'),
+    showLogo: fd.get('showLogo')==='1', showStamp: fd.get('showStamp')==='1',
+    showSignature: fd.get('showSignature')==='1', showQr: fd.get('showQr')==='1',
+  };
+  const idx = state.companies.findIndex(c=>c.id===id);
+  state.companies[idx] = co;
+  try{ await saveCompanies(); }catch(err){ alert('Uložení se nepovedlo, zkus to prosím znovu.'); return; }
+  state.companyNotice = 'Firma byla uložena.';
+  render();
+}
+async function onSubmitCompanyInvoicing(e){
+  e.preventDefault();
+  const fd = new FormData(e.target);
+  const id = fd.get('id');
+  const existing = companyById(id);
+  if(!existing){ alert('Firma nenalezena.'); return; }
+  const co = {
+    ...existing,
+    prefix: fd.get('prefix'), nextNumber: parseInt(fd.get('nextNumber'))||1,
+    creditNotePrefix: fd.get('creditNotePrefix')||'DOB-', creditNoteNextNumber: parseInt(fd.get('creditNoteNextNumber'))||1,
+    proformaPrefix: fd.get('proformaPrefix')||'ZF-', proformaNextNumber: parseInt(fd.get('proformaNextNumber'))||1,
+    orderNumberMode: fd.get('orderNumberMode')||'own_sequence', orderNumberPrefix: fd.get('orderNumberPrefix')||'OBJ-', orderNumberNextNumber: parseInt(fd.get('orderNumberNextNumber'))||1,
+    vsMode: fd.get('vsMode')||'same_as_invoice', vsPrefix: fd.get('vsPrefix')||'', vsNextNumber: parseInt(fd.get('vsNextNumber'))||1,
+    ksMode: fd.get('ksMode')||'manual', ksPrefix: fd.get('ksPrefix')||'', ksNextNumber: parseInt(fd.get('ksNextNumber'))||1,
+    showInvoiceBarcode: fd.get('showInvoiceBarcode')==='on', invoiceBarcodeType: fd.get('invoiceBarcodeType')||'EAN13',
+    fxMarginPercent: parseFloat(fd.get('fxMarginPercent'))||0,
+    fulfillmentAutoPrintInvoice: fd.get('fulfillmentAutoPrintInvoice')==='on',
+    fulfillmentRequireInvoiceScan: fd.get('fulfillmentRequireInvoiceScan')==='on',
+    fulfillmentAutoShipping: fd.get('fulfillmentAutoShipping')==='on',
+    defaultDueDays: parseInt(fd.get('defaultDueDays'))||14, defaultNote: fd.get('defaultNote'),
+    invoiceTerms: fd.get('invoiceTerms'), defaultPaymentMethod: fd.get('defaultPaymentMethod'),
+    inventoryValuationMethod: fd.get('inventoryValuationMethod') || 'average',
+  };
+  const idx = state.companies.findIndex(c=>c.id===id);
+  state.companies[idx] = co;
+  try{ await saveCompanies(); }catch(err){ alert('Uložení se nepovedlo, zkus to prosím znovu.'); return; }
+  state.invoicingSettingsNotice = 'Uloženo.';
+  render();
+}
 async function onSubmitCompany(e){
   e.preventDefault();
   const fd = new FormData(e.target);
