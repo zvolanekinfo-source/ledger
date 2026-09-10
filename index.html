@@ -750,7 +750,9 @@ let state = {
   _stopCameraScan: null,
   _zxingReader: null,
   orderFilter: { search:'', status:'' },
-  integrations: { eshops:[], carriers:[], pollIntervalSec:60 },
+  integrations: { eshops:[], carriers:[], pollIntervalSec:60, notifyNewOrderEmail:false, notifyEmailAddress:'' },
+  onboarding: { step:1 },
+  onboardingCompleted: false,
   integrationTestStatus: {},
   receivedInvoiceSearch: '',
   receivedInvoiceSort: { key:'issueDate', dir:'desc' },
@@ -777,6 +779,8 @@ let state = {
   productContextMenu: null,
   productColsPanelOpen: false,
   addEshopPickerOpen: false,
+  addCarrierPickerOpen: false,
+  factoryReset: { step:1, password:'', error:'', busy:false, code:'', codeError:'', otpSent:false, confirmText:'' },
   eanLookupStatus: '',
   eanLookupFound: null,
   productPhotoDragOver: false,
@@ -1203,11 +1207,189 @@ function afterRenderBillingGate(){
       await loadSubscriptionStatus();
       if(state.subscription && state.subscription.status === 'active'){
         await loadAll();
-        state.view = firstAccessibleView();
+        const isFirstTime = !state.onboardingCompleted && !(state.companies[0] && state.companies[0].name) && isCurrentUserAdmin();
+        if(isFirstTime){
+          state.onboarding = { step:1 };
+          state.view = 'onboarding';
+        } else {
+          state.view = firstAccessibleView();
+        }
       }
       render();
     }, 4000);
   }
+}
+function renderOnboarding(){
+  const step = state.onboarding.step||1;
+  const stepLabels = ['Firma','Kolegové','E-shop','Dopravce','Hotovo'];
+  return `
+    <div class="plan-wrap">
+      <div class="plan-head">
+        <img src="${LOGO_DATA_URI}" alt="Ledgers.cz" style="height:34px;width:auto;display:block;margin:0 auto 22px auto;">
+        <div class="display" style="font-size:24px;">Vítej v ledgers!</div>
+        <p class="sub" style="max-width:480px;margin:8px auto 0 auto;">Pojďme appku za pár minut nastavit — firmu, kolegy i napojení na e-shop a dopravce. Cokoli jde kdykoli doladit i později v Nastavení.</p>
+      </div>
+      <div style="width:100%;max-width:560px;">
+        <div style="display:flex;align-items:flex-start;justify-content:center;margin-bottom:24px;">
+          ${stepLabels.map((label,i)=>{
+            const n=i+1;
+            const dot = `<div style="display:flex;flex-direction:column;align-items:center;gap:5px;font-size:11px;color:${n===step?'var(--accent)':'var(--ink-soft)'};white-space:nowrap;">
+              <div style="width:10px;height:10px;border-radius:50%;background:${n<=step?'var(--accent)':'var(--line)'};"></div>
+              ${escapeHtml(label)}
+            </div>`;
+            const connector = n<stepLabels.length ? `<div style="flex:1;height:1px;background:var(--line);margin-top:5px;min-width:16px;"></div>` : '';
+            return dot + connector;
+          }).join('')}
+        </div>
+        <div class="form-card">
+          ${step===1?renderOnboardingCompanyStep():''}
+          ${step===2?renderOnboardingTeamStep():''}
+          ${step===3?renderOnboardingEshopStep():''}
+          ${step===4?renderOnboardingCarrierStep():''}
+          ${step===5?renderOnboardingDoneStep():''}
+        </div>
+        ${step<5?`<div style="text-align:center;margin-top:14px;"><button type="button" class="btn-link" data-action="onboarding-skip-all">Přeskočit celé nastavení, appku si projdu sám/a</button></div>`:''}
+      </div>
+    </div>
+  `;
+}
+function renderOnboardingCompanyStep(){
+  const co = state.companies[0];
+  return `
+    <div class="section-title" style="margin-top:0;padding-top:0;border-top:none;">Krok 1 z 5 — Základní údaje o firmě</div>
+    <p style="font-size:12.5px;color:var(--ink-soft);margin-top:-4px;">Tohle se propíše do faktur. Detailní číslování a další volitelnosti doladíš později v Nastavení → Firma.</p>
+    <form id="onboarding-company-form" class="form-card" style="padding:0;box-shadow:none;border:none;">
+      <div class="field"><label>Název firmy / jméno OSVČ</label><input name="name" value="${escapeAttr(co.name)}" required autofocus></div>
+      <div class="field-row">
+        <div class="field"><label>IČO</label><input name="ico" value="${escapeAttr(co.ico)}"></div>
+        <div class="field"><label>DIČ</label><input name="dic" value="${escapeAttr(co.dic)}"></div>
+      </div>
+      <div class="field-row">
+        <div class="field"><label>E-mail</label><input type="email" name="email" value="${escapeAttr(co.email)}"></div>
+        <div class="field"><label>Telefon</label><input name="phone" value="${escapeAttr(co.phone)}"></div>
+      </div>
+      <div class="field-row">
+        <div class="field"><label>Číslo účtu</label><input name="account" value="${escapeAttr(co.account)}" placeholder="123456789/0300"></div>
+        <div class="field"><label>IBAN (pro QR platbu)</label><input name="iban" value="${escapeAttr(co.iban)}" placeholder="CZ..."></div>
+      </div>
+      <div class="toggle-row"><input type="checkbox" name="vatPayer" id="ob-vatPayer" value="1" ${co.vatPayer?'checked':''}><label for="ob-vatPayer">Firma je plátce DPH</label></div>
+      <div class="formfoot" style="justify-content:flex-end;margin-top:18px;">
+        <button type="submit" class="btn">Uložit a pokračovat →</button>
+      </div>
+    </form>
+  `;
+}
+function renderOnboardingTeamStep(){
+  const others = state.users.filter(u=>u.id!==state.currentUserId);
+  return `
+    <div class="section-title" style="margin-top:0;padding-top:0;border-top:none;">Krok 2 z 5 — Přizvat kolegy</div>
+    <p style="font-size:12.5px;color:var(--ink-soft);margin-top:-4px;">Nepovinné — kolegy můžeš přidat i kdykoli později v Nastavení → Kolegové.</p>
+    ${others.length ? `<p style="font-size:13px;">Už přidáno: ${others.map(u=>escapeHtml(u.name)).join(', ')}</p>` : ''}
+    <form id="onboarding-colleague-form" class="form-card" style="padding:0;box-shadow:none;border:none;">
+      ${state.colleagueError?`<div class="login-error">${escapeHtml(state.colleagueError)}</div>`:''}
+      <div class="field"><label>Jméno kolegy</label><input name="displayName" autofocus></div>
+      <div class="field"><label>E-mail</label><input type="email" name="email" autocomplete="off"></div>
+      <div class="field"><label>Heslo</label><input type="password" name="password" autocomplete="new-password" minlength="8" placeholder="aspoň 8 znaků"></div>
+      <p style="font-size:11px;color:var(--ink-soft);margin:-4px 0 4px 0;">Nech pole prázdná a rovnou pokračuj, pokud teď kolegu přidávat nechceš.</p>
+      <div class="formfoot" style="justify-content:flex-end;margin-top:14px;">
+        <button type="submit" class="btn">Pokračovat →</button>
+      </div>
+    </form>
+  `;
+}
+function renderOnboardingEshopStep(){
+  const eshops = state.integrations.eshops||[];
+  return `
+    <div class="section-title" style="margin-top:0;padding-top:0;border-top:none;">Krok 3 z 5 — Napojit e-shop</div>
+    <p style="font-size:12.5px;color:var(--ink-soft);margin-top:-4px;">Vyber platformu, kterou používáš — přidá se do Integrací, kde pak doplníš přístupové údaje. Nepovinné.</p>
+    ${eshops.length ? `<p style="font-size:13px;">Přidáno: ${eshops.map(e=>escapeHtml((ESHOP_PLATFORMS[e.platform]||{}).label||e.platform)).join(', ')}</p>` : ''}
+    <div style="display:flex;flex-direction:column;gap:6px;">
+      ${Object.keys(ESHOP_PLATFORMS).map(key=>`
+        <div class="combo-item" data-action="onboarding-add-eshop" data-platform="${key}" style="border:1px solid var(--line);border-radius:8px;">
+          ${escapeHtml(ESHOP_PLATFORMS[key].label)}
+        </div>
+      `).join('')}
+    </div>
+    <div class="formfoot" style="justify-content:flex-end;margin-top:18px;">
+      <button type="button" class="btn" data-action="onboarding-next">Pokračovat →</button>
+    </div>
+  `;
+}
+function renderOnboardingCarrierStep(){
+  const carriers = state.integrations.carriers||[];
+  return `
+    <div class="section-title" style="margin-top:0;padding-top:0;border-top:none;">Krok 4 z 5 — Přidat dopravce</div>
+    <p style="font-size:12.5px;color:var(--ink-soft);margin-top:-4px;">Vyber dopravce, se kterým posíláš objednávky — přidá se do Integrací, kde pak doplníš přístupové údaje. Nepovinné.</p>
+    ${carriers.length ? `<p style="font-size:13px;">Přidáno: ${carriers.map(c=>escapeHtml((CARRIER_TYPES[c.type]||{}).label||c.type)).join(', ')}</p>` : ''}
+    <div style="display:flex;flex-direction:column;gap:6px;">
+      ${Object.keys(CARRIER_TYPES).map(key=>`
+        <div class="combo-item" data-action="onboarding-add-carrier" data-type="${key}" style="border:1px solid var(--line);border-radius:8px;">
+          ${escapeHtml(CARRIER_TYPES[key].label)}
+        </div>
+      `).join('')}
+    </div>
+    <div class="formfoot" style="justify-content:flex-end;margin-top:18px;">
+      <button type="button" class="btn" data-action="onboarding-next">Pokračovat →</button>
+    </div>
+  `;
+}
+function renderOnboardingDoneStep(){
+  return `
+    <div style="text-align:center;padding:10px 0;">
+      <div style="font-size:40px;margin-bottom:10px;">🎉</div>
+      <div style="font-size:19px;font-weight:700;margin-bottom:8px;">Vše nastavené!</div>
+      <p style="font-size:13.5px;color:var(--ink-soft);max-width:420px;margin:0 auto 18px auto;">
+        Appka je připravená k použití. Cokoli z tohohle průvodce jde kdykoli doladit v Nastavení.
+      </p>
+      <button type="button" class="btn" data-action="onboarding-finish">Začít používat ledgers →</button>
+    </div>
+  `;
+}
+function afterRenderOnboarding(){
+  const companyForm = document.getElementById('onboarding-company-form');
+  if(companyForm) companyForm.addEventListener('submit', onSubmitOnboardingCompany);
+  const colleagueForm = document.getElementById('onboarding-colleague-form');
+  if(colleagueForm) colleagueForm.addEventListener('submit', onSubmitOnboardingColleague);
+}
+async function onSubmitOnboardingCompany(e){
+  e.preventDefault();
+  const fd = new FormData(e.target);
+  const co = state.companies[0];
+  co.name = fd.get('name')||'';
+  co.ico = fd.get('ico')||'';
+  co.dic = fd.get('dic')||'';
+  co.email = fd.get('email')||'';
+  co.phone = fd.get('phone')||'';
+  co.account = fd.get('account')||'';
+  co.iban = fd.get('iban')||'';
+  co.vatPayer = fd.get('vatPayer')==='1';
+  try{ await saveCompanies(); }catch(err){ alert('Uložení se nepovedlo, zkus to prosím znovu.'); return; }
+  state.onboarding.step = 2;
+  render();
+}
+async function onSubmitOnboardingColleague(e){
+  e.preventDefault();
+  const fd = new FormData(e.target);
+  const display_name = (fd.get('displayName')||'').trim();
+  const email = (fd.get('email')||'').trim();
+  const password = fd.get('password')||'';
+  if(display_name || email || password){
+    if(!email){ state.colleagueError='Zadej e-mail kolegy (nebo nech všechna pole prázdná a jen pokračuj).'; render(); return; }
+    if(password.length<8){ state.colleagueError='Heslo musí mít aspoň 8 znaků.'; render(); return; }
+    try{
+      await callAdminUsers({ action:'create_user', email, password, display_name: display_name||email });
+      await loadTeam();
+      state.colleagueError='';
+    }catch(err){ state.colleagueError = err.message || 'Přidání se nepovedlo.'; render(); return; }
+  }
+  state.onboarding.step = 3;
+  render();
+}
+async function finishOnboarding(){
+  state.onboardingCompleted = true;
+  try{ await storageSet('onboarding-completed', JSON.stringify(true), true); }catch(e){}
+  state.view = firstAccessibleView();
+  render();
 }
 
 async function callAdminUsers(payload){
@@ -1273,7 +1455,21 @@ const NAV_GROUPS = [
       { tabKey:'stock', label:'Sklad', view:'stock', activeViews:['stock','warehouses','warehouse-form','location-scan'] },
     ]
   },
-  { label:'Nastavení', primaryView:'settings', tabKey:null, views:['settings','company-form','account-form','colleague-form','user-creds-form'] },
+  { label:'Nastavení', primaryView:'settings', tabKey:null,
+    views:['settings','settings-team','settings-integrations','settings-notifications','settings-backup','settings-data-health','settings-discounts','settings-audit','settings-billing','settings-danger','company-form','account-form','colleague-form','user-creds-form','factory-reset'],
+    subTabs:[
+      { tabKey:null, label:'Předplatné', view:'settings-billing', activeViews:['settings-billing'] },
+      { tabKey:null, label:'Firma', view:'settings', activeViews:['settings','company-form'] },
+      { tabKey:null, label:'Kolegové', view:'settings-team', activeViews:['settings-team','account-form','colleague-form','user-creds-form'] },
+      { tabKey:null, label:'Integrace', view:'settings-integrations', activeViews:['settings-integrations'] },
+      { tabKey:null, label:'Upozornění', view:'settings-notifications', activeViews:['settings-notifications'] },
+      { tabKey:null, label:'Zálohování dat', view:'settings-backup', activeViews:['settings-backup'] },
+      { tabKey:null, label:'Kontrola dat', view:'settings-data-health', activeViews:['settings-data-health'] },
+      { tabKey:null, label:'Slevové kódy', view:'settings-discounts', activeViews:['settings-discounts'] },
+      { tabKey:null, label:'Audit log', view:'settings-audit', activeViews:['settings-audit'] },
+      { tabKey:null, label:'Nebezpečná zóna', view:'settings-danger', activeViews:['settings-danger','factory-reset'] },
+    ]
+  },
 ];
 function findNavGroupForView(view){
   return NAV_GROUPS.find(g=>g.views.includes(view));
@@ -1744,6 +1940,7 @@ async function loadAll(){
     state.clients.forEach(c=>{ if(c.priceLevelId===undefined) c.priceLevelId=''; });
   }
   try{ const r = await window.storage.get('discount-codes', true); state.discountCodes = r ? JSON.parse(r.value) : []; }catch(e){ state.discountCodes = []; }
+  try{ const r = await window.storage.get('onboarding-completed', true); state.onboardingCompleted = r ? JSON.parse(r.value) : false; }catch(e){ state.onboardingCompleted = false; }
   try{ const r = await window.storage.get('warehouse-locations', true); state.warehouseLocations = r ? JSON.parse(r.value) : []; }catch(e){ state.warehouseLocations = []; }
   try{ const r = await window.storage.get('orders', true); state.orders = r ? JSON.parse(r.value) : []; }catch(e){ state.orders = []; }
   try{
@@ -1757,9 +1954,9 @@ async function loadAll(){
         const carriers = [];
         if(loaded.zasilkovna && loaded.zasilkovna.apiKey) carriers.push({ id:uid(), type:'zasilkovna', name:'Zásilkovna', active:true, credentials:loaded.zasilkovna, rules:[] });
         if(loaded.dpd && loaded.dpd.username) carriers.push({ id:uid(), type:'dpd', name:'DPD', active:true, credentials:loaded.dpd, rules:[] });
-        state.integrations = { eshops, carriers, pollIntervalSec:60 };
+        state.integrations = { eshops, carriers, pollIntervalSec:60, notifyNewOrderEmail:false, notifyEmailAddress:'' };
       } else {
-        state.integrations = { eshops:[], carriers:[], pollIntervalSec:60, ...loaded };
+        state.integrations = { eshops:[], carriers:[], pollIntervalSec:60, notifyNewOrderEmail:false, notifyEmailAddress:'', ...loaded };
       }
     }
   }catch(e){}
@@ -2788,6 +2985,11 @@ function render(){
     afterRenderBillingGate();
     return;
   }
+  if(state.view==='onboarding'){
+    app.innerHTML = renderOnboarding();
+    afterRenderOnboarding();
+    return;
+  }
   const neededTab = VIEW_TO_TAB[state.view];
   if(neededTab && !canAccessTab(neededTab)){
     state.view = firstAccessibleView();
@@ -3054,7 +3256,13 @@ async function afterLogin(){
   }
 
   await loadAll();
-  state.view = firstAccessibleView();
+  const isFirstTime = !state.onboardingCompleted && !(state.companies[0] && state.companies[0].name) && isCurrentUserAdmin();
+  if(isFirstTime){
+    state.onboarding = { step:1 };
+    state.view = 'onboarding';
+  } else {
+    state.view = firstAccessibleView();
+  }
   state.authError=''; state.authNotice='';
   startEshopPolling();
   flushPendingWrites();
@@ -3141,6 +3349,16 @@ function renderView(){
     case 'client-form': return viewClientForm();
     case 'client-detail': return viewClientDetail();
     case 'settings': return viewSettings();
+    case 'settings-billing': return viewSettingsBilling();
+    case 'settings-team': return viewSettingsTeam();
+    case 'settings-integrations': return viewSettingsIntegrations();
+    case 'settings-notifications': return viewSettingsNotifications();
+    case 'settings-backup': return viewSettingsBackup();
+    case 'settings-data-health': return viewSettingsDataHealth();
+    case 'settings-discounts': return viewSettingsDiscounts();
+    case 'settings-audit': return viewSettingsAudit();
+    case 'settings-danger': return viewSettingsDanger();
+    case 'factory-reset': return viewFactoryReset();
     case 'company-form': return viewCompanyForm();
     case 'account-form': return viewAccountForm();
     case 'colleague-form': return viewColleagueForm();
@@ -4344,7 +4562,7 @@ function viewColleagueForm(){
       <p style="font-size:11.5px;color:var(--ink-soft);margin:-6px 0 4px 0;">Předej kolegovi e-mail a heslo — po prvním přihlášení si ho může sám v appce změnit.</p>
       <div class="formfoot">
         <button type="submit" class="btn">Vytvořit účet</button>
-        <button type="button" class="btn secondary" data-action="nav" data-view="settings">Zrušit</button>
+        <button type="button" class="btn secondary" data-action="nav" data-view="settings-team">Zrušit</button>
       </div>
     </form>
   `;
@@ -4353,7 +4571,7 @@ function viewColleagueForm(){
 function viewUserCredsForm(){
   const u = state.users.find(x=>x.id===state.editingUserCredsId);
   if(!u){
-    return emptyState('Kolega nenalezen','') + `<div class="formfoot"><button class="btn secondary" data-action="nav" data-view="settings">Zpět</button></div>`;
+    return emptyState('Kolega nenalezen','') + `<div class="formfoot"><button class="btn secondary" data-action="nav" data-view="settings-team">Zpět</button></div>`;
   }
   return `
     <div class="pagehead"><div><h1>E-mail a heslo — ${escapeHtml(u.name)}</h1><p class="desc">Vyplň jen to, co chceš změnit.</p></div></div>
@@ -4364,7 +4582,7 @@ function viewUserCredsForm(){
       <div class="field"><label>Nové heslo (nech prázdné, pokud ho nechceš měnit)</label><input type="password" name="password" autocomplete="new-password" minlength="8"></div>
       <div class="formfoot">
         <button type="submit" class="btn">Uložit</button>
-        <button type="button" class="btn secondary" data-action="nav" data-view="settings">Zrušit</button>
+        <button type="button" class="btn secondary" data-action="nav" data-view="settings-team">Zrušit</button>
       </div>
       <input type="hidden" name="userId" value="${u.id}">
     </form>
@@ -4383,7 +4601,7 @@ function viewAccountForm(){
       <div class="field"><label>Nové heslo znovu</label><input type="password" name="password2" autocomplete="new-password" minlength="8"></div>
       <div class="formfoot">
         <button type="submit" class="btn">Uložit</button>
-        <button type="button" class="btn secondary" data-action="nav" data-view="settings">Zrušit</button>
+        <button type="button" class="btn secondary" data-action="nav" data-view="settings-team">Zrušit</button>
       </div>
     </form>
   `;
@@ -4489,7 +4707,13 @@ const CARRIER_TYPES = {
   zasilkovna: { label:'Zásilkovna', fields:[{key:'apiKey', label:'API klíč', type:'password'}] },
   dpd: { label:'DPD', fields:[{key:'username', label:'Přihlašovací jméno'},{key:'password', label:'Heslo', type:'password'},{key:'customerId', label:'Zákaznické číslo'}] },
   ppl: { label:'PPL', fields:[{key:'apiKey', label:'API klíč', type:'password'}] },
-  gls: { label:'GLS', fields:[{key:'username', label:'Přihlašovací jméno'},{key:'password', label:'Heslo', type:'password'}] }
+  gls: { label:'GLS', fields:[{key:'username', label:'Přihlašovací jméno'},{key:'password', label:'Heslo', type:'password'}] },
+  custom: { label:'Vlastní dopravce / vlastní systém', fields:[
+    {key:'apiUrl', label:'URL pro vytvoření zásilky (nepovinné)', placeholder:'https://…'},
+    {key:'authHeaderName', label:'Název přihlašovací hlavičky (nepovinné)', placeholder:'např. Authorization'},
+    {key:'authHeaderValue', label:'Hodnota té hlavičky', type:'password'},
+    {key:'trackingUrlTemplate', label:'Šablona sledovacího odkazu (nepovinné)', placeholder:'https://sledovani.cz/{tracking}'}
+  ] }
 };
 const DELIVERY_TYPES = [ {value:'', label:'— nerozlišovat —'}, {value:'home', label:'Doručení domů'}, {value:'pickup_point', label:'Výdejní místo'} ];
 
@@ -4694,11 +4918,13 @@ async function pollIncomingOrdersQueue(silent){
         }).filter(Boolean);
         if(items.length){
           const platformLabel = (ESHOP_PLATFORMS[row.platform]||{}).label || row.platform;
-          state.orders.push({
+          const newOrder = {
             ...blankOrder(), id: uid(), number: eo.number || row.external_id, externalId: eo.external_id,
             clientId: null, items, weightKg: eo.weight_kg||0,
             note: `Webhook z ${platformLabel}${eo.email?(' — '+eo.email):''}`
-          });
+          };
+          state.orders.push(newOrder);
+          notifyNewOrderByEmail(newOrder);
           imported++;
         }
       }
@@ -4745,11 +4971,32 @@ async function createPplShipment(o, cred){
 async function createGlsShipment(o, cred){
   throw new Error('GLS API nejde bezpečně zavolat přímo z programu v prohlížeči (vyžaduje server).');
 }
+async function createCustomCarrierShipment(o, cred){
+  if(!cred || !cred.apiUrl){
+    throw new Error('Vlastní dopravce nemá nastavenou URL pro vytvoření zásilky — program místo toho vygeneruje vlastní jednoduchý štítek k nalepení.');
+  }
+  const c = clientById(o.clientId);
+  const headers = { 'Content-Type':'application/json' };
+  if(cred.authHeaderName && cred.authHeaderValue) headers[cred.authHeaderName] = cred.authHeaderValue;
+  const payload = {
+    number: o.number, client: c ? { name:c.name, email:c.contactEmail||'', phone:c.contactPhone||'', address:c.address||null } : null,
+    weightKg: o.weightKg||0, deliveryType: o.deliveryType||''
+  };
+  let res;
+  try{
+    res = await fetch(cred.apiUrl, { method:'POST', headers, body: JSON.stringify(payload) });
+  }catch(err){
+    throw new Error('Vlastní dopravce nejde zavolat přímo z prohlížeče (pravděpodobně CORS blokace) — přístupy jsou uložené, ale zásilku bude potřeba vytvořit jinak (nebo program vygeneruje vlastní štítek).');
+  }
+  if(!res.ok) throw new Error(`Vlastní dopravce odpověděl chybou ${res.status}.`);
+  return await res.json().catch(()=>({}));
+}
 async function createCarrierShipment(carrier, o){
   if(carrier.type==='zasilkovna') return createZasilkovnaShipment(o, carrier.credentials);
   if(carrier.type==='dpd') return createDpdShipment(o, carrier.credentials);
   if(carrier.type==='ppl') return createPplShipment(o, carrier.credentials);
   if(carrier.type==='gls') return createGlsShipment(o, carrier.credentials);
+  if(carrier.type==='custom') return createCustomCarrierShipment(o, carrier.credentials);
   throw new Error('Neznámý typ dopravce.');
 }
 function carrierRuleMatches(rule, o){
@@ -4829,7 +5076,16 @@ function renderIntegrationsSection(){
     <div class="section-title" style="margin-top:26px;">Dopravci</div>
     <p style="font-size:12.5px;color:var(--ink-soft);margin-top:-8px;">Program vybírá dopravce automaticky podle pořadí a pravidel (váha, typ doručení) — první, který na objednávku sedí, se použije.</p>
     ${(it.carriers||[]).map((c,idx)=>renderCarrierCard(c,idx)).join('') || `<p style="font-size:13px;color:var(--ink-soft);">Zatím žádný dopravce.</p>`}
-    <button type="button" class="btn secondary small" data-action="add-carrier">+ Přidat dopravce</button>
+    <div style="position:relative;display:inline-block;">
+      <button type="button" class="btn secondary small" data-action="toggle-add-carrier">+ Přidat dopravce</button>
+      <div class="cols-panel ${state.addCarrierPickerOpen?'open':''}" style="min-width:260px;">
+        ${Object.keys(CARRIER_TYPES).map(key=>`
+          <div class="combo-item" data-action="add-carrier-type" data-type="${key}" style="border-radius:6px;">
+            ${escapeHtml(CARRIER_TYPES[key].label)}
+          </div>
+        `).join('')}
+      </div>
+    </div>
   `;
 }
 function renderEshopCard(e){
@@ -5020,9 +5276,7 @@ async function addCarrierType(type){
 function viewSettings(){
   const primary = state.companies[0];
   return `
-    <div class="pagehead"><div><h1>Nastavení</h1><p class="desc">Firmy, kolegové a zálohy — všechno na jednom místě.</p></div></div>
-
-    ${isCurrentUserAdmin() ? renderSubscriptionCard() : ''}
+    <div class="pagehead"><div><h1>Firma</h1><p class="desc">Hlavní firma a případné další firmy pro fakturaci.</p></div></div>
 
     <div class="section-title" style="margin-top:0;padding-top:0;border-top:none;">Hlavní firma <span class="badge">výchozí ve fakturách</span></div>
     ${companyFormMarkup(primary, { showCancel:false, submitLabel:'Uložit hlavní firmu', notice: state.companyNotice })}
@@ -5048,8 +5302,21 @@ function viewSettings(){
         <button type="button" class="btn secondary" data-action="new-company">+ Přidat firmu</button>
       </div>
     </div>
-
-    <div class="section-title" style="margin-top:30px;">Kolegové s přístupem</div>
+  `;
+}
+function viewSettingsBilling(){
+  if(!isCurrentUserAdmin()){
+    return `<div class="pagehead"><div><h1>Předplatné</h1></div></div><p style="color:var(--ink-soft);font-size:13.5px;">Tohle vidí jen administrátor.</p>`;
+  }
+  return `
+    <div class="pagehead"><div><h1>Předplatné</h1><p class="desc">Plán a fakturace samotné appky ledgers.</p></div></div>
+    ${renderSubscriptionCard()}
+  `;
+}
+function viewSettingsTeam(){
+  return `
+    <div class="pagehead"><div><h1>Kolegové</h1><p class="desc">Kdo má do appky přístup a s jakým oprávněním.</p></div></div>
+    <div class="section-title" style="margin-top:0;padding-top:0;border-top:none;">Kolegové s přístupem</div>
     <div class="form-card">
       ${state.users.map(u=>{
         const isMe = u.id===state.currentUserId;
@@ -5091,11 +5358,47 @@ function viewSettings(){
         Program hesla nikdy neukládá ani nevidí — o vše se stará Supabase Auth.
       </p>
     </div>
-
-    <div class="section-title" style="margin-top:30px;">Integrace</div>
+  `;
+}
+function viewSettingsNotifications(){
+  const it = state.integrations;
+  const me = state.users.find(u=>u.id===state.currentUserId);
+  return `
+    <div class="pagehead"><div><h1>Upozornění</h1><p class="desc">E-mailové upozornění na nové objednávky.</p></div></div>
+    <div class="form-card">
+      <p style="font-size:12.5px;color:var(--ink-soft);margin-top:0;">
+        Když appka naimportuje novou objednávku (z e-shopu přes webhook/dotazování, nebo když ji kdokoli založí ručně), pošle
+        na zadaný e-mail krátké shrnutí. Vyžaduje to jednu malou serverovou funkci navíc v Supabase (stejný princip jako
+        u napojení e-shopu) — pošli si stáhnout balíček a nasaď ho stejným postupem, jaký jsi použil/a pro webhook objednávek.
+      </p>
+      <form id="notifications-form" class="form-card" style="padding:0;box-shadow:none;border:none;">
+        <label style="display:flex;align-items:center;gap:8px;font-size:14px;margin:6px 0 14px 0;">
+          <input type="checkbox" name="notifyNewOrderEmail" ${it.notifyNewOrderEmail?'checked':''}> Poslat e-mail, když přijde nová objednávka
+        </label>
+        <div class="field" style="max-width:340px;">
+          <label>E-mail pro upozornění</label>
+          <input type="email" name="notifyEmailAddress" value="${escapeAttr(it.notifyEmailAddress||(me?me.email:''))}" placeholder="${escapeAttr(me?me.email:'tvuj@email.cz')}">
+        </div>
+        <div class="formfoot" style="justify-content:flex-start;">
+          <button type="submit" class="btn secondary">Uložit</button>
+        </div>
+      </form>
+      <p style="font-size:11.5px;color:var(--ink-soft);margin-top:14px;">
+        Potřebuješ ještě nasadit funkci <code>notify-new-order</code> — použije stejný Resend účet a ověřenou doménu,
+        co už máš z e-mailů appky (zapomenuté heslo apod.).
+      </p>
+    </div>
+  `;
+}
+function viewSettingsIntegrations(){
+  return `
+    <div class="pagehead"><div><h1>Integrace</h1><p class="desc">E-shopy a dopravci.</p></div></div>
     ${renderIntegrationsSection()}
-
-    <div class="section-title" style="margin-top:30px;">Zálohování dat</div>
+  `;
+}
+function viewSettingsBackup(){
+  return `
+    <div class="pagehead"><div><h1>Zálohování dat</h1><p class="desc">Automatické zálohy i ruční export/import.</p></div></div>
     <div class="form-card">
       <p style="font-size:13px;color:var(--ink-soft);margin-top:0;">
         Data (odběratelé, faktury, firmy) žijí v uložišti napojeném na ledgers, ne v tomto souboru.
@@ -5129,14 +5432,108 @@ function viewSettings(){
         `).join('')}
       ` : `<p style="font-size:12.5px;color:var(--ink-soft);">Zatím žádné automatické zálohy — vytvoří se, jakmile poprvé něco uložíš.</p>`}
     </div>
-
-    <div class="section-title" style="margin-top:30px;">Kontrola zdraví dat</div>
+  `;
+}
+function viewSettingsDataHealth(){
+  return `
+    <div class="pagehead"><div><h1>Kontrola zdraví dat</h1><p class="desc">Osiřelé odkazy a nesrovnalosti v datech.</p></div></div>
     ${renderDataIntegritySection()}
-
-    <div class="section-title" style="margin-top:30px;">Slevové kódy</div>
+  `;
+}
+function viewSettingsDiscounts(){
+  return `
+    <div class="pagehead"><div><h1>Slevové kódy</h1></div></div>
     ${renderDiscountCodesSection()}
+  `;
+}
+function viewSettingsAudit(){
+  if(!isCurrentUserAdmin()){
+    return `<div class="pagehead"><div><h1>Audit log</h1></div></div><p style="color:var(--ink-soft);font-size:13.5px;">Tohle vidí jen administrátor.</p>`;
+  }
+  return `
+    <div class="pagehead"><div><h1>Audit log</h1></div></div>
+    ${renderAuditLogSection()}
+  `;
+}
+function viewSettingsDanger(){
+  if(!isCurrentUserAdmin()){
+    return `<div class="pagehead"><div><h1>Nebezpečná zóna</h1></div></div><p style="color:var(--ink-soft);font-size:13.5px;">Tohle vidí jen administrátor.</p>`;
+  }
+  return `
+    <div class="pagehead"><div><h1 style="color:var(--red);">Nebezpečná zóna</h1></div></div>
+    <div class="form-card" style="border-color:var(--red-soft);">
+      <p style="font-size:13px;color:var(--ink-soft);margin-top:0;">
+        Smaže nevratně všechna firemní data — produkty, sklad, odběratele, dodavatele, faktury, objednávky, e-shop integrace i veškerá nastavení —
+        a vrátí appku do továrního stavu. <strong>Zachová se jen tvoje přihlášení a kolegové s přístupem</strong> — o ně nepřijdeš, nikdo se nemusí
+        registrovat znovu. Automatické zálohy zůstanou zachované pro případ omylu.
+      </p>
+      <button type="button" class="btn danger" data-action="open-factory-reset">Smazat vše (tovární nastavení)</button>
+    </div>
+  `;
+}
+function viewFactoryReset(){
+  const fr = state.factoryReset;
+  const me = state.users.find(u=>u.id===state.currentUserId);
+  const myEmail = (me && me.email) || state.currentUser || '';
+  return `
+    <div class="pagehead"><div><h1 style="color:var(--red);">Tovární nastavení</h1><p class="desc">Nevratné smazání všech firemních dat.</p></div></div>
+    <div class="form-card" style="max-width:560px;">
+      <div style="background:var(--red-soft);color:var(--red);padding:12px 14px;border-radius:var(--radius);font-size:13px;margin-bottom:18px;">
+        Tímhle se nevratně smažou produkty, sklad, odběratelé, dodavatelé, faktury, objednávky, e-shop integrace i veškerá nastavení firmy.
+        Zůstane jen tvoje přihlášení a kolegové s přístupem. Automatické zálohy zůstanou zachované, kdyby sis to rozmyslel/a.
+      </div>
 
-    ${isCurrentUserAdmin() ? renderAuditLogSection() : ''}
+      ${fr.step===1 ? `
+        <div class="section-title" style="margin-top:0;padding-top:0;border-top:none;">Krok 1 ze 3 — ověření heslem</div>
+        <p style="font-size:12.5px;color:var(--ink-soft);margin-top:-4px;">Pro pokračování zadej svoje aktuální heslo (${escapeHtml(myEmail)}).</p>
+        <form id="factory-reset-password-form" class="form-card" style="padding:0;box-shadow:none;border:none;">
+          <div class="field"><label>Heslo</label><input type="password" name="password" autocomplete="current-password" required autofocus></div>
+          ${fr.error?`<p style="color:var(--red);font-size:12.5px;">${escapeHtml(fr.error)}</p>`:''}
+          <div class="formfoot" style="justify-content:space-between;">
+            <button type="button" class="btn secondary" data-action="cancel-factory-reset">Zrušit</button>
+            <button type="submit" class="btn danger" ${fr.busy?'disabled':''}>${fr.busy?'Ověřuji…':'Ověřit heslo'}</button>
+          </div>
+        </form>
+      ` : ''}
+
+      ${fr.step===2 ? `
+        <div class="section-title" style="margin-top:0;padding-top:0;border-top:none;">Krok 2 ze 3 — potvrzení e-mailem</div>
+        <p style="font-size:12.5px;color:var(--ink-soft);margin-top:-4px;">Heslo ověřeno. Teď pošleme potvrzovací kód na <strong>${escapeHtml(myEmail)}</strong>.</p>
+        ${!fr.otpSent ? `
+          ${fr.error?`<p style="color:var(--red);font-size:12.5px;">${escapeHtml(fr.error)}</p>`:''}
+          <div class="formfoot" style="justify-content:space-between;">
+            <button type="button" class="btn secondary" data-action="cancel-factory-reset">Zrušit</button>
+            <button type="button" class="btn danger" data-action="factory-reset-send-code" ${fr.busy?'disabled':''}>${fr.busy?'Odesílám…':'Poslat kód na e-mail'}</button>
+          </div>
+        ` : `
+          <form id="factory-reset-code-form" class="form-card" style="padding:0;box-shadow:none;border:none;">
+            <div class="field"><label>Kód z e-mailu</label><input type="text" name="code" inputmode="numeric" autocomplete="one-time-code" placeholder="např. 123456" required autofocus></div>
+            ${fr.codeError?`<p style="color:var(--red);font-size:12.5px;">${escapeHtml(fr.codeError)}</p>`:''}
+            <div class="formfoot" style="justify-content:space-between;">
+              <button type="button" class="btn secondary" data-action="cancel-factory-reset">Zrušit</button>
+              <span style="display:flex;gap:8px;">
+                <button type="button" class="btn-link" data-action="factory-reset-send-code">Poslat znovu</button>
+                <button type="submit" class="btn danger" ${fr.busy?'disabled':''}>${fr.busy?'Ověřuji…':'Potvrdit kód'}</button>
+              </span>
+            </div>
+          </form>
+        `}
+      ` : ''}
+
+      ${fr.step===3 ? `
+        <div class="section-title" style="margin-top:0;padding-top:0;border-top:none;">Krok 3 ze 3 — poslední potvrzení</div>
+        <p style="font-size:13px;">Heslo i e-mail jsou ověřené. Tohle je poslední krok — po kliknutí se data okamžitě a nevratně smažou.</p>
+        <p style="font-size:12.5px;color:var(--ink-soft);">Pro potvrzení napiš do pole slovo <strong>SMAZAT</strong>.</p>
+        <form id="factory-reset-final-form" class="form-card" style="padding:0;box-shadow:none;border:none;">
+          <div class="field"><input type="text" name="confirmText" placeholder="SMAZAT" autocomplete="off" required autofocus></div>
+          ${fr.error?`<p style="color:var(--red);font-size:12.5px;">${escapeHtml(fr.error)}</p>`:''}
+          <div class="formfoot" style="justify-content:space-between;">
+            <button type="button" class="btn secondary" data-action="cancel-factory-reset">Zrušit</button>
+            <button type="submit" class="btn danger" ${fr.busy?'disabled':''}>${fr.busy?'Mažu…':'Nevratně smazat všechna data'}</button>
+          </div>
+        </form>
+      ` : ''}
+    </div>
   `;
 }
 function scanDataIntegrity(){
@@ -7271,6 +7668,7 @@ async function onSubmitOrder(e){
       try{ await saveCompanies(); }catch(err){}
     }
     state.orders.push(newOrder);
+    notifyNewOrderByEmail(newOrder);
   }
   try{ await saveOrders(); }catch(err){ alert('Uložení se nepovedlo, zkus to prosím znovu.'); return; }
   state.editingOrderId = null;
@@ -9925,6 +10323,14 @@ function afterRender(){
   }
   const accountForm = document.getElementById('account-form');
   if(accountForm){ accountForm.addEventListener('submit', onSubmitAccount); }
+  const factoryResetPasswordForm = document.getElementById('factory-reset-password-form');
+  if(factoryResetPasswordForm) factoryResetPasswordForm.addEventListener('submit', onSubmitFactoryResetPassword);
+  const factoryResetCodeForm = document.getElementById('factory-reset-code-form');
+  if(factoryResetCodeForm) factoryResetCodeForm.addEventListener('submit', onSubmitFactoryResetCode);
+  const factoryResetFinalForm = document.getElementById('factory-reset-final-form');
+  if(factoryResetFinalForm) factoryResetFinalForm.addEventListener('submit', onSubmitFactoryResetFinal);
+  const notificationsForm = document.getElementById('notifications-form');
+  if(notificationsForm) notificationsForm.addEventListener('submit', onSubmitNotifications);
   const backupIntervalSelect = document.getElementById('backup-interval-select');
   if(backupIntervalSelect){
     backupIntervalSelect.addEventListener('change', async ()=>{
@@ -11865,16 +12271,40 @@ document.addEventListener('click', async (e)=>{
     }
   }
   else if(action==='toggle-add-eshop'){ state.addEshopPickerOpen = !state.addEshopPickerOpen; render(); }
+  else if(action==='open-factory-reset'){
+    state.factoryReset = { step:1, password:'', error:'', busy:false, code:'', codeError:'', otpSent:false, confirmText:'' };
+    state.view = 'factory-reset';
+    render();
+  }
+  else if(action==='cancel-factory-reset'){
+    state.factoryReset = { step:1, password:'', error:'', busy:false, code:'', codeError:'', otpSent:false, confirmText:'' };
+    state.view = 'settings-danger';
+    render();
+  }
+  else if(action==='factory-reset-send-code'){ sendFactoryResetCode(); }
   else if(action==='add-eshop-platform'){
     const platform = el.getAttribute('data-platform');
     state.addEshopPickerOpen = false;
     if(platform && ESHOP_PLATFORMS[platform]) addEshopPlatform(platform);
     else render();
   }
-  else if(action==='add-carrier'){
-    const type = prompt('Kterého dopravce chceš přidat? Napiš: zasilkovna, dpd, ppl, nebo gls');
-    if(type && CARRIER_TYPES[type.trim().toLowerCase()]) addCarrierType(type.trim().toLowerCase());
-    else if(type) alert('Neznámý dopravce. Zadej: zasilkovna, dpd, ppl, nebo gls.');
+  else if(action==='toggle-add-carrier'){ state.addCarrierPickerOpen = !state.addCarrierPickerOpen; render(); }
+  else if(action==='onboarding-next'){ state.onboarding.step = Math.min(5, (state.onboarding.step||1)+1); render(); }
+  else if(action==='onboarding-add-eshop'){
+    const platform = el.getAttribute('data-platform');
+    if(platform && ESHOP_PLATFORMS[platform]) addEshopPlatform(platform);
+  }
+  else if(action==='onboarding-add-carrier'){
+    const type = el.getAttribute('data-type');
+    if(type && CARRIER_TYPES[type]) addCarrierType(type);
+  }
+  else if(action==='onboarding-skip-all'){ finishOnboarding(); }
+  else if(action==='onboarding-finish'){ finishOnboarding(); }
+  else if(action==='add-carrier-type'){
+    const type = el.getAttribute('data-type');
+    state.addCarrierPickerOpen = false;
+    if(type && CARRIER_TYPES[type]) addCarrierType(type);
+    else render();
   }
   else if(action==='toggle-eshop-active'){
     const e = state.integrations.eshops.find(x=>x.id===id);
@@ -11943,6 +12373,15 @@ document.addEventListener('click', async (e)=>{
         const res = await fetch(`https://www.zasilkovna.cz/api/rest/${c.credentials.apiKey}/branch/json`);
         if(!res.ok) throw new Error(`Zásilkovna odpovědělo chybou ${res.status}.`);
         c.testStatus = { ok:true, message:'✅ API klíč je platný.' };
+      } else if(c.type==='custom'){
+        if(!c.credentials.apiUrl){
+          c.testStatus = { ok:true, message:'ℹ️ Bez zadané URL program u tohoto dopravce jen vygeneruje vlastní jednoduchý štítek — nic se nikam nevolá.' };
+        } else {
+          const headers = {};
+          if(c.credentials.authHeaderName && c.credentials.authHeaderValue) headers[c.credentials.authHeaderName] = c.credentials.authHeaderValue;
+          const res = await fetch(c.credentials.apiUrl, { method:'GET', headers }).catch(()=>{ throw new Error('URL nejde zavolat přímo z prohlížeče (pravděpodobně CORS) — přístupy jsou uložené a použijí se, chybu program bezpečně ošetří.'); });
+          c.testStatus = { ok:true, message:`✅ URL odpověděla (status ${res.status}).` };
+        }
       } else {
         throw new Error(`${CARRIER_TYPES[c.type].label} API vyžaduje volání ze serveru (nejde otestovat přímo z programu kvůli CORS) — přístupy jsou uložené a použijí se, chybu program bezpečně ošetří.`);
       }
@@ -12533,6 +12972,131 @@ async function onSubmitAccount(e){
   }
 }
 
+async function onSubmitNotifications(e){
+  e.preventDefault();
+  const fd = new FormData(e.target);
+  state.integrations.notifyNewOrderEmail = fd.get('notifyNewOrderEmail')==='on';
+  state.integrations.notifyEmailAddress = (fd.get('notifyEmailAddress')||'').trim();
+  try{ await saveIntegrations(); state.companyNotice=''; }catch(err){ alert('Uložení se nepovedlo.'); return; }
+  render();
+}
+async function notifyNewOrderByEmail(order){
+  try{
+    if(!state.integrations.notifyNewOrderEmail || !state.integrations.notifyEmailAddress) return;
+    const c = clientById(order.clientId);
+    const total = (order.items||[]).reduce((s,it)=>s+(it.qty||0)*(it.price||0),0);
+    await fetch(`${SUPABASE_URL}/functions/v1/notify-new-order`, {
+      method:'POST',
+      headers: { 'Content-Type':'application/json', 'apikey': SUPABASE_KEY },
+      body: JSON.stringify({
+        to: state.integrations.notifyEmailAddress,
+        tenant: state.tenantId,
+        order: { number: order.number, client: c?c.name:'', itemsCount:(order.items||[]).length, total }
+      })
+    });
+  }catch(err){ console.warn('Upozornění o nové objednávce se nepodařilo odeslat.', err); }
+}
+async function onSubmitFactoryResetPassword(e){
+  e.preventDefault();
+  const fd = new FormData(e.target);
+  const password = fd.get('password')||'';
+  const me = state.users.find(u=>u.id===state.currentUserId);
+  const email = (me && me.email) || state.currentUser || '';
+  state.factoryReset.busy = true; state.factoryReset.error=''; render();
+  try{
+    await authRequest('/token?grant_type=password', { email, password });
+    state.factoryReset.step = 2;
+  }catch(err){
+    state.factoryReset.error = 'Nesprávné heslo, zkus to znovu.';
+  }
+  state.factoryReset.busy = false;
+  render();
+}
+async function sendFactoryResetCode(){
+  const me = state.users.find(u=>u.id===state.currentUserId);
+  const email = (me && me.email) || state.currentUser || '';
+  state.factoryReset.busy = true; state.factoryReset.error=''; render();
+  try{
+    await authRequest('/otp', { email, create_user:false });
+    state.factoryReset.otpSent = true;
+  }catch(err){
+    state.factoryReset.error = err.message || 'Odeslání kódu se nepovedlo, zkus to prosím znovu.';
+  }
+  state.factoryReset.busy = false;
+  render();
+}
+async function onSubmitFactoryResetCode(e){
+  e.preventDefault();
+  const fd = new FormData(e.target);
+  const code = (fd.get('code')||'').trim();
+  const me = state.users.find(u=>u.id===state.currentUserId);
+  const email = (me && me.email) || state.currentUser || '';
+  state.factoryReset.busy = true; state.factoryReset.codeError=''; render();
+  try{
+    await authRequest('/verify', { email, token: code, type:'email' });
+    state.factoryReset.step = 3;
+  }catch(err){
+    state.factoryReset.codeError = 'Neplatný nebo prošlý kód, zkus to znovu.';
+  }
+  state.factoryReset.busy = false;
+  render();
+}
+async function onSubmitFactoryResetFinal(e){
+  e.preventDefault();
+  const fd = new FormData(e.target);
+  const confirmText = (fd.get('confirmText')||'').trim().toUpperCase();
+  if(confirmText!=='SMAZAT'){ state.factoryReset.error='Napiš přesně slovo SMAZAT.'; render(); return; }
+  if(!confirm('Opravdu nevratně smazat úplně všechna firemní data? Vrátit se dá jen z automatické zálohy.')) return;
+  state.factoryReset.busy = true; state.factoryReset.error=''; render();
+  try{
+    await performFactoryReset();
+    state.factoryReset = { step:1, password:'', error:'', busy:false, code:'', codeError:'', otpSent:false, confirmText:'' };
+    state.view = 'settings-danger';
+    state.companyNotice = 'Appka byla vrácena do továrního nastavení. Zůstalo jen tvoje přihlášení a kolegové.';
+  }catch(err){
+    state.factoryReset.busy = false;
+    state.factoryReset.error = err.message || 'Smazání se nepovedlo, zkus to prosím znovu.';
+  }
+  render();
+}
+async function performFactoryReset(){
+  state.products = []; await saveProducts();
+  state.clients = []; await saveClients();
+  state.suppliers = []; await saveSuppliers();
+  state.invoices = []; await saveInvoices();
+  state.receivedInvoices = []; await saveReceivedInvoices();
+  state.recurringInvoices = []; await saveRecurringInvoices();
+  state.orders = []; await saveOrders();
+  state.categories = []; await saveCategories();
+  state.warehouses = [{ id: uid(), name:'Hlavní sklad', address:'', isDefault:true }]; await saveWarehouses();
+  state.warehouseLocations = []; await saveWarehouseLocations();
+  state.discountCodes = []; await saveDiscountCodes();
+  state.integrations = { eshops:[], carriers:[], pollIntervalSec:60 }; await saveIntegrations();
+  state.productSettings = { prefix:'PRD-', nextNumber:1, padding:6 }; await saveProductSettings();
+  state.inventorySettings = { valuationMethod:'average' }; await saveInventorySettings();
+  state.productColumns = DEFAULT_PRODUCT_COLUMNS.map(c=>({...c})); await saveProductColumns();
+  state.expirySettings = { value:90, unit:'days' }; await saveExpirySettings();
+  state.userPermissions = {}; await saveUserPermissions();
+  state.dashboardWidgets = [...DEFAULT_DASHBOARD_WIDGETS]; await saveDashboardWidgets();
+  state.companies = [{
+    id: uid(), name:'', tagline:'', address:blankAddr(), ico:'', dic:'', account:'', bankName:'', iban:'', swift:'', email:'', phone:'', website:'',
+    showRegistration:false, regDate:'', regCourt:'', regSection:'', regInsert:'',
+    prefix:'', nextNumber:1, defaultDueDays:'', defaultNote:'',
+    creditNotePrefix:'DOB-', creditNoteNextNumber:1,
+    proformaPrefix:'ZF-', proformaNextNumber:1,
+    orderNumberMode:'own_sequence', orderNumberPrefix:'OBJ-', orderNumberNextNumber:1,
+    vsMode:'same_as_invoice', vsPrefix:'', vsNextNumber:1, ksMode:'manual', ksPrefix:'', ksNextNumber:1, showInvoiceBarcode:true, invoiceBarcodeType:'CODE128', fxMarginPercent:2, fulfillmentAutoPrintInvoice:false, fulfillmentRequireInvoiceScan:false, fulfillmentAutoShipping:true,
+    invoiceTerms:'',
+    defaultPaymentMethod:'', invoiceAccent:'#5B8DEF',
+    logo:'', signature:'', stamp:'', showLogo:true, showStamp:true, showSignature:true, showQr:true,
+    inventoryValuationMethod:'average', logoScale:100, signatureScale:100, stampScale:100
+  }];
+  await saveCompanies();
+  state.auditLog = [];
+  try{ await storageSet('audit-log', JSON.stringify(state.auditLog), true); }catch(e){}
+  await logAuditEvent('Tovární reset', 'system', '', 'Všechna firemní data byla smazána do továrního nastavení (po ověření heslem a e-mailem).');
+}
+
 async function onSubmitColleague(e){
   e.preventDefault();
   const fd = new FormData(e.target);
@@ -12546,7 +13110,7 @@ async function onSubmitColleague(e){
     await callAdminUsers({ action:'create_user', email, password, display_name });
     await loadTeam();
     state.colleagueError='';
-    state.view='settings';
+    state.view='settings-team';
     render();
   }catch(err){
     state.colleagueError = err.message || 'Vytvoření se nepovedlo.';
