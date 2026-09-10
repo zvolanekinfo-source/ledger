@@ -693,6 +693,8 @@ let state = {
   accountNotice: '',
   companyNotice: '',
   invoicingSettingsNotice: '',
+  formDirty: false,
+  _lastRenderedView: null,
   colleagueError: '',
   editingUserCredsId: null,
   editingUserNameId: null,
@@ -2996,6 +2998,10 @@ function render(){
   if(neededTab && !canAccessTab(neededTab)){
     state.view = firstAccessibleView();
   }
+  if(state.view !== state._lastRenderedView){
+    state.formDirty = false;
+    state._lastRenderedView = state.view;
+  }
   const currentGroup = findNavGroupForView(state.view);
   app.innerHTML = `
     ${state.sidebarOpen ? `
@@ -4857,6 +4863,10 @@ async function fetchEshopOrders(eshop){
   if(eshop.platform==='custom_api') return fetchCustomApiOrders(eshop.credentials);
   throw new Error('Neznámá platforma e-shopu.');
 }
+function findProductBySku(sku){
+  if(!sku) return null;
+  return state.products.find(p=>p.ean===sku || p.number===sku || p.internalCode===sku) || null;
+}
 async function pollEshopOrders(eshopId, silent){
   const eshop = state.integrations.eshops.find(e=>e.id===eshopId);
   if(!eshop || !eshop.active) return;
@@ -4867,7 +4877,7 @@ async function pollEshopOrders(eshopId, silent){
     orders.forEach(eo=>{
       if(state.orders.some(o=>o.externalId===eo.externalId)) return;
       const items = eo.lineItems.map(li=>{
-        const product = state.products.find(p=>p.ean===li.sku || p.number===li.sku);
+        const product = findProductBySku(li.sku);
         return product ? { productId:product.id, desc:li.title, qty:li.qty, unit:'ks', price:li.price, vat:21, ean:product.ean||'', productNumber:product.number||'', scannedQty:0 } : null;
       }).filter(Boolean);
       if(!items.length) return;
@@ -4916,7 +4926,7 @@ async function pollIncomingOrdersQueue(silent){
       const eo = row.payload || {};
       if(!state.orders.some(o=>o.externalId===eo.external_id)){
         const items = (eo.line_items||[]).map(li=>{
-          const product = state.products.find(p=>p.ean===li.sku || p.number===li.sku);
+          const product = findProductBySku(li.sku);
           return product ? { productId:product.id, desc:li.title, qty:li.qty, unit:'ks', price:li.price, vat:21, ean:product.ean||'', productNumber:product.number||'', scannedQty:0 } : null;
         }).filter(Boolean);
         if(items.length){
@@ -9013,13 +9023,14 @@ function viewProductForm(){
 
       <div class="section-title">Ceny</div>
       ${!canEditPrices() ? `<p style="font-size:12px;color:var(--ink-soft);margin-top:-6px;">Na úpravu cen nemáš oprávnění — pole jsou needitovatelná.</p>` : ''}
+      ${!state.companies.some(c=>c.vatPayer) ? `<p style="font-size:12px;color:var(--ink-soft);margin-top:-6px;">Žádná z tvých firem není plátce DPH, takže se sazby DPH neuplatňují a nezobrazují.</p>` : ''}
       <div class="field-row">
-        <div class="field"><label>Nákupní cena za kus (s DPH)</label><input type="number" step="0.01" name="purchasePrice" id="pf-purchase-price" value="${p.purchasePrice||''}" placeholder="0" ${!canEditPrices()?'disabled':''}></div>
-        <div class="field"><label>Sazba DPH (nákup)</label><input type="number" step="0.1" name="vatRatePurchase" id="pf-vat-purchase" value="${p.vatRatePurchase??21}" ${!canEditPrices()?'disabled':''}></div>
+        <div class="field"><label>Nákupní cena za kus${state.companies.some(c=>c.vatPayer)?' (s DPH)':''}</label><input type="number" step="0.01" name="purchasePrice" id="pf-purchase-price" value="${p.purchasePrice||''}" placeholder="0" ${!canEditPrices()?'disabled':''}></div>
+        ${state.companies.some(c=>c.vatPayer) ? `<div class="field"><label>Sazba DPH (nákup)</label><input type="number" step="0.1" name="vatRatePurchase" id="pf-vat-purchase" value="${p.vatRatePurchase??21}" ${!canEditPrices()?'disabled':''}></div>` : ''}
       </div>
       <div class="field-row">
-        <div class="field"><label>Prodejní cena za kus (bez DPH)</label><input type="number" step="0.01" name="salePrice" id="pf-sale-price" value="${p.salePrice||''}" placeholder="0" ${!canEditPrices()?'disabled':''}></div>
-        <div class="field"><label>Sazba DPH (prodej)</label><input type="number" step="0.1" name="vatRate" id="pf-vat-sale" value="${p.vatRate??21}" ${!canEditPrices()?'disabled':''}></div>
+        <div class="field"><label>Prodejní cena za kus${state.companies.some(c=>c.vatPayer)?' (bez DPH)':''}</label><input type="number" step="0.01" name="salePrice" id="pf-sale-price" value="${p.salePrice||''}" placeholder="0" ${!canEditPrices()?'disabled':''}></div>
+        ${state.companies.some(c=>c.vatPayer) ? `<div class="field"><label>Sazba DPH (prodej)</label><input type="number" step="0.1" name="vatRate" id="pf-vat-sale" value="${p.vatRate??21}" ${!canEditPrices()?'disabled':''}></div>` : ''}
       </div>
       ${editing ? `
       <div class="margin-box" id="margin-box">
@@ -10489,7 +10500,18 @@ function escapeAttr(s){ return escapeHtml(s); }
 function nl2br(s){ return escapeHtml(s).replace(/\n/g,'<br>'); }
 
 /* ---------- EVENTS ---------- */
+function trackFormDirty(formId){
+  const form = document.getElementById(formId);
+  if(!form) return;
+  const markDirty = ()=>{ state.formDirty = true; };
+  form.addEventListener('input', markDirty);
+  form.addEventListener('change', markDirty);
+}
 function afterRender(){
+  ['invoice-form','client-form','supplier-form','product-form','order-form',
+   'company-form','company-identity-form','company-invoicing-form',
+   'received-invoice-form','recurring-invoice-form'
+  ].forEach(trackFormDirty);
   const invoiceForm = document.getElementById('invoice-form');
   if(invoiceForm){
     invoiceForm.addEventListener('submit', onSubmitInvoice);
@@ -11745,6 +11767,7 @@ document.addEventListener('click', async (e)=>{
     render();
   }
   else if(action==='logout'){
+    if(state.formDirty && !confirm('Máš neuložené změny. Opravdu se chceš odhlásit bez uložení?')) return;
     await signOutRemote();
     persistSession(null);
     state.currentUser=null; state.currentUserId=null; state.users=[];
@@ -11752,7 +11775,10 @@ document.addEventListener('click', async (e)=>{
     state.authView='login'; state.view='dashboard';
     render();
   }
-  else if(action==='nav'){ stopCameraScanIfActive(); state.view = el.getAttribute('data-view'); state.editingInvoiceId=null; state.editingClientId=null; state.viewingClientId=null; state.newClientDraftId=null; state.newClientDraftAttachments=[]; state.editingCompanyId=null; state.newCompanyDraftId=null; state.newCompanyDraft={logo:'',signature:'',stamp:''}; state.companyNotice=''; state.invoicingSettingsNotice=''; state.formItems=[]; state.formCompanyId=null; state.selectedInvoiceIds.clear(); state.selectedClientIds.clear(); state.editingSupplierId=null; state.viewingSupplierId=null; state.newSupplierDraftId=null; state.newSupplierDraftAttachments=[]; state.editingProductId=null; state.newProductDraftId=null; state.currentProductDraftPhoto=''; state.eanLookupStatus=''; state.selectedProductIds.clear(); closeProductContextMenu(); state.productColsPanelOpen=false; state.editingReceivedInvoiceId=null; state.receivedFormItems=[]; state.viewingReceivedInvoiceId=null; state.newInvoiceDocType='invoice'; state.newInvoiceRelatedId=null; state.newInvoiceClientId=null; state._currentInvoiceFxRate=null; state.stockMovementProductId=null; state.newMovementPanelOpen=false; state.locationScanBuffer={productId:null,locationId:null}; state.locationScanMessage=''; state.stockScanSession=[]; state.editingRecurringId=null; state.recurringFormItems=[]; state.newRecurringDraft=null; state.recurringSourceInvoiceId=null; render(); }
+  else if(action==='nav'){
+    if(state.formDirty && !confirm('Máš na téhle stránce neuložené změny. Opravdu chceš odejít bez uložení?')) return;
+    state.formDirty = false;
+    stopCameraScanIfActive(); state.view = el.getAttribute('data-view'); state.editingInvoiceId=null; state.editingClientId=null; state.viewingClientId=null; state.newClientDraftId=null; state.newClientDraftAttachments=[]; state.editingCompanyId=null; state.newCompanyDraftId=null; state.newCompanyDraft={logo:'',signature:'',stamp:''}; state.companyNotice=''; state.invoicingSettingsNotice=''; state.formItems=[]; state.formCompanyId=null; state.selectedInvoiceIds.clear(); state.selectedClientIds.clear(); state.editingSupplierId=null; state.viewingSupplierId=null; state.newSupplierDraftId=null; state.newSupplierDraftAttachments=[]; state.editingProductId=null; state.newProductDraftId=null; state.currentProductDraftPhoto=''; state.eanLookupStatus=''; state.selectedProductIds.clear(); closeProductContextMenu(); state.productColsPanelOpen=false; state.editingReceivedInvoiceId=null; state.receivedFormItems=[]; state.viewingReceivedInvoiceId=null; state.newInvoiceDocType='invoice'; state.newInvoiceRelatedId=null; state.newInvoiceClientId=null; state._currentInvoiceFxRate=null; state.stockMovementProductId=null; state.newMovementPanelOpen=false; state.locationScanBuffer={productId:null,locationId:null}; state.locationScanMessage=''; state.stockScanSession=[]; state.editingRecurringId=null; state.recurringFormItems=[]; state.newRecurringDraft=null; state.recurringSourceInvoiceId=null; render(); }
   else if(action==='new-invoice'){ state.view='invoice-form'; state.editingInvoiceId=null; state.formItems=[]; state.formCompanyId=null; state.newInvoiceDocType='invoice'; state.newInvoiceRelatedId=null; render(); }
   else if(action==='new-credit-note'){ state.view='invoice-form'; state.editingInvoiceId=null; state.formItems=[]; state.formCompanyId=null; state.newInvoiceDocType='credit_note'; state.newInvoiceRelatedId=null; render(); }
   else if(action==='new-proforma'){ state.view='invoice-form'; state.editingInvoiceId=null; state.formItems=[]; state.formCompanyId=null; state.newInvoiceDocType='proforma'; state.newInvoiceRelatedId=null; render(); }
@@ -13396,6 +13422,7 @@ async function onSubmitCompanyIdentity(e){
   state.companies[idx] = co;
   try{ await saveCompanies(); }catch(err){ alert('Uložení se nepovedlo, zkus to prosím znovu.'); return; }
   state.companyNotice = 'Firma byla uložena.';
+  state.formDirty = false;
   render();
 }
 async function onSubmitCompanyInvoicing(e){
@@ -13425,6 +13452,7 @@ async function onSubmitCompanyInvoicing(e){
   state.companies[idx] = co;
   try{ await saveCompanies(); }catch(err){ alert('Uložení se nepovedlo, zkus to prosím znovu.'); return; }
   state.invoicingSettingsNotice = 'Uloženo.';
+  state.formDirty = false;
   render();
 }
 async function onSubmitCompany(e){
@@ -13473,6 +13501,7 @@ async function onSubmitCompany(e){
   }
   state.newCompanyDraftId = null;
   state.newCompanyDraft = {logo:'',signature:'',stamp:''};
+  state.formDirty = false;
   if(isNew){
     state.view='company-form';
     state.editingCompanyId=co.id;
