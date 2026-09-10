@@ -5372,6 +5372,7 @@ function viewSettingsNotifications(){
         u napojení e-shopu) — pošli si stáhnout balíček a nasaď ho stejným postupem, jaký jsi použil/a pro webhook objednávek.
       </p>
       <form id="notifications-form" class="form-card" style="padding:0;box-shadow:none;border:none;">
+        ${state.notificationsNotice?`<div class="login-error" style="background:var(--accent-soft);color:var(--accent);">${escapeHtml(state.notificationsNotice)}</div>`:''}
         <label style="display:flex;align-items:center;gap:8px;font-size:14px;margin:6px 0 14px 0;">
           <input type="checkbox" name="notifyNewOrderEmail" ${it.notifyNewOrderEmail?'checked':''}> Poslat e-mail, když přijde nová objednávka
         </label>
@@ -12977,7 +12978,8 @@ async function onSubmitNotifications(e){
   const fd = new FormData(e.target);
   state.integrations.notifyNewOrderEmail = fd.get('notifyNewOrderEmail')==='on';
   state.integrations.notifyEmailAddress = (fd.get('notifyEmailAddress')||'').trim();
-  try{ await saveIntegrations(); state.companyNotice=''; }catch(err){ alert('Uložení se nepovedlo.'); return; }
+  try{ await saveIntegrations(); }catch(err){ alert('Uložení se nepovedlo, zkus to prosím znovu.'); return; }
+  state.notificationsNotice = 'Uloženo.';
   render();
 }
 async function notifyNewOrderByEmail(order){
