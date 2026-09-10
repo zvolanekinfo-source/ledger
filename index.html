@@ -3020,14 +3020,6 @@ function render(){
         </select>
       </div>
       ` : ''}
-      ${state.companies.length>1 ? `
-      <div style="padding:0 20px 14px 20px;">
-        <label style="display:block;font-size:10.5px;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.03em;margin-bottom:4px;">Pracuji ve firmě</label>
-        <select id="active-company-switcher" style="width:100%;padding:7px 9px;border:1px solid var(--line);border-radius:var(--radius);font-size:12.5px;background:#fff;">
-          ${state.companies.map(co=>`<option value="${co.id}" ${co.id===state.activeCompanyId?'selected':''}>${escapeHtml(co.name||'(bez názvu)')}</option>`).join('')}
-        </select>
-      </div>
-      ` : ''}
       ${NAV_GROUPS.map(g=>{
         const hasAccess = g.tabKey ? (canAccessTab(g.tabKey) || (g.subTabs||[]).some(st=>canAccessTab(st.tabKey))) : true;
         if(!hasAccess) return '';
@@ -5341,6 +5333,17 @@ function viewSettingsInvoicing(){
   const primary = state.companies[0];
   return `
     <div class="pagehead"><div><h1>Faktury</h1><p class="desc">Číslování, symboly, čárový kód, měny a chování při fakturaci — pro hlavní firmu.</p></div></div>
+    ${state.companies.length>1 ? `
+    <div class="form-card" style="margin-bottom:20px;">
+      <div class="field" style="max-width:340px;margin-bottom:0;">
+        <label>Pracuji teď ve firmě</label>
+        <select id="active-company-switcher">
+          ${state.companies.map(co=>`<option value="${co.id}" ${co.id===state.activeCompanyId?'selected':''}>${escapeHtml(co.name||'(bez názvu)')}</option>`).join('')}
+        </select>
+        <p style="font-size:11px;color:var(--ink-soft);margin:4px 0 0 0;">Podle tohohle se u produktů řídí, jestli se zobrazují sazby DPH, a je to výchozí firma na nové faktuře/objednávce.</p>
+      </div>
+    </div>
+    ` : ''}
     ${companyInvoicingFormMarkup(primary, { submitLabel:'Uložit nastavení faktur', notice: state.invoicingSettingsNotice })}
   `;
 }
@@ -11938,6 +11941,10 @@ document.addEventListener('click', async (e)=>{
   }
   else if(action==='nav'){
     const targetView = el.getAttribute('data-view');
+    if(state.resumeContext){
+      const rcGroup = findNavGroupForView(state.resumeContext.view);
+      if(rcGroup && rcGroup.primaryView===targetView){ resumeToSavedContext(); return; }
+    }
     if(!RESUMABLE_FORMS[targetView]) rememberResumeContext();
     persistCurrentItemDrafts();
     stopCameraScanIfActive(); state.view = targetView; state.editingInvoiceId=null; state.editingClientId=null; state.viewingClientId=null; state.newClientDraftId=null; state.newClientDraftAttachments=[]; state.editingCompanyId=null; state.newCompanyDraftId=null; state.newCompanyDraft={logo:'',signature:'',stamp:''}; state.companyNotice=''; state.invoicingSettingsNotice=''; state.formItems=[]; state.formCompanyId=null; state.selectedInvoiceIds.clear(); state.selectedClientIds.clear(); state.editingSupplierId=null; state.viewingSupplierId=null; state.newSupplierDraftId=null; state.newSupplierDraftAttachments=[]; state.editingProductId=null; state.newProductDraftId=null; state.currentProductDraftPhoto=''; state.eanLookupStatus=''; state.selectedProductIds.clear(); closeProductContextMenu(); state.productColsPanelOpen=false; state.editingReceivedInvoiceId=null; state.receivedFormItems=[]; state.viewingReceivedInvoiceId=null; state.newInvoiceDocType='invoice'; state.newInvoiceRelatedId=null; state.newInvoiceClientId=null; state._currentInvoiceFxRate=null; state.stockMovementProductId=null; state.newMovementPanelOpen=false; state.locationScanBuffer={productId:null,locationId:null}; state.locationScanMessage=''; state.stockScanSession=[]; state.editingRecurringId=null; state.recurringFormItems=[]; state.newRecurringDraft=null; state.recurringSourceInvoiceId=null; render(); }
