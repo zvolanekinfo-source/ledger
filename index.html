@@ -672,6 +672,8 @@ let state = {
   commandPaletteIndex: 0,
   tenantId: null,
   myMemberships: [],
+  resumeContext: null,
+  activeCompanyId: null,
   subscription: null, // { plan, billing_period, status, current_period_end }
   selectedPlan: null, // 'basic-monthly' | 'basic-yearly' | 'pro-lifetime'
   pendingDisplayName: '',
@@ -1857,6 +1859,11 @@ async function loadAll(){
   } else {
     state.companies = state.companies.map(co=>({ id: co.id||uid(), ...companyDefaults, ...co }));
   }
+  {
+    let lastActiveCompanyId = null;
+    try{ lastActiveCompanyId = localStorage.getItem('ledgers_active_company_'+state.tenantId); }catch(e){}
+    state.activeCompanyId = state.companies.some(co=>co.id===lastActiveCompanyId) ? lastActiveCompanyId : state.companies[0].id;
+  }
   try{ const r = await window.storage.get('suppliers', true); state.suppliers = r ? JSON.parse(r.value) : []; }catch(e){ state.suppliers = []; }
   try{ const r = await window.storage.get('received-invoices', true); state.receivedInvoices = r ? JSON.parse(r.value) : []; }catch(e){ state.receivedInvoices = []; }
   try{ const r = await window.storage.get('recurring-invoices', true); state.recurringInvoices = r ? JSON.parse(r.value) : []; }catch(e){ state.recurringInvoices = []; }
@@ -2038,6 +2045,7 @@ async function loadAll(){
   state.loaded = true;
 }
 function companyById(id){ return state.companies.find(co=>co.id===id); }
+function activeCompany(){ return companyById(state.activeCompanyId) || state.companies[0]; }
 async function saveCompanies(){ await storageSet('companies', JSON.stringify(state.companies), true); saveSnapshotBackup(); }
 async function saveClients(){ await storageSet('clients', JSON.stringify(state.clients), true); saveSnapshotBackup(); }
 async function saveInvoices(){ await storageSet('invoices', JSON.stringify(state.invoices), true); saveSnapshotBackup(); }
@@ -3012,6 +3020,14 @@ function render(){
         </select>
       </div>
       ` : ''}
+      ${state.companies.length>1 ? `
+      <div style="padding:0 20px 14px 20px;">
+        <label style="display:block;font-size:10.5px;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.03em;margin-bottom:4px;">Pracuji ve firmě</label>
+        <select id="active-company-switcher" style="width:100%;padding:7px 9px;border:1px solid var(--line);border-radius:var(--radius);font-size:12.5px;background:#fff;">
+          ${state.companies.map(co=>`<option value="${co.id}" ${co.id===state.activeCompanyId?'selected':''}>${escapeHtml(co.name||'(bez názvu)')}</option>`).join('')}
+        </select>
+      </div>
+      ` : ''}
       ${NAV_GROUPS.map(g=>{
         const hasAccess = g.tabKey ? (canAccessTab(g.tabKey) || (g.subTabs||[]).some(st=>canAccessTab(st.tabKey))) : true;
         if(!hasAccess) return '';
@@ -3034,6 +3050,13 @@ function render(){
         <span class="pw-text"></span>
         <button type="button" class="btn-link" data-action="retry-pending-writes" style="color:var(--amber);text-decoration:underline;">Zkusit hned</button>
       </div>
+      ${(state.resumeContext && state.resumeContext.view!==state.view) ? `
+      <div class="no-print" style="display:flex;align-items:center;gap:10px;background:var(--accent-soft);color:var(--accent);padding:9px 16px;font-size:12.5px;font-weight:600;">
+        <span>Máš rozepsáno v ${escapeHtml(state.resumeContext.label)}.</span>
+        <button type="button" class="btn-link" data-action="resume-context" style="color:var(--accent);text-decoration:underline;">← Pokračovat tam</button>
+        <button type="button" class="btn-link" data-action="dismiss-resume-context" style="color:var(--accent);margin-left:auto;">Zahodit</button>
+      </div>
+      ` : ''}
       ${currentGroup ? renderSubTabBar(currentGroup) : ''}
       ${renderView()}
     </div>
@@ -3573,7 +3596,7 @@ function computeVsKs(co, invoiceNumber){
   return { variableSymbol: vs, constantSymbol: ks };
 }
 function blankInvoice(){
-  const c = state.companies[0];
+  const c = activeCompany();
   const docType = state.newInvoiceDocType || 'invoice';
   const num = docType==='credit_note' ? `${c.creditNotePrefix||'DOB-'}${c.creditNoteNextNumber||1}`
              : docType==='proforma' ? `${c.proformaPrefix||'ZF-'}${c.proformaNextNumber||1}`
@@ -3597,7 +3620,9 @@ function viewInvoiceForm(){
   const editing = state.editingInvoiceId ? state.invoices.find(i=>i.id===state.editingInvoiceId) : null;
   const inv = editing ? {...editing} : blankInvoice();
   if(!state.formItems.length){
-    state.formItems = editing && editing.items && editing.items.length ? JSON.parse(JSON.stringify(editing.items)) : [{desc:'',qty:1,unit:'ks',price:0,vat:21}];
+    const savedItems = readItemsDraft('invoice:' + (state.editingInvoiceId||'new'));
+    state.formItems = (savedItems && savedItems.length) ? savedItems
+      : (editing && editing.items && editing.items.length ? JSON.parse(JSON.stringify(editing.items)) : [{desc:'',qty:1,unit:'ks',price:0,vat:21}]);
   }
   if(!state.clients.length){
     return `
@@ -7114,7 +7139,7 @@ function viewReceivedInvoiceDetail(){
 /* ---------- OPAKOVANÉ FAKTURY ---------- */
 function blankRecurring(){
   return {
-    id: uid(), clientId: state.clients[0]?state.clients[0].id:null, companyId: state.companies[0].id,
+    id: uid(), clientId: state.clients[0]?state.clients[0].id:null, companyId: activeCompany().id,
     items: [{desc:'',qty:1,unit:'ks',price:0,vat:21}],
     interval:'monthly', startDate: todayISO(), nextRunDate: todayISO(), dueDays:14,
     paymentMethod:'Bankovním převodem', currency:'CZK', note:'', active:true,
@@ -7213,7 +7238,9 @@ function viewRecurringInvoiceForm(){
   const t = editing || state.newRecurringDraft;
   const sourceInvoice = (!editing && state.recurringSourceInvoiceId) ? state.invoices.find(i=>i.id===state.recurringSourceInvoiceId) : null;
   if(!state.recurringFormItems.length){
-    state.recurringFormItems = editing ? JSON.parse(JSON.stringify(editing.items||[])) : JSON.parse(JSON.stringify(t.items));
+    const savedItems = readItemsDraft('recurring:' + (state.editingRecurringId||'new'));
+    state.recurringFormItems = (savedItems && savedItems.length) ? savedItems
+      : (editing ? JSON.parse(JSON.stringify(editing.items||[])) : JSON.parse(JSON.stringify(t.items)));
   }
   const c = clientById(t.clientId);
   return `
@@ -7293,6 +7320,9 @@ async function onSubmitRecurring(e){
     state.recurringInvoices.push({ ...blankRecurring(), ...fields, startDate: fields.nextRunDate });
   }
   try{ await saveRecurringInvoices(); }catch(err){ alert('Uložení se nepovedlo, zkus to prosím znovu.'); return; }
+  clearFormDraft('recurring-form');
+  clearItemsDraft('recurring:' + (state.editingRecurringId||'new'));
+  state.resumeContext = null;
   state.editingRecurringId = null;
   state.recurringFormItems = [];
   state.newRecurringDraft = null;
@@ -7687,6 +7717,7 @@ async function onSubmitWarehouse(e){
   if(!state.warehouses.some(w=>w.isDefault) && state.warehouses[0]) state.warehouses[0].isDefault = true;
   try{ await saveWarehouses(); }catch(err){ alert('Uložení se nepovedlo, zkus to prosím znovu.'); return; }
   clearFormDraft('warehouse-form');
+  state.resumeContext = null;
   state.editingWarehouseId = null;
   state.view = 'stock';
   render();
@@ -7698,7 +7729,7 @@ function nextOrderNumberForCompany(co){
   return `${co.orderNumberPrefix||'OBJ-'}${co.orderNumberNextNumber||1}`;
 }
 function blankOrder(){
-  const co = state.companies[0];
+  const co = activeCompany();
   return {
     id: uid(), number: nextOrderNumberForCompany(co),
     clientId: state.clients[0]?state.clients[0].id:null, companyId: co.id,
@@ -7776,7 +7807,9 @@ function viewOrderForm(){
   const editing = state.editingOrderId ? state.orders.find(o=>o.id===state.editingOrderId) : null;
   const o = editing || blankOrder();
   if(!state.orderFormItems.length){
-    state.orderFormItems = editing ? JSON.parse(JSON.stringify(editing.items||[])) : [];
+    const savedItems = readItemsDraft('order:' + (state.editingOrderId||'new'));
+    state.orderFormItems = (savedItems && savedItems.length) ? savedItems
+      : (editing ? JSON.parse(JSON.stringify(editing.items||[])) : []);
   }
   return `
     <div class="pagehead"><div><h1>${editing?'Upravit objednávku':'Nová objednávka'}</h1></div></div>
@@ -7879,6 +7912,8 @@ async function onSubmitOrder(e){
   }
   try{ await saveOrders(); }catch(err){ alert('Uložení se nepovedlo, zkus to prosím znovu.'); return; }
   clearFormDraft('order-form');
+  clearItemsDraft('order:' + (state.editingOrderId||'new'));
+  state.resumeContext = null;
   state.editingOrderId = null;
   state.orderFormItems = [];
   state.view = 'orders';
@@ -8336,7 +8371,9 @@ function viewReceivedInvoiceForm(){
     state.newReceivedInvoiceForSupplierId = null;
   }
   if(!state.receivedFormItems.length){
-    state.receivedFormItems = editing && editing.items && editing.items.length ? JSON.parse(JSON.stringify(editing.items)) : [{desc:'',qty:1,unit:'ks',price:0,vat:21}];
+    const savedItems = readItemsDraft('received-invoice:' + (state.editingReceivedInvoiceId||'new'));
+    state.receivedFormItems = (savedItems && savedItems.length) ? savedItems
+      : (editing && editing.items && editing.items.length ? JSON.parse(JSON.stringify(editing.items)) : [{desc:'',qty:1,unit:'ks',price:0,vat:21}]);
   }
   const selSupplier = supplierById(inv.supplierId);
   return `
@@ -8630,6 +8667,7 @@ async function onSubmitSupplier(e){
   state.newSupplierDraftId = null;
   state.newSupplierDraftAttachments = [];
   clearFormDraft('supplier-form');
+  state.resumeContext = null;
   await saveSuppliers();
   state.view='supplier-detail'; state.viewingSupplierId=s.id;
   render();
@@ -9021,15 +9059,17 @@ function viewProductForm(){
 
       <div class="section-title">Ceny</div>
       ${!canEditPrices() ? `<p style="font-size:12px;color:var(--ink-soft);margin-top:-6px;">Na úpravu cen nemáš oprávnění — pole jsou needitovatelná.</p>` : ''}
-      ${!state.companies.some(c=>c.vatPayer) ? `<p style="font-size:12px;color:var(--ink-soft);margin-top:-6px;">Žádná z tvých firem není plátce DPH, takže se sazby DPH neuplatňují a nezobrazují.</p>` : ''}
+      ${(()=>{ const ac = activeCompany(); const primaryVatPayer = !!(ac && ac.vatPayer); return `
+      ${!primaryVatPayer ? `<p style="font-size:12px;color:var(--ink-soft);margin-top:-6px;">Firma, ve které zrovna pracuješ (${escapeHtml(ac?ac.name||'(bez názvu)':'')}), není plátce DPH, takže se sazby DPH neuplatňují a nezobrazují.</p>` : ''}
       <div class="field-row">
-        <div class="field"><label>Nákupní cena za kus${state.companies.some(c=>c.vatPayer)?' (s DPH)':''}</label><input type="number" step="0.01" name="purchasePrice" id="pf-purchase-price" value="${p.purchasePrice||''}" placeholder="0" ${!canEditPrices()?'disabled':''}></div>
-        ${state.companies.some(c=>c.vatPayer) ? `<div class="field"><label>Sazba DPH (nákup)</label><input type="number" step="0.1" name="vatRatePurchase" id="pf-vat-purchase" value="${p.vatRatePurchase??21}" ${!canEditPrices()?'disabled':''}></div>` : ''}
+        <div class="field"><label>Nákupní cena za kus${primaryVatPayer?' (s DPH)':''}</label><input type="number" step="0.01" name="purchasePrice" id="pf-purchase-price" value="${p.purchasePrice||''}" placeholder="0" ${!canEditPrices()?'disabled':''}></div>
+        ${primaryVatPayer ? `<div class="field"><label>Sazba DPH (nákup)</label><input type="number" step="0.1" name="vatRatePurchase" id="pf-vat-purchase" value="${p.vatRatePurchase??21}" ${!canEditPrices()?'disabled':''}></div>` : ''}
       </div>
       <div class="field-row">
-        <div class="field"><label>Prodejní cena za kus${state.companies.some(c=>c.vatPayer)?' (bez DPH)':''}</label><input type="number" step="0.01" name="salePrice" id="pf-sale-price" value="${p.salePrice||''}" placeholder="0" ${!canEditPrices()?'disabled':''}></div>
-        ${state.companies.some(c=>c.vatPayer) ? `<div class="field"><label>Sazba DPH (prodej)</label><input type="number" step="0.1" name="vatRate" id="pf-vat-sale" value="${p.vatRate??21}" ${!canEditPrices()?'disabled':''}></div>` : ''}
+        <div class="field"><label>Prodejní cena za kus${primaryVatPayer?' (bez DPH)':''}</label><input type="number" step="0.01" name="salePrice" id="pf-sale-price" value="${p.salePrice||''}" placeholder="0" ${!canEditPrices()?'disabled':''}></div>
+        ${primaryVatPayer ? `<div class="field"><label>Sazba DPH (prodej)</label><input type="number" step="0.1" name="vatRate" id="pf-vat-sale" value="${p.vatRate??21}" ${!canEditPrices()?'disabled':''}></div>` : ''}
       </div>
+      `; })()}
       ${editing ? `
       <div class="margin-box" id="margin-box">
         <div class="mb-item"><div class="mb-label">Prodejní cena (s DPH)</div><div class="mb-value" style="font-size:14px;" id="mb-sale-incl-vat">${fmt((p.salePrice||0)*(1+(p.vatRate??21)/100))} Kč</div></div>
@@ -9447,6 +9487,7 @@ async function onSubmitProduct(e){
   state.currentProductDraftPhoto = '';
   state.eanLookupStatus = '';
   clearFormDraft('product-form');
+  state.resumeContext = null;
   state.view='products';
   state.editingProductId=null;
   render();
@@ -10518,6 +10559,72 @@ function draftKeyForForm(formId){
     default: return formId;
   }
 }
+function draftStorageKey(draftKey){
+  return 'ledgers_draft_' + (state.tenantId||'x') + '_' + draftKey;
+}
+function readItemsDraft(draftKey){
+  try{
+    const raw = localStorage.getItem(draftStorageKey(draftKey)+'__items');
+    return raw ? JSON.parse(raw) : null;
+  }catch(e){ return null; }
+}
+function writeItemsDraft(draftKey, items){
+  try{ localStorage.setItem(draftStorageKey(draftKey)+'__items', JSON.stringify(items)); }catch(e){}
+}
+function clearItemsDraft(draftKey){
+  try{ localStorage.removeItem(draftStorageKey(draftKey)+'__items'); }catch(e){}
+}
+const RESUMABLE_FORMS = {
+  'product-form':          { idField:'editingProductId',         label:(id)=> id?'rozepsaném produktu':'novém produktu' },
+  'client-form':           { idField:'editingClientId',          label:(id)=> id?'rozepsaném odběrateli':'novém odběrateli' },
+  'supplier-form':         { idField:'editingSupplierId',        label:(id)=> id?'rozepsaném dodavateli':'novém dodavateli' },
+  'invoice-form':          { idField:'editingInvoiceId',         label:(id)=> id?'rozepsané faktuře':'nové faktuře' },
+  'order-form':            { idField:'editingOrderId',           label:(id)=> id?'rozepsané objednávce':'nové objednávce' },
+  'received-invoice-form': { idField:'editingReceivedInvoiceId', label:(id)=> id?'rozepsané přijaté faktuře':'nové přijaté faktuře' },
+  'recurring-invoice-form':{ idField:'editingRecurringId',       label:(id)=> id?'rozepsané opakované faktuře':'nové opakované faktuře' },
+  'warehouse-form':        { idField:'editingWarehouseId',       label:(id)=> id?'rozepsaném skladu':'novém skladu' },
+};
+function rememberResumeContext(){
+  const def = RESUMABLE_FORMS[state.view];
+  if(!def) return;
+  const idVal = state[def.idField] || null;
+  state.resumeContext = { view: state.view, idField: def.idField, idVal, label: def.label(idVal) };
+}
+function resumeToSavedContext(){
+  const rc = state.resumeContext;
+  if(!rc) return;
+  state.view = rc.view;
+  state[rc.idField] = rc.idVal;
+  state.resumeContext = null;
+  render();
+}
+function dismissResumeContext(){
+  state.resumeContext = null;
+  render();
+}
+function persistCurrentItemDrafts(){
+  if(state.view==='invoice-form' && state.formItems && state.formItems.length){
+    writeItemsDraft('invoice:' + (state.editingInvoiceId||'new'), state.formItems);
+  }
+  if(state.view==='order-form' && state.orderFormItems && state.orderFormItems.length){
+    writeItemsDraft('order:' + (state.editingOrderId||'new'), state.orderFormItems);
+  }
+  if(state.view==='received-invoice-form' && state.receivedFormItems && state.receivedFormItems.length){
+    writeItemsDraft('received-invoice:' + (state.editingReceivedInvoiceId||'new'), state.receivedFormItems);
+  }
+  if(state.view==='recurring-invoice-form' && state.recurringFormItems && state.recurringFormItems.length){
+    writeItemsDraft('recurring:' + (state.editingRecurringId||'new'), state.recurringFormItems);
+  }
+}
+function readFormDraft(draftKey){
+  try{
+    const raw = localStorage.getItem(draftStorageKey(draftKey));
+    return raw ? JSON.parse(raw) : null;
+  }catch(e){ return null; }
+}
+function writeFormDraft(draftKey, draft){
+  try{ localStorage.setItem(draftStorageKey(draftKey), JSON.stringify(draft)); }catch(e){}
+}
 function captureFormDraft(form){
   const draft = {};
   Array.from(form.elements).forEach(el=>{
@@ -10538,14 +10645,15 @@ function applyFormDraft(form, draft){
   });
 }
 function clearFormDraft(formId){
-  delete state.formDrafts[draftKeyForForm(formId)];
+  try{ localStorage.removeItem(draftStorageKey(draftKeyForForm(formId))); }catch(e){}
 }
 function trackFormDirty(formId){
   const form = document.getElementById(formId);
   if(!form) return;
   const draftKey = draftKeyForForm(formId);
-  if(state.formDrafts[draftKey]) applyFormDraft(form, state.formDrafts[draftKey]);
-  const captureDraft = ()=>{ state.formDrafts[draftKey] = captureFormDraft(form); };
+  const existing = readFormDraft(draftKey);
+  if(existing) applyFormDraft(form, existing);
+  const captureDraft = ()=>{ writeFormDraft(draftKey, captureFormDraft(form)); };
   form.addEventListener('input', captureDraft);
   form.addEventListener('change', captureDraft);
 }
@@ -10700,6 +10808,14 @@ function afterRender(){
   if(state.view==='stock') setupStockMovementPicker();
   const tenantSwitcher = document.getElementById('tenant-switcher');
   if(tenantSwitcher){ tenantSwitcher.addEventListener('change', ()=> switchTenant(tenantSwitcher.value)); }
+  const activeCompanySwitcher = document.getElementById('active-company-switcher');
+  if(activeCompanySwitcher){
+    activeCompanySwitcher.addEventListener('change', ()=>{
+      state.activeCompanyId = activeCompanySwitcher.value;
+      try{ localStorage.setItem('ledgers_active_company_'+state.tenantId, state.activeCompanyId); }catch(e){}
+      render();
+    });
+  }
   if(state.view==='received-invoice-detail') setupReceivedInvoiceDetail();
   if(state.view==='stock') setupStockScan();
   if(state.view==='warehouse-form') setupStorageUnitTypesTable();
@@ -11366,6 +11482,8 @@ async function onSubmitReceivedInvoice(e){
   try{
     await saveReceivedInvoices();
     clearFormDraft('received-invoice-form');
+    clearItemsDraft('received-invoice:' + (state.editingReceivedInvoiceId||'new'));
+    state.resumeContext = null;
     state.editingReceivedInvoiceId = null;
     state.receivedFormItems = [];
     state.view = 'received-invoices';
@@ -11819,10 +11937,13 @@ document.addEventListener('click', async (e)=>{
     render();
   }
   else if(action==='nav'){
-    stopCameraScanIfActive(); state.view = el.getAttribute('data-view'); state.editingInvoiceId=null; state.editingClientId=null; state.viewingClientId=null; state.newClientDraftId=null; state.newClientDraftAttachments=[]; state.editingCompanyId=null; state.newCompanyDraftId=null; state.newCompanyDraft={logo:'',signature:'',stamp:''}; state.companyNotice=''; state.invoicingSettingsNotice=''; state.formItems=[]; state.formCompanyId=null; state.selectedInvoiceIds.clear(); state.selectedClientIds.clear(); state.editingSupplierId=null; state.viewingSupplierId=null; state.newSupplierDraftId=null; state.newSupplierDraftAttachments=[]; state.editingProductId=null; state.newProductDraftId=null; state.currentProductDraftPhoto=''; state.eanLookupStatus=''; state.selectedProductIds.clear(); closeProductContextMenu(); state.productColsPanelOpen=false; state.editingReceivedInvoiceId=null; state.receivedFormItems=[]; state.viewingReceivedInvoiceId=null; state.newInvoiceDocType='invoice'; state.newInvoiceRelatedId=null; state.newInvoiceClientId=null; state._currentInvoiceFxRate=null; state.stockMovementProductId=null; state.newMovementPanelOpen=false; state.locationScanBuffer={productId:null,locationId:null}; state.locationScanMessage=''; state.stockScanSession=[]; state.editingRecurringId=null; state.recurringFormItems=[]; state.newRecurringDraft=null; state.recurringSourceInvoiceId=null; render(); }
-  else if(action==='new-invoice'){ state.view='invoice-form'; state.editingInvoiceId=null; state.formItems=[]; state.formCompanyId=null; state.newInvoiceDocType='invoice'; state.newInvoiceRelatedId=null; render(); }
-  else if(action==='new-credit-note'){ state.view='invoice-form'; state.editingInvoiceId=null; state.formItems=[]; state.formCompanyId=null; state.newInvoiceDocType='credit_note'; state.newInvoiceRelatedId=null; render(); }
-  else if(action==='new-proforma'){ state.view='invoice-form'; state.editingInvoiceId=null; state.formItems=[]; state.formCompanyId=null; state.newInvoiceDocType='proforma'; state.newInvoiceRelatedId=null; render(); }
+    const targetView = el.getAttribute('data-view');
+    if(!RESUMABLE_FORMS[targetView]) rememberResumeContext();
+    persistCurrentItemDrafts();
+    stopCameraScanIfActive(); state.view = targetView; state.editingInvoiceId=null; state.editingClientId=null; state.viewingClientId=null; state.newClientDraftId=null; state.newClientDraftAttachments=[]; state.editingCompanyId=null; state.newCompanyDraftId=null; state.newCompanyDraft={logo:'',signature:'',stamp:''}; state.companyNotice=''; state.invoicingSettingsNotice=''; state.formItems=[]; state.formCompanyId=null; state.selectedInvoiceIds.clear(); state.selectedClientIds.clear(); state.editingSupplierId=null; state.viewingSupplierId=null; state.newSupplierDraftId=null; state.newSupplierDraftAttachments=[]; state.editingProductId=null; state.newProductDraftId=null; state.currentProductDraftPhoto=''; state.eanLookupStatus=''; state.selectedProductIds.clear(); closeProductContextMenu(); state.productColsPanelOpen=false; state.editingReceivedInvoiceId=null; state.receivedFormItems=[]; state.viewingReceivedInvoiceId=null; state.newInvoiceDocType='invoice'; state.newInvoiceRelatedId=null; state.newInvoiceClientId=null; state._currentInvoiceFxRate=null; state.stockMovementProductId=null; state.newMovementPanelOpen=false; state.locationScanBuffer={productId:null,locationId:null}; state.locationScanMessage=''; state.stockScanSession=[]; state.editingRecurringId=null; state.recurringFormItems=[]; state.newRecurringDraft=null; state.recurringSourceInvoiceId=null; render(); }
+  else if(action==='new-invoice'){ persistCurrentItemDrafts(); state.view='invoice-form'; state.editingInvoiceId=null; state.formItems=[]; state.formCompanyId=null; state.newInvoiceDocType='invoice'; state.newInvoiceRelatedId=null; render(); }
+  else if(action==='new-credit-note'){ persistCurrentItemDrafts(); state.view='invoice-form'; state.editingInvoiceId=null; state.formItems=[]; state.formCompanyId=null; state.newInvoiceDocType='credit_note'; state.newInvoiceRelatedId=null; render(); }
+  else if(action==='new-proforma'){ persistCurrentItemDrafts(); state.view='invoice-form'; state.editingInvoiceId=null; state.formItems=[]; state.formCompanyId=null; state.newInvoiceDocType='proforma'; state.newInvoiceRelatedId=null; render(); }
   else if(action==='new-credit-note-for-invoice'){
     const src = state.invoices.find(i=>i.id===id);
     if(src){
@@ -11945,7 +12066,7 @@ document.addEventListener('click', async (e)=>{
       render();
     }catch(err){ alert('Smazání se nepovedlo, zkus to prosím znovu.'); }
   }
-  else if(action==='edit-invoice'){ state.view='invoice-form'; state.editingInvoiceId=id; state.formItems=[]; state.formCompanyId=null; render(); }
+  else if(action==='edit-invoice'){ persistCurrentItemDrafts(); state.view='invoice-form'; state.editingInvoiceId=id; state.formItems=[]; state.formCompanyId=null; render(); }
   else if(action==='preview-invoice'){ state.view='invoice-preview'; state.previewId=id; render(); }
   else if(action==='delete-invoice'){
     if(!canDeleteRecords()){ alert('Na mazání záznamů nemáš oprávnění — obrať se na admina.'); return; }
@@ -12070,7 +12191,7 @@ document.addEventListener('click', async (e)=>{
   }
   else if(action==='view-client'){ state.view='client-detail'; state.viewingClientId=id; render(); }
   else if(action==='delete-client'){ if(!canDeleteRecords()){ alert('Na mazání záznamů nemáš oprávnění — obrať se na admina.'); return; } if(confirm('Smazat tohoto odběratele?')){ const cl=clientById(id); state.clients = state.clients.filter(c=>c.id!==id); await saveClients(); if(cl) logAuditEvent('Smazán odběratel', 'client', cl.name, ''); render(); } }
-  else if(action==='client-to-invoice'){ state.preselectClientId=id; state.view='invoice-form'; state.editingInvoiceId=null; state.formItems=[]; state.formCompanyId=null; render(); }
+  else if(action==='client-to-invoice'){ persistCurrentItemDrafts(); state.preselectClientId=id; state.view='invoice-form'; state.editingInvoiceId=null; state.formItems=[]; state.formCompanyId=null; render(); }
   else if(action==='add-item'){
     const companySelect = document.getElementById('inv-company-select');
     const activeCo = companySelect ? companyById(companySelect.value) : (state.companies[0]||null);
@@ -12212,6 +12333,8 @@ document.addEventListener('click', async (e)=>{
     const idx = parseInt(el.getAttribute('data-index'));
     goToCommandPaletteItem(items[idx]);
   }
+  else if(action==='resume-context'){ resumeToSavedContext(); }
+  else if(action==='dismiss-resume-context'){ dismissResumeContext(); }
   else if(action==='retry-pending-writes'){
     const banner = document.getElementById('pending-writes-banner');
     if(banner) banner.querySelector('.pw-text').textContent = 'Zkouším odeslat…';
@@ -12275,8 +12398,8 @@ document.addEventListener('click', async (e)=>{
   }
   /* --- Dodavatelé --- */
   /* --- Objednávky --- */
-  else if(action==='new-order'){ state.editingOrderId=null; state.orderFormItems=[]; state.view='order-form'; render(); }
-  else if(action==='edit-order'){ state.editingOrderId=id; state.orderFormItems=[]; state.view='order-form'; render(); }
+  else if(action==='new-order'){ persistCurrentItemDrafts(); state.editingOrderId=null; state.orderFormItems=[]; state.view='order-form'; render(); }
+  else if(action==='edit-order'){ persistCurrentItemDrafts(); state.editingOrderId=id; state.orderFormItems=[]; state.view='order-form'; render(); }
   else if(action==='delete-order'){
     if(!canDeleteRecords()){ alert('Na mazání záznamů nemáš oprávnění — obrať se na admina.'); return; }
     if(!confirm('Smazat tuto objednávku?')) return;
@@ -12378,8 +12501,8 @@ document.addEventListener('click', async (e)=>{
     render();
   }
   /* --- Opakované faktury --- */
-  else if(action==='new-recurring'){ state.editingRecurringId=null; state.recurringFormItems=[]; state.newRecurringDraft=null; state.recurringSourceInvoiceId=null; state.view='recurring-invoice-form'; render(); }
-  else if(action==='edit-recurring'){ state.editingRecurringId=id; state.recurringFormItems=[]; state.newRecurringDraft=null; state.recurringSourceInvoiceId=null; state.view='recurring-invoice-form'; render(); }
+  else if(action==='new-recurring'){ persistCurrentItemDrafts(); state.editingRecurringId=null; state.recurringFormItems=[]; state.newRecurringDraft=null; state.recurringSourceInvoiceId=null; state.view='recurring-invoice-form'; render(); }
+  else if(action==='edit-recurring'){ persistCurrentItemDrafts(); state.editingRecurringId=id; state.recurringFormItems=[]; state.newRecurringDraft=null; state.recurringSourceInvoiceId=null; state.view='recurring-invoice-form'; render(); }
   else if(action==='reset-recurring-source'){ state.newRecurringDraft=null; state.recurringSourceInvoiceId=null; state.recurringFormItems=[]; render(); }
   else if(action==='delete-recurring'){
     if(!confirm('Smazat tuto šablonu opakované faktury?')) return;
@@ -12671,12 +12794,14 @@ document.addEventListener('click', async (e)=>{
   }
   /* --- Přijaté faktury --- */
   else if(action==='new-received-invoice'){
+    persistCurrentItemDrafts();
     state.editingReceivedInvoiceId = null;
     state.receivedFormItems = [];
     state.view = 'received-invoice-form';
     render();
   }
   else if(action==='new-received-invoice-for-supplier'){
+    persistCurrentItemDrafts();
     state.editingReceivedInvoiceId = null;
     state.receivedFormItems = [];
     state.newReceivedInvoiceForSupplierId = id;
@@ -12699,6 +12824,7 @@ document.addEventListener('click', async (e)=>{
     render();
   }
   else if(action==='edit-received-invoice'){
+    persistCurrentItemDrafts();
     state.editingReceivedInvoiceId = el.getAttribute('data-id');
     state.receivedFormItems = [];
     state.view = 'received-invoice-form';
@@ -13141,6 +13267,8 @@ async function onSubmitInvoice(e){
   state.newInvoiceRelatedId = null;
   state.newInvoiceClientId = null;
   clearFormDraft('invoice-form');
+  clearItemsDraft('invoice:' + (id||'new'));
+  state.resumeContext = null;
   state.previewId = invoice.id;
   state.view = 'invoice-preview';
   render();
@@ -13215,6 +13343,7 @@ async function onSubmitClient(e){
   state.newClientDraftId = null;
   state.newClientDraftAttachments = [];
   clearFormDraft('client-form');
+  state.resumeContext = null;
   await saveClients();
   state.view='client-detail';
   state.viewingClientId = client.id;
