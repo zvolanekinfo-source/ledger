@@ -693,8 +693,7 @@ let state = {
   accountNotice: '',
   companyNotice: '',
   invoicingSettingsNotice: '',
-  formDirty: false,
-  _lastRenderedView: null,
+  formDrafts: {},
   colleagueError: '',
   editingUserCredsId: null,
   editingUserNameId: null,
@@ -2997,10 +2996,6 @@ function render(){
   const neededTab = VIEW_TO_TAB[state.view];
   if(neededTab && !canAccessTab(neededTab)){
     state.view = firstAccessibleView();
-  }
-  if(state.view !== state._lastRenderedView){
-    state.formDirty = false;
-    state._lastRenderedView = state.view;
   }
   const currentGroup = findNavGroupForView(state.view);
   app.innerHTML = `
@@ -7691,6 +7686,7 @@ async function onSubmitWarehouse(e){
   else{ state.warehouses.push({ ...blankWarehouse(), ...fields }); }
   if(!state.warehouses.some(w=>w.isDefault) && state.warehouses[0]) state.warehouses[0].isDefault = true;
   try{ await saveWarehouses(); }catch(err){ alert('Uložení se nepovedlo, zkus to prosím znovu.'); return; }
+  clearFormDraft('warehouse-form');
   state.editingWarehouseId = null;
   state.view = 'stock';
   render();
@@ -7882,6 +7878,7 @@ async function onSubmitOrder(e){
     notifyNewOrderByEmail(newOrder);
   }
   try{ await saveOrders(); }catch(err){ alert('Uložení se nepovedlo, zkus to prosím znovu.'); return; }
+  clearFormDraft('order-form');
   state.editingOrderId = null;
   state.orderFormItems = [];
   state.view = 'orders';
@@ -8632,6 +8629,7 @@ async function onSubmitSupplier(e){
   else{ state.suppliers.push(s); }
   state.newSupplierDraftId = null;
   state.newSupplierDraftAttachments = [];
+  clearFormDraft('supplier-form');
   await saveSuppliers();
   state.view='supplier-detail'; state.viewingSupplierId=s.id;
   render();
@@ -9448,6 +9446,7 @@ async function onSubmitProduct(e){
   state.newProductDraftId = null;
   state.currentProductDraftPhoto = '';
   state.eanLookupStatus = '';
+  clearFormDraft('product-form');
   state.view='products';
   state.editingProductId=null;
   render();
@@ -10500,17 +10499,61 @@ function escapeAttr(s){ return escapeHtml(s); }
 function nl2br(s){ return escapeHtml(s).replace(/\n/g,'<br>'); }
 
 /* ---------- EVENTS ---------- */
+function draftKeyForForm(formId){
+  switch(formId){
+    case 'product-form': return 'product:' + (state.editingProductId || 'new');
+    case 'client-form': return 'client:' + (state.editingClientId || 'new');
+    case 'supplier-form': return 'supplier:' + (state.editingSupplierId || 'new');
+    case 'invoice-form': return 'invoice:' + (state.editingInvoiceId || 'new');
+    case 'order-form': return 'order:' + (state.editingOrderId || 'new');
+    case 'received-invoice-form': return 'received-invoice:' + (state.editingReceivedInvoiceId || 'new');
+    case 'recurring-form': return 'recurring:' + (state.editingRecurringId || 'new');
+    case 'warehouse-form': return 'warehouse:' + (state.editingWarehouseId || 'new');
+    case 'company-form': return 'company:' + (state.editingCompanyId || 'new');
+    case 'company-identity-form': return 'company-identity:' + ((state.companies[0]||{}).id||'x');
+    case 'company-invoicing-form': return 'company-invoicing:' + ((state.companies[0]||{}).id||'x');
+    case 'colleague-form': return 'colleague';
+    case 'account-form': return 'account';
+    case 'user-creds-form': return 'user-creds:' + (state.editingUserCredsId || 'x');
+    default: return formId;
+  }
+}
+function captureFormDraft(form){
+  const draft = {};
+  Array.from(form.elements).forEach(el=>{
+    if(!el.name || el.type==='file') return;
+    if(el.type==='checkbox') draft[el.name] = el.checked;
+    else if(el.type==='radio'){ if(el.checked) draft[el.name] = el.value; }
+    else draft[el.name] = el.value;
+  });
+  return draft;
+}
+function applyFormDraft(form, draft){
+  if(!draft) return;
+  Array.from(form.elements).forEach(el=>{
+    if(!el.name || !(el.name in draft) || el.type==='file') return;
+    if(el.type==='checkbox') el.checked = !!draft[el.name];
+    else if(el.type==='radio') el.checked = (el.value===draft[el.name]);
+    else el.value = draft[el.name];
+  });
+}
+function clearFormDraft(formId){
+  delete state.formDrafts[draftKeyForForm(formId)];
+}
 function trackFormDirty(formId){
   const form = document.getElementById(formId);
   if(!form) return;
-  const markDirty = ()=>{ state.formDirty = true; };
-  form.addEventListener('input', markDirty);
-  form.addEventListener('change', markDirty);
+  const draftKey = draftKeyForForm(formId);
+  if(state.formDrafts[draftKey]) applyFormDraft(form, state.formDrafts[draftKey]);
+  const captureDraft = ()=>{ state.formDrafts[draftKey] = captureFormDraft(form); };
+  form.addEventListener('input', captureDraft);
+  form.addEventListener('change', captureDraft);
 }
 function afterRender(){
   ['invoice-form','client-form','supplier-form','product-form','order-form',
    'company-form','company-identity-form','company-invoicing-form',
-   'received-invoice-form','recurring-invoice-form'
+   'received-invoice-form','recurring-form','warehouse-form',
+   'colleague-form','account-form','user-creds-form'
   ].forEach(trackFormDirty);
   const invoiceForm = document.getElementById('invoice-form');
   if(invoiceForm){
@@ -11322,6 +11365,7 @@ async function onSubmitReceivedInvoice(e){
   if(btn) btn.disabled = true;
   try{
     await saveReceivedInvoices();
+    clearFormDraft('received-invoice-form');
     state.editingReceivedInvoiceId = null;
     state.receivedFormItems = [];
     state.view = 'received-invoices';
@@ -11767,7 +11811,6 @@ document.addEventListener('click', async (e)=>{
     render();
   }
   else if(action==='logout'){
-    if(state.formDirty && !confirm('Máš neuložené změny. Opravdu se chceš odhlásit bez uložení?')) return;
     await signOutRemote();
     persistSession(null);
     state.currentUser=null; state.currentUserId=null; state.users=[];
@@ -11776,8 +11819,6 @@ document.addEventListener('click', async (e)=>{
     render();
   }
   else if(action==='nav'){
-    if(state.formDirty && !confirm('Máš na téhle stránce neuložené změny. Opravdu chceš odejít bez uložení?')) return;
-    state.formDirty = false;
     stopCameraScanIfActive(); state.view = el.getAttribute('data-view'); state.editingInvoiceId=null; state.editingClientId=null; state.viewingClientId=null; state.newClientDraftId=null; state.newClientDraftAttachments=[]; state.editingCompanyId=null; state.newCompanyDraftId=null; state.newCompanyDraft={logo:'',signature:'',stamp:''}; state.companyNotice=''; state.invoicingSettingsNotice=''; state.formItems=[]; state.formCompanyId=null; state.selectedInvoiceIds.clear(); state.selectedClientIds.clear(); state.editingSupplierId=null; state.viewingSupplierId=null; state.newSupplierDraftId=null; state.newSupplierDraftAttachments=[]; state.editingProductId=null; state.newProductDraftId=null; state.currentProductDraftPhoto=''; state.eanLookupStatus=''; state.selectedProductIds.clear(); closeProductContextMenu(); state.productColsPanelOpen=false; state.editingReceivedInvoiceId=null; state.receivedFormItems=[]; state.viewingReceivedInvoiceId=null; state.newInvoiceDocType='invoice'; state.newInvoiceRelatedId=null; state.newInvoiceClientId=null; state._currentInvoiceFxRate=null; state.stockMovementProductId=null; state.newMovementPanelOpen=false; state.locationScanBuffer={productId:null,locationId:null}; state.locationScanMessage=''; state.stockScanSession=[]; state.editingRecurringId=null; state.recurringFormItems=[]; state.newRecurringDraft=null; state.recurringSourceInvoiceId=null; render(); }
   else if(action==='new-invoice'){ state.view='invoice-form'; state.editingInvoiceId=null; state.formItems=[]; state.formCompanyId=null; state.newInvoiceDocType='invoice'; state.newInvoiceRelatedId=null; render(); }
   else if(action==='new-credit-note'){ state.view='invoice-form'; state.editingInvoiceId=null; state.formItems=[]; state.formCompanyId=null; state.newInvoiceDocType='credit_note'; state.newInvoiceRelatedId=null; render(); }
@@ -13099,6 +13140,7 @@ async function onSubmitInvoice(e){
   state.newInvoiceDocType = 'invoice';
   state.newInvoiceRelatedId = null;
   state.newInvoiceClientId = null;
+  clearFormDraft('invoice-form');
   state.previewId = invoice.id;
   state.view = 'invoice-preview';
   render();
@@ -13172,6 +13214,7 @@ async function onSubmitClient(e){
   else{ state.clients.push(client); }
   state.newClientDraftId = null;
   state.newClientDraftAttachments = [];
+  clearFormDraft('client-form');
   await saveClients();
   state.view='client-detail';
   state.viewingClientId = client.id;
@@ -13202,6 +13245,7 @@ async function onSubmitAccount(e){
     state.accountNotice = fields.email
       ? 'Uloženo. Pokud se měnil e-mail, Supabase ti pošle potvrzovací odkaz — do té doby se přihlašuj starým e-mailem.'
       : 'Heslo bylo změněno.';
+    clearFormDraft('account-form');
     render();
   }catch(err){
     state.accountError = err.message || 'Změna se nepovedla.';
@@ -13348,6 +13392,7 @@ async function onSubmitColleague(e){
     await callAdminUsers({ action:'create_user', email, password, display_name });
     await loadTeam();
     state.colleagueError='';
+    clearFormDraft('colleague-form');
     state.view='settings-team';
     render();
   }catch(err){
@@ -13422,7 +13467,7 @@ async function onSubmitCompanyIdentity(e){
   state.companies[idx] = co;
   try{ await saveCompanies(); }catch(err){ alert('Uložení se nepovedlo, zkus to prosím znovu.'); return; }
   state.companyNotice = 'Firma byla uložena.';
-  state.formDirty = false;
+  clearFormDraft('company-identity-form');
   render();
 }
 async function onSubmitCompanyInvoicing(e){
@@ -13452,7 +13497,7 @@ async function onSubmitCompanyInvoicing(e){
   state.companies[idx] = co;
   try{ await saveCompanies(); }catch(err){ alert('Uložení se nepovedlo, zkus to prosím znovu.'); return; }
   state.invoicingSettingsNotice = 'Uloženo.';
-  state.formDirty = false;
+  clearFormDraft('company-invoicing-form');
   render();
 }
 async function onSubmitCompany(e){
@@ -13501,7 +13546,7 @@ async function onSubmitCompany(e){
   }
   state.newCompanyDraftId = null;
   state.newCompanyDraft = {logo:'',signature:'',stamp:''};
-  state.formDirty = false;
+  clearFormDraft('company-form');
   if(isNew){
     state.view='company-form';
     state.editingCompanyId=co.id;
