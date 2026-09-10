@@ -776,6 +776,7 @@ let state = {
   productVisibleCount: 150,
   productContextMenu: null,
   productColsPanelOpen: false,
+  addEshopPickerOpen: false,
   eanLookupStatus: '',
   eanLookupFound: null,
   productPhotoDragOver: false,
@@ -4814,7 +4815,16 @@ function renderIntegrationsSection(){
 
     <div class="section-title" style="margin-top:22px;">E-shopy</div>
     ${(it.eshops||[]).map(e=>renderEshopCard(e)).join('') || `<p style="font-size:13px;color:var(--ink-soft);">Zatím žádný e-shop.</p>`}
-    <button type="button" class="btn secondary small" data-action="add-eshop">+ Přidat e-shop</button>
+    <div style="position:relative;display:inline-block;">
+      <button type="button" class="btn secondary small" data-action="toggle-add-eshop">+ Přidat e-shop</button>
+      <div class="cols-panel ${state.addEshopPickerOpen?'open':''}" style="min-width:320px;">
+        ${Object.keys(ESHOP_PLATFORMS).map(key=>`
+          <div class="combo-item" data-action="add-eshop-platform" data-platform="${key}" style="border-radius:6px;">
+            ${escapeHtml(ESHOP_PLATFORMS[key].label)}
+          </div>
+        `).join('')}
+      </div>
+    </div>
 
     <div class="section-title" style="margin-top:26px;">Dopravci</div>
     <p style="font-size:12.5px;color:var(--ink-soft);margin-top:-8px;">Program vybírá dopravce automaticky podle pořadí a pravidel (váha, typ doručení) — první, který na objednávku sedí, se použije.</p>
@@ -11854,10 +11864,12 @@ document.addEventListener('click', async (e)=>{
       render();
     }
   }
-  else if(action==='add-eshop'){
-    const platform = prompt('Kterou platformu chceš přidat?\nNapiš: shopify, shoptet, woocommerce, wix, bigcommerce, opencart, custom_api (vlastní JSON API), nebo custom_push (ERP/K2/Helios/SAP/Money přes webhook)');
-    if(platform && ESHOP_PLATFORMS[platform.trim().toLowerCase()]) addEshopPlatform(platform.trim().toLowerCase());
-    else if(platform) alert('Neznámá platforma. Zadej: shopify, shoptet, nebo woocommerce.');
+  else if(action==='toggle-add-eshop'){ state.addEshopPickerOpen = !state.addEshopPickerOpen; render(); }
+  else if(action==='add-eshop-platform'){
+    const platform = el.getAttribute('data-platform');
+    state.addEshopPickerOpen = false;
+    if(platform && ESHOP_PLATFORMS[platform]) addEshopPlatform(platform);
+    else render();
   }
   else if(action==='add-carrier'){
     const type = prompt('Kterého dopravce chceš přidat? Napiš: zasilkovna, dpd, ppl, nebo gls');
