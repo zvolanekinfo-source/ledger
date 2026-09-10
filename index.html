@@ -1645,6 +1645,7 @@ async function loadAll(){
     prefix:'', nextNumber:1, defaultDueDays:'', defaultNote:'',
     creditNotePrefix:'DOB-', creditNoteNextNumber:1,
     proformaPrefix:'ZF-', proformaNextNumber:1,
+    orderNumberMode:'own_sequence', orderNumberPrefix:'OBJ-', orderNumberNextNumber:1,
     vsMode:'same_as_invoice', vsPrefix:'', vsNextNumber:1, ksMode:'manual', ksPrefix:'', ksNextNumber:1, showInvoiceBarcode:true, invoiceBarcodeType:'CODE128', fxMarginPercent:2, fulfillmentAutoPrintInvoice:false, fulfillmentRequireInvoiceScan:false, fulfillmentAutoShipping:true,
     invoiceTerms:'',
     defaultPaymentMethod:'', invoiceAccent:'#5B8DEF',
@@ -2798,11 +2799,6 @@ function render(){
         <img src="${LOGO_DATA_URI}" alt="Ledgers.cz" style="height:26px;width:auto;display:block;margin-bottom:8px;">
         <div class="sub">Podnikový systém</div>
       </div>
-      <button type="button" class="cmdk-launcher" data-action="open-command-palette">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-        Hledat / rychlá akce
-        <kbd>⌘K</kbd>
-      </button>
       ${state.myMemberships.length>1 ? `
       <div style="padding:0 20px 14px 20px;">
         <select id="tenant-switcher" style="width:100%;padding:7px 9px;border:1px solid var(--line);border-radius:var(--radius);font-size:12.5px;background:#fff;">
@@ -5294,6 +5290,7 @@ function viewCompanyForm(){
       prefix:'', nextNumber:1, defaultDueDays:'', defaultNote:'',
       creditNotePrefix:'DOB-', creditNoteNextNumber:1,
       proformaPrefix:'ZF-', proformaNextNumber:1,
+      orderNumberMode:'own_sequence', orderNumberPrefix:'OBJ-', orderNumberNextNumber:1,
       vsMode:'same_as_invoice', vsPrefix:'', vsNextNumber:1, ksMode:'manual', ksPrefix:'', ksNextNumber:1, showInvoiceBarcode:true, invoiceBarcodeType:'CODE128', fxMarginPercent:2, fulfillmentAutoPrintInvoice:false, fulfillmentRequireInvoiceScan:false, fulfillmentAutoShipping:true,
       invoiceTerms:'',
       defaultPaymentMethod:'', vatPayer:true,
@@ -5355,6 +5352,23 @@ function companyFormMarkup(co, opts){
       <div class="field-row">
         <div class="field"><label>Prefix čísla zálohové faktury</label><input name="proformaPrefix" value="${escapeAttr(co.proformaPrefix||'ZF-')}"></div>
         <div class="field"><label>Další pořadové číslo zálohové faktury</label><input type="number" name="proformaNextNumber" value="${co.proformaNextNumber||1}"></div>
+      </div>
+
+      <div class="section-title">Číslování objednávek</div>
+      <p style="font-size:12.5px;color:var(--ink-soft);margin-top:-6px;">Určuje, jaké číslo dostane nová objednávka v modulu Objednávky.</p>
+      <div class="field">
+        <label>Jak se má číslovat nová objednávka</label>
+        <select name="orderNumberMode" id="company-order-number-mode">
+          <option value="own_sequence" ${(co.orderNumberMode||'own_sequence')==='own_sequence'?'selected':''}>Vlastní číselná řada</option>
+          <option value="same_as_invoice" ${co.orderNumberMode==='same_as_invoice'?'selected':''}>Stejné jako číslo faktury</option>
+        </select>
+      </div>
+      <p style="font-size:11.5px;color:var(--ink-soft);margin:-6px 0 14px 0;">
+        Při volbě „Stejné jako číslo faktury“ se v okamžiku uložení nové objednávky rovnou vystaví i faktura a objednávka dostane stejné číslo jako ona.
+      </p>
+      <div id="company-order-number-sequence-box" class="field-row" style="display:${(co.orderNumberMode||'own_sequence')==='same_as_invoice'?'none':''};">
+        <div class="field"><label>Prefix čísla objednávky</label><input name="orderNumberPrefix" value="${escapeAttr(co.orderNumberPrefix||'OBJ-')}"></div>
+        <div class="field"><label>Další pořadové číslo objednávky</label><input type="number" name="orderNumberNextNumber" value="${co.orderNumberNextNumber||1}"></div>
       </div>
 
       <div class="section-title">Variabilní a konstantní symbol</div>
@@ -7064,10 +7078,16 @@ async function onSubmitWarehouse(e){
   render();
 }
 /* ---------- OBJEDNÁVKY (sklad-fulfillment) ---------- */
+function nextOrderNumberForCompany(co){
+  if(!co) return 'OBJ-'+Date.now().toString().slice(-6);
+  if((co.orderNumberMode||'own_sequence')==='same_as_invoice') return '';
+  return `${co.orderNumberPrefix||'OBJ-'}${co.orderNumberNextNumber||1}`;
+}
 function blankOrder(){
+  const co = state.companies[0];
   return {
-    id: uid(), number: 'OBJ-'+Date.now().toString().slice(-6),
-    clientId: state.clients[0]?state.clients[0].id:null, companyId: state.companies[0].id,
+    id: uid(), number: nextOrderNumberForCompany(co),
+    clientId: state.clients[0]?state.clients[0].id:null, companyId: co.id,
     warehouseId: (defaultWarehouse()||{}).id||'',
     items: [], status:'new', createdAt: new Date().toISOString(),
     invoiceId:null, shippingCarrier:'', trackingNumber:'', shippingLabelPrinted:false, note:'',
@@ -7148,14 +7168,23 @@ function viewOrderForm(){
     <div class="pagehead"><div><h1>${editing?'Upravit objednávku':'Nová objednávka'}</h1></div></div>
     <form id="order-form" class="form-card">
       <div class="section-title" style="margin-top:0;padding-top:0;border-top:none;">Základní údaje</div>
+      ${(()=>{
+        const formCo = companyById(o.companyId) || state.companies[0];
+        const autoNumber = (formCo.orderNumberMode||'own_sequence')==='same_as_invoice';
+        return `
       <div class="field-row">
-        <div class="field"><label>Číslo objednávky</label><input name="number" value="${escapeAttr(o.number)}" required></div>
+        <div class="field">
+          <label>Číslo objednávky</label>
+          <input name="number" id="order-number-input" value="${escapeAttr(o.number)}" placeholder="${autoNumber?'Vygeneruje se spolu s fakturou':''}" ${autoNumber?'readonly style="background:var(--paper);color:var(--ink-soft);"':'required'}>
+          ${autoNumber?`<p style="font-size:11px;color:var(--ink-soft);margin:4px 0 0 0;">Firma má nastaveno, že číslo objednávky = číslo faktury. Uložením objednávky se rovnou vystaví i faktura.</p>`:''}
+        </div>
         <div class="field"><label>Odběratel</label><select name="clientId" id="order-client-select">${state.clients.map(c=>`<option value="${c.id}" ${o.clientId===c.id?'selected':''}>${escapeHtml(c.name)}</option>`).join('')}</select></div>
       </div>
       <div class="field-row">
-        <div class="field"><label>Firma (vystavovatel budoucí faktury)</label><select name="companyId">${state.companies.map(co=>`<option value="${co.id}" ${o.companyId===co.id?'selected':''}>${escapeHtml(co.name||'(bez názvu)')}</option>`).join('')}</select></div>
+        <div class="field"><label>Firma (vystavovatel budoucí faktury)</label><select name="companyId" id="order-company-select">${state.companies.map(co=>`<option value="${co.id}" ${o.companyId===co.id?'selected':''}>${escapeHtml(co.name||'(bez názvu)')}</option>`).join('')}</select></div>
         <div class="field"><label>Sklad pro vychystání</label><select name="warehouseId">${warehouseOptions(o.warehouseId)}</select></div>
-      </div>
+      </div>`;
+      })()}
 
       <div class="section-title">Položky k vychystání</div>
       <div class="field combo-field" style="max-width:460px;">
@@ -7205,6 +7234,8 @@ async function onSubmitOrder(e){
     warehouseId: fd.get('warehouseId'), note: fd.get('note')||'', items
   };
   const editing = state.editingOrderId ? state.orders.find(o=>o.id===state.editingOrderId) : null;
+  const co = companyById(fields.companyId) || state.companies[0];
+  const orderNumberMode = co.orderNumberMode||'own_sequence';
   if(editing){
     const idx = state.orders.findIndex(o=>o.id===editing.id);
     // zachovat scannedQty u položek, které v editaci zůstaly stejné (podle productId)
@@ -7212,10 +7243,24 @@ async function onSubmitOrder(e){
       const prev = (editing.items||[]).find(x=>x.productId===it.productId);
       return { ...it, scannedQty: prev ? Math.min(prev.scannedQty||0, it.qty) : 0 };
     });
+    // objednávka s automatickým číslováním (=číslo faktury) si číslo drží samo, nepřepisovat ho z pole
+    if(orderNumberMode==='same_as_invoice') fields.number = editing.number;
     state.orders[idx] = { ...editing, ...fields };
   } else {
     fields.items = fields.items.map(it=>({ ...it, scannedQty:0 }));
-    state.orders.push({ ...blankOrder(), ...fields });
+    const newOrder = { ...blankOrder(), ...fields };
+    if(orderNumberMode==='same_as_invoice'){
+      try{
+        await buildInvoiceFromOrder(newOrder, { syncOrderNumber:true, persistOrders:false });
+      }catch(err){
+        alert('Nepodařilo se rovnou vystavit fakturu k objednávce, zkus to prosím znovu. (' + (err && err.message ? err.message : 'neznámá chyba') + ')');
+        return;
+      }
+    } else {
+      co.orderNumberNextNumber = (co.orderNumberNextNumber||1) + 1;
+      try{ await saveCompanies(); }catch(err){}
+    }
+    state.orders.push(newOrder);
   }
   try{ await saveOrders(); }catch(err){ alert('Uložení se nepovedlo, zkus to prosím znovu.'); return; }
   state.editingOrderId = null;
@@ -7257,6 +7302,19 @@ function setupStockMovementPicker(){
   });
 }
 function setupOrderForm(){
+  const companySelect = document.getElementById('order-company-select');
+  const numberInput = document.getElementById('order-number-input');
+  if(companySelect && numberInput && !state.editingOrderId){
+    companySelect.addEventListener('change', ()=>{
+      const co = companyById(companySelect.value);
+      const autoNumber = co && (co.orderNumberMode||'own_sequence')==='same_as_invoice';
+      numberInput.value = nextOrderNumberForCompany(co);
+      numberInput.readOnly = !!autoNumber;
+      numberInput.placeholder = autoNumber ? 'Vygeneruje se spolu s fakturou' : '';
+      numberInput.style.background = autoNumber ? 'var(--paper)' : '';
+      numberInput.style.color = autoNumber ? 'var(--ink-soft)' : '';
+    });
+  }
   const itemsBody = document.getElementById('order-items-body');
   if(itemsBody){
     itemsBody.addEventListener('input', (e)=>{
@@ -7440,9 +7498,11 @@ function viewOrderFulfillmentShippingStage(o){
     </div>
   `;
 }
-async function createInvoiceFromOrder(o){
+async function buildInvoiceFromOrder(o, opts){
+  opts = opts || {};
   const co = companyById(o.companyId) || state.companies[0];
   const num = `${co.prefix}${co.nextNumber}`;
+  if(opts.syncOrderNumber) o.number = num;
   const vsKs = computeVsKs(co, num);
   const items = (o.items||[]).map(it=>({ desc:it.desc, qty:it.qty, unit:it.unit||'ks', price:it.price, vat:it.vat, productId:it.productId, ean:it.ean||'', productNumber:it.productNumber||'' }));
   const invoice = {
@@ -7461,11 +7521,15 @@ async function createInvoiceFromOrder(o){
   if(co.vsMode==='separate_sequence') co.vsNextNumber = (co.vsNextNumber||1) + 1;
   if(co.ksMode==='separate_sequence') co.ksNextNumber = (co.ksNextNumber||1) + 1;
   o.invoiceId = invoice.id;
-  o.status = 'packed';
+  if(opts.markPacked) o.status = 'packed';
   await saveCompanies();
   await saveInvoices();
-  await saveOrders();
+  if(opts.persistOrders!==false) await saveOrders();
   return invoice;
+}
+async function createInvoiceFromOrder(o){
+  const co = companyById(o.companyId) || state.companies[0];
+  return buildInvoiceFromOrder(o, { markPacked:true, syncOrderNumber: (co.orderNumberMode||'own_sequence')==='same_as_invoice' });
 }
 function processScan(code){
   code = (code||'').trim();
@@ -9841,6 +9905,13 @@ function afterRender(){
         if(box) box.style.display = ksModeSelect.value==='separate_sequence' ? '' : 'none';
       });
     }
+    const orderNumberModeSelect = document.getElementById('company-order-number-mode');
+    if(orderNumberModeSelect){
+      orderNumberModeSelect.addEventListener('change', ()=>{
+        const box = document.getElementById('company-order-number-sequence-box');
+        if(box) box.style.display = orderNumberModeSelect.value==='same_as_invoice' ? 'none' : '';
+      });
+    }
   }
   const accountForm = document.getElementById('account-form');
   if(accountForm){ accountForm.addEventListener('submit', onSubmitAccount); }
@@ -11054,7 +11125,7 @@ document.addEventListener('click', async (e)=>{
     state.authView='login'; state.view='dashboard';
     render();
   }
-  else if(action==='nav'){ stopCameraScanIfActive(); state.view = el.getAttribute('data-view'); state.sidebarOpen = false; state.editingInvoiceId=null; state.editingClientId=null; state.viewingClientId=null; state.newClientDraftId=null; state.newClientDraftAttachments=[]; state.editingCompanyId=null; state.newCompanyDraftId=null; state.newCompanyDraft={logo:'',signature:'',stamp:''}; state.companyNotice=''; state.formItems=[]; state.formCompanyId=null; state.selectedInvoiceIds.clear(); state.selectedClientIds.clear(); state.editingSupplierId=null; state.viewingSupplierId=null; state.newSupplierDraftId=null; state.newSupplierDraftAttachments=[]; state.editingProductId=null; state.newProductDraftId=null; state.currentProductDraftPhoto=''; state.eanLookupStatus=''; state.selectedProductIds.clear(); closeProductContextMenu(); state.productColsPanelOpen=false; state.editingReceivedInvoiceId=null; state.receivedFormItems=[]; state.viewingReceivedInvoiceId=null; state.newInvoiceDocType='invoice'; state.newInvoiceRelatedId=null; state.newInvoiceClientId=null; state._currentInvoiceFxRate=null; state.stockMovementProductId=null; state.newMovementPanelOpen=false; state.locationScanBuffer={productId:null,locationId:null}; state.locationScanMessage=''; state.stockScanSession=[]; state.editingRecurringId=null; state.recurringFormItems=[]; state.newRecurringDraft=null; state.recurringSourceInvoiceId=null; render(); }
+  else if(action==='nav'){ stopCameraScanIfActive(); state.view = el.getAttribute('data-view'); state.editingInvoiceId=null; state.editingClientId=null; state.viewingClientId=null; state.newClientDraftId=null; state.newClientDraftAttachments=[]; state.editingCompanyId=null; state.newCompanyDraftId=null; state.newCompanyDraft={logo:'',signature:'',stamp:''}; state.companyNotice=''; state.formItems=[]; state.formCompanyId=null; state.selectedInvoiceIds.clear(); state.selectedClientIds.clear(); state.editingSupplierId=null; state.viewingSupplierId=null; state.newSupplierDraftId=null; state.newSupplierDraftAttachments=[]; state.editingProductId=null; state.newProductDraftId=null; state.currentProductDraftPhoto=''; state.eanLookupStatus=''; state.selectedProductIds.clear(); closeProductContextMenu(); state.productColsPanelOpen=false; state.editingReceivedInvoiceId=null; state.receivedFormItems=[]; state.viewingReceivedInvoiceId=null; state.newInvoiceDocType='invoice'; state.newInvoiceRelatedId=null; state.newInvoiceClientId=null; state._currentInvoiceFxRate=null; state.stockMovementProductId=null; state.newMovementPanelOpen=false; state.locationScanBuffer={productId:null,locationId:null}; state.locationScanMessage=''; state.stockScanSession=[]; state.editingRecurringId=null; state.recurringFormItems=[]; state.newRecurringDraft=null; state.recurringSourceInvoiceId=null; render(); }
   else if(action==='new-invoice'){ state.view='invoice-form'; state.editingInvoiceId=null; state.formItems=[]; state.formCompanyId=null; state.newInvoiceDocType='invoice'; state.newInvoiceRelatedId=null; render(); }
   else if(action==='new-credit-note'){ state.view='invoice-form'; state.editingInvoiceId=null; state.formItems=[]; state.formCompanyId=null; state.newInvoiceDocType='credit_note'; state.newInvoiceRelatedId=null; render(); }
   else if(action==='new-proforma'){ state.view='invoice-form'; state.editingInvoiceId=null; state.formItems=[]; state.formCompanyId=null; state.newInvoiceDocType='proforma'; state.newInvoiceRelatedId=null; render(); }
@@ -11530,7 +11601,7 @@ document.addEventListener('click', async (e)=>{
   else if(action==='location-scan-reset'){ state.locationScanBuffer = { productId:null, locationId:null }; state.locationScanMessage=''; render(); }
   else if(action==='stock-scan-camera'){ startStockCameraScan(); }
   else if(action==='stock-scan-camera-cancel'){ stopCameraScanIfActive(); }
-  else if(action==='open-location-scan-mode'){ state.stockScanMode='location'; state.view='location-scan'; state.sidebarOpen=false; render(); }
+  else if(action==='open-location-scan-mode'){ state.stockScanMode='location'; state.view='location-scan'; render(); }
   else if(action==='set-scan-mode'){
     stopCameraScanIfActive();
     state.stockScanMode = el.getAttribute('data-mode');
@@ -12533,6 +12604,7 @@ async function onSubmitCompany(e){
     prefix: fd.get('prefix'), nextNumber: parseInt(fd.get('nextNumber'))||1,
     creditNotePrefix: fd.get('creditNotePrefix')||'DOB-', creditNoteNextNumber: parseInt(fd.get('creditNoteNextNumber'))||1,
     proformaPrefix: fd.get('proformaPrefix')||'ZF-', proformaNextNumber: parseInt(fd.get('proformaNextNumber'))||1,
+    orderNumberMode: fd.get('orderNumberMode')||'own_sequence', orderNumberPrefix: fd.get('orderNumberPrefix')||'OBJ-', orderNumberNextNumber: parseInt(fd.get('orderNumberNextNumber'))||1,
     vsMode: fd.get('vsMode')||'same_as_invoice', vsPrefix: fd.get('vsPrefix')||'', vsNextNumber: parseInt(fd.get('vsNextNumber'))||1,
     ksMode: fd.get('ksMode')||'manual', ksPrefix: fd.get('ksPrefix')||'', ksNextNumber: parseInt(fd.get('ksNextNumber'))||1,
     showInvoiceBarcode: fd.get('showInvoiceBarcode')==='on', invoiceBarcodeType: fd.get('invoiceBarcodeType')||'EAN13',
