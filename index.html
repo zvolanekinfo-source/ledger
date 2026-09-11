@@ -7846,9 +7846,11 @@ function viewOrderDetail(){
       ${(o.attachments||[]).length ? `
       <div class="section-title">Nahrané soubory</div>
       <ul style="font-size:13.5px;margin:0;padding-left:18px;">
-        ${o.attachments.map(a=>`<li>${escapeHtml(a.name)} <span style="color:var(--ink-soft);">(${escapeHtml(a.kind||'')})</span></li>`).join('')}
+        ${o.attachments.map(a=>a.url
+          ? `<li><a href="${escapeAttr(a.url)}" target="_blank" rel="noopener">${escapeHtml(a.name)}</a> <span style="color:var(--ink-soft);">(${escapeHtml(a.kind||'')})</span></li>`
+          : `<li>${escapeHtml(a.name)} <span style="color:var(--ink-soft);">(${escapeHtml(a.kind||'')}, bez odkazu ke stažení)</span></li>`
+        ).join('')}
       </ul>
-      <p style="font-size:11px;color:var(--ink-soft);margin-top:4px;">Appka zatím zvládne jen jméno souboru — samotný soubor stahovat nejde, dokud e-shop soubory nikam neukládá (viz poznámka níže).</p>
       ` : ''}
 
       ${o.note ? `<div class="section-title">Poznámka</div><p style="font-size:13.5px;white-space:pre-wrap;">${escapeHtml(o.note)}</p>` : ''}
