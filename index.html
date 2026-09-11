@@ -750,11 +750,15 @@ let state = {
   editingOrderId: null,
   orderFormItems: [],
   fulfillingOrderId: null,
+  viewingOrderId: null,
   fulfillmentInvoiceConfirmed: false,
   _stopCameraScan: null,
   _zxingReader: null,
   orderFilter: { search:'', status:'' },
-  integrations: { eshops:[], carriers:[], pollIntervalSec:60, notifyNewOrderEmail:false, notifyEmailAddress:'' },
+  integrations: { eshops:[], carriers:[], pollIntervalSec:60, notifyNewOrderEmail:false, notifyEmailAddress:'',
+    orderAutoSendInvoiceEmail:false, orderInvoiceEmailSubject:'Faktura k vaší objednávce {cislo}',
+    orderInvoiceEmailMessage:'Dobrý den,\n\nděkujeme za objednávku {cislo}. V příloze/odkazu níže najdete fakturu.\n\nS pozdravem',
+    orderShippedMessage:'Dobrý den,\n\nvaše objednávka {cislo} je na cestě k vám{sledovaci}.\n\nS pozdravem' },
   onboarding: { step:1 },
   onboardingCompleted: false,
   integrationTestStatus: {},
@@ -1449,7 +1453,7 @@ const NAV_GROUPS = [
       { tabKey:'received-invoices', label:'Přijaté faktury', view:'received-invoices', activeViews:['received-invoices','received-invoice-form','received-invoice-detail'] },
     ]
   },
-  { label:'Objednávky', primaryView:'orders', tabKey:'orders', views:['orders','order-form','order-fulfillment'] },
+  { label:'Objednávky', primaryView:'orders', tabKey:'orders', views:['orders','order-form','order-fulfillment','order-detail'] },
   { label:'Odběratelé', primaryView:'clients', tabKey:'clients', views:['clients','client-form','client-detail'] },
   { label:'Dodavatelé', primaryView:'suppliers', tabKey:'suppliers', views:['suppliers','supplier-form','supplier-detail'] },
   { label:'Produkty', primaryView:'products', tabKey:'products',
@@ -1460,7 +1464,7 @@ const NAV_GROUPS = [
     ]
   },
   { label:'Nastavení', primaryView:'settings', tabKey:null,
-    views:['settings','settings-invoicing','settings-team','settings-integrations','settings-notifications','settings-backup','settings-data-health','settings-discounts','settings-audit','settings-billing','settings-danger','company-form','account-form','colleague-form','user-creds-form','factory-reset'],
+    views:['settings','settings-invoicing','settings-team','settings-integrations','settings-notifications','settings-orders','settings-backup','settings-data-health','settings-discounts','settings-audit','settings-billing','settings-danger','company-form','account-form','colleague-form','user-creds-form','factory-reset'],
     subTabs:[
       { tabKey:null, label:'Předplatné', view:'settings-billing', activeViews:['settings-billing'] },
       { tabKey:null, label:'Firma', view:'settings', activeViews:['settings','company-form'] },
@@ -1468,6 +1472,7 @@ const NAV_GROUPS = [
       { tabKey:null, label:'Kolegové', view:'settings-team', activeViews:['settings-team','account-form','colleague-form','user-creds-form'] },
       { tabKey:null, label:'Integrace', view:'settings-integrations', activeViews:['settings-integrations'] },
       { tabKey:null, label:'Upozornění', view:'settings-notifications', activeViews:['settings-notifications'] },
+      { tabKey:null, label:'Objednávky', view:'settings-orders', activeViews:['settings-orders'] },
       { tabKey:null, label:'Zálohování dat', view:'settings-backup', activeViews:['settings-backup'] },
       { tabKey:null, label:'Kontrola dat', view:'settings-data-health', activeViews:['settings-data-health'] },
       { tabKey:null, label:'Slevové kódy', view:'settings-discounts', activeViews:['settings-discounts'] },
@@ -1964,9 +1969,16 @@ async function loadAll(){
         const carriers = [];
         if(loaded.zasilkovna && loaded.zasilkovna.apiKey) carriers.push({ id:uid(), type:'zasilkovna', name:'Zásilkovna', active:true, credentials:loaded.zasilkovna, rules:[] });
         if(loaded.dpd && loaded.dpd.username) carriers.push({ id:uid(), type:'dpd', name:'DPD', active:true, credentials:loaded.dpd, rules:[] });
-        state.integrations = { eshops, carriers, pollIntervalSec:60, notifyNewOrderEmail:false, notifyEmailAddress:'' };
+        state.integrations = { eshops, carriers, pollIntervalSec:60, notifyNewOrderEmail:false, notifyEmailAddress:'',
+          orderAutoSendInvoiceEmail:false, orderInvoiceEmailSubject:'Faktura k vaší objednávce {cislo}',
+          orderInvoiceEmailMessage:'Dobrý den,\n\nděkujeme za objednávku {cislo}.\n\nS pozdravem',
+          orderShippedMessage:'Dobrý den,\n\nvaše objednávka {cislo} je na cestě k vám{sledovaci}.\n\nS pozdravem' };
       } else {
-        state.integrations = { eshops:[], carriers:[], pollIntervalSec:60, notifyNewOrderEmail:false, notifyEmailAddress:'', ...loaded };
+        state.integrations = { eshops:[], carriers:[], pollIntervalSec:60, notifyNewOrderEmail:false, notifyEmailAddress:'',
+          orderAutoSendInvoiceEmail:false, orderInvoiceEmailSubject:'Faktura k vaší objednávce {cislo}',
+          orderInvoiceEmailMessage:'Dobrý den,\n\nděkujeme za objednávku {cislo}.\n\nS pozdravem',
+          orderShippedMessage:'Dobrý den,\n\nvaše objednávka {cislo} je na cestě k vám{sledovaci}.\n\nS pozdravem',
+          ...loaded };
       }
     }
   }catch(e){}
@@ -3360,6 +3372,7 @@ function renderView(){
     case 'orders': return viewOrders();
     case 'order-form': return viewOrderForm();
     case 'order-fulfillment': return viewOrderFulfillment();
+    case 'order-detail': return viewOrderDetail();
     case 'invoice-form': return viewInvoiceForm();
     case 'invoice-preview': return viewInvoicePreview();
     case 'bulk-import': return viewBulkImport();
@@ -3372,6 +3385,7 @@ function renderView(){
     case 'settings-team': return viewSettingsTeam();
     case 'settings-integrations': return viewSettingsIntegrations();
     case 'settings-notifications': return viewSettingsNotifications();
+    case 'settings-orders': return viewSettingsOrders();
     case 'settings-backup': return viewSettingsBackup();
     case 'settings-data-health': return viewSettingsDataHealth();
     case 'settings-discounts': return viewSettingsDiscounts();
@@ -4890,13 +4904,20 @@ async function pollEshopOrders(eshopId, silent){
       if(state.orders.some(o=>o.externalId===eo.externalId)) return;
       const items = eo.lineItems.map(li=>{
         const product = findProductBySku(li.sku);
-        return product ? { productId:product.id, desc:li.title, qty:li.qty, unit:'ks', price:li.price, vat:21, ean:product.ean||'', productNumber:product.number||'', scannedQty:0 } : null;
-      }).filter(Boolean);
+        return {
+          productId: product ? product.id : null,
+          desc: li.title || (product?product.name:'') || (li.sku||'Položka'),
+          qty: li.qty||1, unit:'ks', price: li.price||0, vat:21,
+          ean: product?(product.ean||''):'', productNumber: product?(product.number||''):(li.sku||''),
+          scannedQty:0
+        };
+      });
       if(!items.length) return;
+      const unmatchedCount = items.filter(it=>!it.productId).length;
       state.orders.push({
         ...blankOrder(), id: uid(), number: eo.number, externalId: eo.externalId, eshopId: eshop.id,
         clientId: null, items, weightKg: eo.weightKg||0,
-        note: `Import z ${ESHOP_PLATFORMS[eshop.platform].label}${eo.email?(' — '+eo.email):''}`
+        note: `Import z ${ESHOP_PLATFORMS[eshop.platform].label}${eo.email?(' — '+eo.email):''}${unmatchedCount?` — ⚠️ ${unmatchedCount} položek se nepodařilo napojit na skladový produkt, doplň ručně`:''}`
       });
       imported++;
     });
@@ -4939,16 +4960,47 @@ async function pollIncomingOrdersQueue(silent){
       if(!state.orders.some(o=>o.externalId===eo.external_id)){
         const items = (eo.line_items||[]).map(li=>{
           const product = findProductBySku(li.sku);
-          return product ? { productId:product.id, desc:li.title, qty:li.qty, unit:'ks', price:li.price, vat:21, ean:product.ean||'', productNumber:product.number||'', scannedQty:0 } : null;
-        }).filter(Boolean);
+          return {
+            productId: product ? product.id : null,
+            desc: li.title || (product?product.name:'') || (li.sku||'Položka'),
+            qty: li.qty||1, unit:'ks', price: li.price||0, vat:21,
+            ean: product?(product.ean||''):'', productNumber: product?(product.number||''):(li.sku||''),
+            scannedQty:0
+          };
+        });
         if(items.length){
           const platformLabel = (ESHOP_PLATFORMS[row.platform]||{}).label || row.platform;
+          const unmatchedCount = items.filter(it=>!it.productId).length;
+          // Napoj (nebo založ) odběratele podle e-mailu ze checkoutu, ať faktura vzniká
+          // rovnou se správnou fakturační adresou.
+          let clientId = null;
+          if(eo.email){
+            const existingClient = state.clients.find(c=>(c.contactEmail||'').toLowerCase()===String(eo.email).toLowerCase());
+            if(existingClient){
+              clientId = existingClient.id;
+            } else {
+              const ba = eo.billing_address || {};
+              const newClient = {
+                id: uid(), name: eo.customer_name || ba.company || eo.email, ico: ba.ico||'', dic: ba.dic||'',
+                address: { street: ba.street||'', number: ba.number||'', zip: ba.zip||'', city: ba.city||'' },
+                contactPerson: eo.customer_name||'', contactPhone: eo.phone||'', contactEmail: eo.email||'',
+                note: `Založeno automaticky z ${platformLabel}`, createdAt: new Date().toISOString(), attachments:[]
+              };
+              state.clients.push(newClient);
+              clientId = newClient.id;
+            }
+          }
           const newOrder = {
             ...blankOrder(), id: uid(), number: eo.number || row.external_id, externalId: eo.external_id,
-            clientId: null, items, weightKg: eo.weight_kg||0,
-            note: `Webhook z ${platformLabel}${eo.email?(' — '+eo.email):''}`
+            clientId, items, weightKg: eo.weight_kg||0,
+            shippingMethod: eo.shipping_method||'', shippingPrice: eo.shipping_price||0,
+            customerEmail: eo.email||'', customerPhone: eo.phone||'',
+            billingAddress: eo.billing_address||null, deliveryAddress: eo.delivery_address||null,
+            attachments: eo.attachments||[], photoUrl: eo.photo_url||'',
+            note: `Webhook z ${platformLabel}${eo.email?(' — '+eo.email):''}${unmatchedCount?` — ⚠️ ${unmatchedCount} položek se nepodařilo napojit na skladový produkt (SKU se neshoduje s žádným EAN/SKU/produktovým číslem), doplň ručně`:''}${eo.customer_note?` — Poznámka zákazníka: ${eo.customer_note}`:''}`
           };
           state.orders.push(newOrder);
+          if(clientId) saveClients();
           notifyNewOrderByEmail(newOrder);
           imported++;
         }
@@ -5399,6 +5451,36 @@ function viewSettingsTeam(){
           ? 'Jako admin můžeš kolegu přidat rovnou i s heslem, spravovat jméno, roli i přihlašovací údaje kohokoli v týmu (i svoje vlastní jméno) a v případě potřeby jeho účet i trvale smazat (ne jen zrušit přístup).'
           : 'Noví kolegové se zaregistrují sami přes záložku „Registrace" na přihlašovací obrazovce, nebo je (i s heslem) může rovnou přidat kolega s rolí admin. Jméno, roli i přihlašovací údaje ostatních spravuje jen admin.'}
         Program hesla nikdy neukládá ani nevidí — o vše se stará Supabase Auth.
+      </p>
+    </div>
+  `;
+}
+function viewSettingsOrders(){
+  const it = state.integrations;
+  return `
+    <div class="pagehead"><div><h1>Objednávky</h1><p class="desc">Automatické e-maily zákazníkům k objednávkám.</p></div></div>
+    <div class="form-card">
+      <div class="section-title" style="margin-top:0;padding-top:0;border-top:none;">Faktura po vytvoření</div>
+      <form id="order-settings-form" class="form-card" style="padding:0;box-shadow:none;border:none;">
+        ${state.orderSettingsNotice?`<div class="login-error" style="background:var(--accent-soft);color:var(--accent);">${escapeHtml(state.orderSettingsNotice)}</div>`:''}
+        <label style="display:flex;align-items:center;gap:8px;font-size:14px;margin:6px 0 14px 0;">
+          <input type="checkbox" name="orderAutoSendInvoiceEmail" ${it.orderAutoSendInvoiceEmail?'checked':''}> Automaticky poslat zákazníkovi e-mail, jakmile se k objednávce vystaví faktura
+        </label>
+        <div class="field"><label>Předmět e-mailu</label><input name="orderInvoiceEmailSubject" value="${escapeAttr(it.orderInvoiceEmailSubject)}"></div>
+        <div class="field"><label>Text e-mailu</label><textarea name="orderInvoiceEmailMessage" style="min-height:110px;">${escapeHtml(it.orderInvoiceEmailMessage||'')}</textarea></div>
+
+        <div class="section-title">Zpráva při odeslání objednávky</div>
+        <p style="font-size:12px;color:var(--ink-soft);margin-top:-6px;">Pošle se zákazníkovi na konci průvodce vychystáním (tlačítko „Označit jako odesláno“).</p>
+        <div class="field"><label>Text zprávy</label><textarea name="orderShippedMessage" style="min-height:90px;">${escapeHtml(it.orderShippedMessage||'')}</textarea></div>
+        <p style="font-size:11px;color:var(--ink-soft);margin:-6px 0 14px 0;">Můžeš použít <code>{cislo}</code> (číslo objednávky) a <code>{sledovaci}</code> (věta se sledovacím číslem, pokud existuje).</p>
+
+        <div class="formfoot" style="justify-content:flex-start;">
+          <button type="submit" class="btn secondary">Uložit</button>
+        </div>
+      </form>
+      <p style="font-size:11.5px;color:var(--ink-soft);margin-top:14px;">
+        E-maily posílá stejná funkce <code>notify-new-order</code>, co už máš nasazenou v Supabase pro upozornění na nové objednávky —
+        stačí ji jednou aktualizovat na nejnovější verzi (podporuje teď kromě upozornění i tyhle zprávy zákazníkům).
       </p>
     </div>
   `;
@@ -7731,6 +7813,58 @@ function nextOrderNumberForCompany(co){
   if((co.orderNumberMode||'own_sequence')==='same_as_invoice') return '';
   return `${co.orderNumberPrefix||'OBJ-'}${co.orderNumberNextNumber||1}`;
 }
+function viewOrderDetail(){
+  const o = state.orders.find(x=>x.id===state.viewingOrderId);
+  if(!o) return emptyState('Objednávka nenalezena','');
+  const c = clientById(o.clientId);
+  const inv = o.invoiceId ? state.invoices.find(i=>i.id===o.invoiceId) : null;
+  const addr = a => a ? [a.company, [a.street,a.number].filter(Boolean).join(' '), [a.zip,a.city].filter(Boolean).join(' ')].filter(Boolean).join(', ') : '—';
+  const total = (o.items||[]).reduce((s,it)=>s+(it.qty||0)*(it.price||0),0) + (o.shippingPrice||0);
+  return `
+    <div class="pagehead">
+      <div><h1>Objednávka #${escapeHtml(o.number)}</h1><p class="desc">${orderStatusLabel(o.status)} · ${c?escapeHtml(c.name):'bez odběratele'}</p></div>
+      <div style="display:flex;gap:10px;">
+        ${inv ? `<button class="btn secondary" data-action="nav-invoice-preview" data-id="${inv.id}">Zobrazit fakturu</button>` : ''}
+        <button class="btn" data-action="open-order" data-id="${o.id}">Vyřídit objednávku →</button>
+      </div>
+    </div>
+    <div class="form-card">
+      <div class="section-title" style="margin-top:0;padding-top:0;border-top:none;">Kontakt</div>
+      <p style="font-size:13.5px;margin:0 0 4px 0;">${escapeHtml(o.customerEmail||(c?c.contactEmail:'')||'—')}</p>
+      <p style="font-size:13.5px;margin:0;">${escapeHtml(o.customerPhone||(c?c.contactPhone:'')||'—')}</p>
+
+      <div class="section-title">Fakturační adresa</div>
+      <p style="font-size:13.5px;">${escapeHtml(addr(o.billingAddress) || (c?[c.name,c.ico,addr(c.address)].filter(Boolean).join(', '):'—'))}</p>
+
+      <div class="section-title">Dodací adresa</div>
+      <p style="font-size:13.5px;">${escapeHtml(addr(o.deliveryAddress) || '—')}</p>
+
+      <div class="section-title">Doprava</div>
+      <p style="font-size:13.5px;">${escapeHtml(o.shippingMethod||'—')}${o.shippingPrice?` — ${o.shippingPrice.toLocaleString('cs-CZ')} Kč`:''}</p>
+      ${o.trackingNumber?`<p style="font-size:13.5px;color:var(--ink-soft);">Sledovací číslo: ${escapeHtml(o.trackingNumber)}</p>`:''}
+
+      ${(o.attachments||[]).length ? `
+      <div class="section-title">Nahrané soubory</div>
+      <ul style="font-size:13.5px;margin:0;padding-left:18px;">
+        ${o.attachments.map(a=>`<li>${escapeHtml(a.name)} <span style="color:var(--ink-soft);">(${escapeHtml(a.kind||'')})</span></li>`).join('')}
+      </ul>
+      <p style="font-size:11px;color:var(--ink-soft);margin-top:4px;">Appka zatím zvládne jen jméno souboru — samotný soubor stahovat nejde, dokud e-shop soubory nikam neukládá (viz poznámka níže).</p>
+      ` : ''}
+
+      ${o.note ? `<div class="section-title">Poznámka</div><p style="font-size:13.5px;white-space:pre-wrap;">${escapeHtml(o.note)}</p>` : ''}
+
+      <div class="section-title">Položky</div>
+      <table class="fixed-table" style="margin-top:6px;">
+        <thead><tr><th>Popis</th><th style="width:70px;">Ks</th><th style="width:110px;">Cena/ks</th><th style="width:110px;">Celkem</th></tr></thead>
+        <tbody>
+          ${(o.items||[]).map(it=>`<tr><td>${escapeHtml(it.desc)}</td><td class="num">${it.qty}</td><td class="num">${(it.price||0).toLocaleString('cs-CZ')} Kč</td><td class="num">${((it.qty||0)*(it.price||0)).toLocaleString('cs-CZ')} Kč</td></tr>`).join('')}
+          ${o.shippingPrice?`<tr><td>Doprava</td><td></td><td></td><td class="num">${o.shippingPrice.toLocaleString('cs-CZ')} Kč</td></tr>`:''}
+        </tbody>
+      </table>
+      <p style="text-align:right;font-weight:600;margin-top:8px;">Celkem: ${total.toLocaleString('cs-CZ')} Kč</p>
+    </div>
+  `;
+}
 function blankOrder(){
   const co = activeCompany();
   return {
@@ -7739,7 +7873,11 @@ function blankOrder(){
     warehouseId: (defaultWarehouse()||{}).id||'',
     items: [], status:'new', createdAt: new Date().toISOString(),
     invoiceId:null, shippingCarrier:'', trackingNumber:'', shippingLabelPrinted:false, note:'',
-    weightKg:0, deliveryType:''
+    weightKg:0, deliveryType:'',
+    shippingMethod:'', shippingPrice:0,
+    customerEmail:'', customerPhone:'',
+    billingAddress:null, deliveryAddress:null,
+    attachments:[], photoUrl:'', shippedMessageSent:false
   };
 }
 function orderStatusLabel(s){ return {new:'Nová',picking:'Vychystává se',packed:'Zabaleno',shipped:'Odesláno'}[s]||s; }
@@ -7789,7 +7927,7 @@ function viewOrders(){
         ${list.map(o=>{
           const c = clientById(o.clientId);
           const p = orderProgress(o);
-          return `<tr class="rowlink" data-action="open-order" data-id="${o.id}">
+          return `<tr class="rowlink" data-action="view-order" data-id="${o.id}">
             <td class="num">#${escapeHtml(o.number)}</td>
             <td>${c?escapeHtml(c.name):'—'}</td>
             <td class="num">${(o.items||[]).length}</td>
@@ -8179,6 +8317,17 @@ async function buildInvoiceFromOrder(o, opts){
   await saveCompanies();
   await saveInvoices();
   if(opts.persistOrders!==false) await saveOrders();
+  if(state.integrations.orderAutoSendInvoiceEmail){
+    const cl = clientById(o.clientId);
+    const to = o.customerEmail || (cl?cl.contactEmail:'');
+    if(to){
+      sendCustomerEmail(
+        to,
+        fillOrderMessageTemplate(state.integrations.orderInvoiceEmailSubject, o),
+        fillOrderMessageTemplate(state.integrations.orderInvoiceEmailMessage, o)
+      );
+    }
+  }
   return invoice;
 }
 async function createInvoiceFromOrder(o){
@@ -10718,6 +10867,8 @@ function afterRender(){
   if(factoryResetFinalForm) factoryResetFinalForm.addEventListener('submit', onSubmitFactoryResetFinal);
   const notificationsForm = document.getElementById('notifications-form');
   if(notificationsForm) notificationsForm.addEventListener('submit', onSubmitNotifications);
+  const orderSettingsForm = document.getElementById('order-settings-form');
+  if(orderSettingsForm) orderSettingsForm.addEventListener('submit', onSubmitOrderSettings);
   const backupIntervalSelect = document.getElementById('backup-interval-select');
   if(backupIntervalSelect){
     backupIntervalSelect.addEventListener('change', async ()=>{
@@ -12416,6 +12567,8 @@ document.addEventListener('click', async (e)=>{
     if(ord) logAuditEvent('Smazána objednávka', 'order', ord.number, '');
     render();
   }
+  else if(action==='view-order'){ state.viewingOrderId=id; state.view='order-detail'; render(); }
+  else if(action==='nav-invoice-preview'){ state.previewId=id; state.view='invoice-preview'; render(); }
   else if(action==='open-order'){ stopCameraScanIfActive(); state.fulfillingOrderId=id; state.fulfillmentStage=null; state.fulfillmentInvoiceConfirmed=false; state.view='order-fulfillment'; render(); }
   else if(action==='remove-order-item'){ const idx=parseInt(el.getAttribute('data-index')); state.orderFormItems.splice(idx,1); render(); }
   else if(action==='fulfill-camera-scan'){ startCameraScan(); }
@@ -12498,7 +12651,21 @@ document.addEventListener('click', async (e)=>{
   else if(action==='fulfill-print-label'){ printShippingLabel(id); }
   else if(action==='fulfill-mark-shipped'){
     const o = state.orders.find(x=>x.id===id);
-    if(o){ o.status='shipped'; try{ await saveOrders(); }catch(err){ alert('Uložení se nepovedlo.'); } }
+    if(o){
+      o.status='shipped';
+      try{ await saveOrders(); }catch(err){ alert('Uložení se nepovedlo.'); }
+      const cl = clientById(o.clientId);
+      const to = o.customerEmail || (cl?cl.contactEmail:'');
+      if(to && !o.shippedMessageSent){
+        sendCustomerEmail(
+          to,
+          `Objednávka ${o.number} je na cestě`,
+          fillOrderMessageTemplate(state.integrations.orderShippedMessage, o)
+        );
+        o.shippedMessageSent = true;
+        saveOrders().catch(()=>{});
+      }
+    }
     render();
   }
   else if(action==='fulfill-next-order'){
@@ -13397,6 +13564,33 @@ async function onSubmitNotifications(e){
   try{ await saveIntegrations(); }catch(err){ alert('Uložení se nepovedlo, zkus to prosím znovu.'); return; }
   state.notificationsNotice = 'Uloženo.';
   render();
+}
+async function onSubmitOrderSettings(e){
+  e.preventDefault();
+  const fd = new FormData(e.target);
+  state.integrations.orderAutoSendInvoiceEmail = fd.get('orderAutoSendInvoiceEmail')==='on';
+  state.integrations.orderInvoiceEmailSubject = (fd.get('orderInvoiceEmailSubject')||'').trim();
+  state.integrations.orderInvoiceEmailMessage = fd.get('orderInvoiceEmailMessage')||'';
+  state.integrations.orderShippedMessage = fd.get('orderShippedMessage')||'';
+  try{ await saveIntegrations(); }catch(err){ alert('Uložení se nepovedlo, zkus to prosím znovu.'); return; }
+  state.orderSettingsNotice = 'Uloženo.';
+  render();
+}
+async function sendCustomerEmail(to, subject, message){
+  if(!to) return;
+  try{
+    await fetch(`${SUPABASE_URL}/functions/v1/notify-new-order`, {
+      method:'POST',
+      headers: { 'Content-Type':'application/json', 'apikey': SUPABASE_KEY },
+      body: JSON.stringify({ type:'custom', to, subject, message })
+    });
+  }catch(err){ console.warn('E-mail zákazníkovi se nepodařilo odeslat.', err); }
+}
+function fillOrderMessageTemplate(template, order){
+  const trackingSentence = order.trackingNumber ? ` (sledovací číslo: ${order.trackingNumber})` : '';
+  return String(template||'')
+    .split('{cislo}').join(order.number||'')
+    .split('{sledovaci}').join(trackingSentence);
 }
 async function notifyNewOrderByEmail(order){
   try{
