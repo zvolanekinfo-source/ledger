@@ -4972,17 +4972,25 @@ async function pollIncomingOrdersQueue(silent){
           const platformLabel = (ESHOP_PLATFORMS[row.platform]||{}).label || (row.platform==='custom' ? 'e-shopu' : row.platform);
           const unmatchedCount = items.filter(it=>!it.productId).length;
           // Napoj (nebo založ) odběratele podle e-mailu ze checkoutu, ať faktura vzniká
-          // rovnou se správnou fakturační adresou.
+          // rovnou se správnou fakturační i dodací adresou.
           let clientId = null;
           if(eo.email){
             const existingClient = state.clients.find(c=>(c.contactEmail||'').toLowerCase()===String(eo.email).toLowerCase());
+            const ba = eo.billing_address || {};
+            const da = eo.delivery_address || {};
             if(existingClient){
               clientId = existingClient.id;
+              // Osvěž adresy podle nejnovější objednávky, ať faktura vždy sedí na aktuální údaje.
+              if(ba.street) existingClient.address = { street: ba.street||'', number: ba.number||'', zip: ba.zip||'', city: ba.city||'' };
+              if(ba.ico) existingClient.ico = ba.ico;
+              if(ba.dic) existingClient.dic = ba.dic;
+              if(eo.customer_name && !existingClient.contactPerson) existingClient.contactPerson = eo.customer_name;
+              if(da.street) existingClient.deliveryAddress = { street: da.street||'', number: da.number||'', zip: da.zip||'', city: da.city||'' };
             } else {
-              const ba = eo.billing_address || {};
               const newClient = {
                 id: uid(), name: eo.customer_name || ba.company || eo.email, ico: ba.ico||'', dic: ba.dic||'',
                 address: { street: ba.street||'', number: ba.number||'', zip: ba.zip||'', city: ba.city||'' },
+                deliveryAddress: { street: da.street||'', number: da.number||'', zip: da.zip||'', city: da.city||'' },
                 contactPerson: eo.customer_name||'', contactPhone: eo.phone||'', contactEmail: eo.email||'',
                 note: `Založeno automaticky z ${platformLabel}`, createdAt: new Date().toISOString(), attachments:[]
               };
@@ -8347,11 +8355,14 @@ async function buildInvoiceFromOrder(o, opts){
     const cl = clientById(o.clientId);
     const to = o.customerEmail || (cl?cl.contactEmail:'');
     if(to){
-      sendCustomerEmail(
-        to,
-        fillOrderMessageTemplate(state.integrations.orderInvoiceEmailSubject, o),
-        fillOrderMessageTemplate(state.integrations.orderInvoiceEmailMessage, o)
-      );
+      generateInvoicePdfBase64(invoice.id).then(pdfAttachment=>{
+        sendCustomerEmail(
+          to,
+          fillOrderMessageTemplate(state.integrations.orderInvoiceEmailSubject, o),
+          fillOrderMessageTemplate(state.integrations.orderInvoiceEmailMessage, o),
+          pdfAttachment
+        );
+      });
     }
   }
   return invoice;
@@ -13334,6 +13345,41 @@ document.addEventListener('click', async (e)=>{
   else if(action==='export-products'){ exportProductsCsv('xlsx'); }
 });
 
+async function generateInvoicePdfBase64(invoiceId){
+  if(!window.html2pdf) return null;
+  const inv = state.invoices.find(i=>i.id===invoiceId);
+  if(!inv) return null;
+  const prevPreviewId = state.previewId;
+  state.previewId = invoiceId;
+  let fullHtml;
+  try{ fullHtml = viewInvoicePreview(); } finally { state.previewId = prevPreviewId; }
+  const tempWrap = document.createElement('div');
+  tempWrap.style.position = 'fixed';
+  tempWrap.style.left = '-99999px';
+  tempWrap.style.top = '0';
+  tempWrap.innerHTML = fullHtml;
+  document.body.appendChild(tempWrap);
+  const sheet = tempWrap.querySelector('#invoice-sheet');
+  if(!sheet){ document.body.removeChild(tempWrap); return null; }
+  sheet.classList.add('pdf-compact');
+  try{
+    const dataUri = await html2pdf().set({
+      margin: [24, 16, 10, 16],
+      image: { type:'jpeg', quality:0.98 },
+      html2canvas: { scale:2, useCORS:true, allowTaint:true, backgroundColor:'#ffffff' },
+      jsPDF: { unit:'pt', format:'a4', orientation:'portrait' },
+      pagebreak: { mode:['css','legacy'] }
+    }).from(sheet).toPdf().output('datauristring');
+    // dataUri je tvaru "data:application/pdf;filename=generated.pdf;base64,JVBERi0x..."
+    const base64 = dataUri.split(',').pop();
+    return { filename: `Faktura-${(inv.number||'doklad').replace(/[^\w.-]+/g,'_')}.pdf`, base64 };
+  } catch(err){
+    console.warn('Vygenerování PDF faktury na pozadí se nepovedlo.', err);
+    return null;
+  } finally {
+    document.body.removeChild(tempWrap);
+  }
+}
 async function downloadInvoicePdf(id, triggerEl){
   const inv = state.invoices.find(i=>i.id===id);
   const sheet = document.getElementById('invoice-sheet');
@@ -13603,13 +13649,13 @@ async function onSubmitOrderSettings(e){
   state.orderSettingsNotice = 'Uloženo.';
   render();
 }
-async function sendCustomerEmail(to, subject, message){
+async function sendCustomerEmail(to, subject, message, attachment){
   if(!to) return;
   try{
     await fetch(`${SUPABASE_URL}/functions/v1/notify-new-order`, {
       method:'POST',
       headers: { 'Content-Type':'application/json', 'apikey': SUPABASE_KEY },
-      body: JSON.stringify({ type:'custom', to, subject, message })
+      body: JSON.stringify({ type:'custom', to, subject, message, attachment: attachment||null })
     });
   }catch(err){ console.warn('E-mail zákazníkovi se nepodařilo odeslat.', err); }
 }
