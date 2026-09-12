@@ -8331,6 +8331,9 @@ async function buildInvoiceFromOrder(o, opts){
   if(opts.syncOrderNumber) o.number = num;
   const vsKs = computeVsKs(co, num);
   const items = (o.items||[]).map(it=>({ desc:it.desc, qty:it.qty, unit:it.unit||'ks', price:it.price, vat:it.vat, productId:it.productId, ean:it.ean||'', productNumber:it.productNumber||'' }));
+  if(o.shippingPrice){
+    items.push({ desc: o.shippingMethod ? `Doprava — ${o.shippingMethod}` : 'Doprava', qty:1, unit:'ks', price:o.shippingPrice, vat:21, productId:null, ean:'', productNumber:'' });
+  }
   const invoice = {
     id: uid(), number:num, clientId:o.clientId, companyId:co.id,
     docType:'invoice', relatedInvoiceId:null, creditReason:'',
