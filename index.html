@@ -5468,8 +5468,35 @@ function viewSettingsTeam(){
 }
 function viewSettingsOrders(){
   const it = state.integrations;
+  const co = state.companies[0];
   return `
-    <div class="pagehead"><div><h1>Objednávky</h1><p class="desc">Automatické faktury a e-maily zákazníkům k objednávkám.</p></div></div>
+    <div class="pagehead"><div><h1>Objednávky</h1><p class="desc">Číslování a automatické faktury a e-maily zákazníkům.</p></div></div>
+
+    <div class="form-card">
+      <div class="section-title" style="margin-top:0;padding-top:0;border-top:none;">Číslování objednávek</div>
+      <p style="font-size:12.5px;color:var(--ink-soft);margin-top:-6px;">Určuje, jaké číslo dostane nová objednávka.</p>
+      <form id="order-numbering-form" class="form-card" style="padding:0;box-shadow:none;border:none;">
+        ${state.orderNumberingNotice?`<div class="login-error" style="background:var(--accent-soft);color:var(--accent);">${escapeHtml(state.orderNumberingNotice)}</div>`:''}
+        <div class="field">
+          <label>Jak se má číslovat nová objednávka</label>
+          <select name="orderNumberMode" id="order-numbering-mode">
+            <option value="own_sequence" ${(co.orderNumberMode||'own_sequence')==='own_sequence'?'selected':''}>Vlastní číselná řada</option>
+            <option value="same_as_invoice" ${co.orderNumberMode==='same_as_invoice'?'selected':''}>Stejné jako číslo faktury</option>
+          </select>
+        </div>
+        <p style="font-size:11.5px;color:var(--ink-soft);margin:-6px 0 14px 0;">
+          Při volbě „Stejné jako číslo faktury“ se v okamžiku uložení nové objednávky rovnou vystaví i faktura a objednávka dostane stejné číslo jako ona.
+        </p>
+        <div id="order-numbering-sequence-box" class="field-row" style="display:${(co.orderNumberMode||'own_sequence')==='same_as_invoice'?'none':''};">
+          <div class="field"><label>Prefix čísla objednávky</label><input name="orderNumberPrefix" value="${escapeAttr(co.orderNumberPrefix||'OBJ-')}"></div>
+          <div class="field"><label>Další pořadové číslo objednávky</label><input type="number" name="orderNumberNextNumber" value="${co.orderNumberNextNumber||1}"></div>
+        </div>
+        <div class="formfoot" style="justify-content:flex-start;">
+          <button type="submit" class="btn secondary">Uložit</button>
+        </div>
+      </form>
+    </div>
+
     <div class="form-card">
       <div class="section-title" style="margin-top:0;padding-top:0;border-top:none;">Vytvoření faktury</div>
       <form id="order-settings-form" class="form-card" style="padding:0;box-shadow:none;border:none;">
@@ -8330,9 +8357,10 @@ async function buildInvoiceFromOrder(o, opts){
   const num = `${co.prefix}${co.nextNumber}`;
   if(opts.syncOrderNumber) o.number = num;
   const vsKs = computeVsKs(co, num);
-  const items = (o.items||[]).map(it=>({ desc:it.desc, qty:it.qty, unit:it.unit||'ks', price:it.price, vat:it.vat, productId:it.productId, ean:it.ean||'', productNumber:it.productNumber||'' }));
-  if(o.shippingPrice){
-    items.push({ desc: o.shippingMethod ? `Doprava — ${o.shippingMethod}` : 'Doprava', qty:1, unit:'ks', price:o.shippingPrice, vat:21, productId:null, ean:'', productNumber:'' });
+  const isVatPayer = !!co.vatPayer;
+  const items = (o.items||[]).map(it=>({ desc:it.desc, qty:it.qty, unit:it.unit||'ks', price:it.price, vat: isVatPayer ? (it.vat??21) : 0, productId:it.productId, ean:it.ean||'', productNumber:it.productNumber||'' }));
+  if(o.shippingMethod || o.shippingPrice){
+    items.push({ desc: o.shippingMethod ? `Doprava — ${o.shippingMethod}` : 'Doprava', qty:1, unit:'ks', price:o.shippingPrice||0, vat: isVatPayer ? 21 : 0, productId:null, ean:'', productNumber:'' });
   }
   const invoice = {
     id: uid(), number:num, clientId:o.clientId, companyId:co.id,
@@ -10909,6 +10937,15 @@ function afterRender(){
   if(notificationsForm) notificationsForm.addEventListener('submit', onSubmitNotifications);
   const orderSettingsForm = document.getElementById('order-settings-form');
   if(orderSettingsForm) orderSettingsForm.addEventListener('submit', onSubmitOrderSettings);
+  const orderNumberingForm = document.getElementById('order-numbering-form');
+  if(orderNumberingForm) orderNumberingForm.addEventListener('submit', onSubmitOrderNumbering);
+  const orderNumberingModeSelect = document.getElementById('order-numbering-mode');
+  if(orderNumberingModeSelect){
+    orderNumberingModeSelect.addEventListener('change', ()=>{
+      const box = document.getElementById('order-numbering-sequence-box');
+      if(box) box.style.display = orderNumberingModeSelect.value==='same_as_invoice' ? 'none' : '';
+    });
+  }
   const backupIntervalSelect = document.getElementById('backup-interval-select');
   if(backupIntervalSelect){
     backupIntervalSelect.addEventListener('change', async ()=>{
@@ -13638,6 +13675,17 @@ async function onSubmitNotifications(e){
   state.integrations.notifyEmailAddress = (fd.get('notifyEmailAddress')||'').trim();
   try{ await saveIntegrations(); }catch(err){ alert('Uložení se nepovedlo, zkus to prosím znovu.'); return; }
   state.notificationsNotice = 'Uloženo.';
+  render();
+}
+async function onSubmitOrderNumbering(e){
+  e.preventDefault();
+  const fd = new FormData(e.target);
+  const co = state.companies[0];
+  co.orderNumberMode = fd.get('orderNumberMode')||'own_sequence';
+  co.orderNumberPrefix = fd.get('orderNumberPrefix')||'OBJ-';
+  co.orderNumberNextNumber = parseInt(fd.get('orderNumberNextNumber'))||1;
+  try{ await saveCompanies(); }catch(err){ alert('Uložení se nepovedlo, zkus to prosím znovu.'); return; }
+  state.orderNumberingNotice = 'Uloženo.';
   render();
 }
 async function onSubmitOrderSettings(e){
