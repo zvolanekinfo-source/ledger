@@ -756,7 +756,7 @@ let state = {
   _zxingReader: null,
   orderFilter: { search:'', status:'' },
   integrations: { eshops:[], carriers:[], pollIntervalSec:60, notifyNewOrderEmail:false, notifyEmailAddress:'',
-    orderAutoSendInvoiceEmail:false, orderInvoiceEmailSubject:'Faktura k vaší objednávce {cislo}',
+    orderAutoCreateInvoice:false, orderAutoSendInvoiceEmail:false, orderInvoiceEmailSubject:'Faktura k vaší objednávce {cislo}',
     orderInvoiceEmailMessage:'Dobrý den,\n\nděkujeme za objednávku {cislo}. V příloze/odkazu níže najdete fakturu.\n\nS pozdravem',
     orderShippedMessage:'Dobrý den,\n\nvaše objednávka {cislo} je na cestě k vám{sledovaci}.\n\nS pozdravem' },
   onboarding: { step:1 },
@@ -1970,12 +1970,12 @@ async function loadAll(){
         if(loaded.zasilkovna && loaded.zasilkovna.apiKey) carriers.push({ id:uid(), type:'zasilkovna', name:'Zásilkovna', active:true, credentials:loaded.zasilkovna, rules:[] });
         if(loaded.dpd && loaded.dpd.username) carriers.push({ id:uid(), type:'dpd', name:'DPD', active:true, credentials:loaded.dpd, rules:[] });
         state.integrations = { eshops, carriers, pollIntervalSec:60, notifyNewOrderEmail:false, notifyEmailAddress:'',
-          orderAutoSendInvoiceEmail:false, orderInvoiceEmailSubject:'Faktura k vaší objednávce {cislo}',
+          orderAutoCreateInvoice:false, orderAutoSendInvoiceEmail:false, orderInvoiceEmailSubject:'Faktura k vaší objednávce {cislo}',
           orderInvoiceEmailMessage:'Dobrý den,\n\nděkujeme za objednávku {cislo}.\n\nS pozdravem',
           orderShippedMessage:'Dobrý den,\n\nvaše objednávka {cislo} je na cestě k vám{sledovaci}.\n\nS pozdravem' };
       } else {
         state.integrations = { eshops:[], carriers:[], pollIntervalSec:60, notifyNewOrderEmail:false, notifyEmailAddress:'',
-          orderAutoSendInvoiceEmail:false, orderInvoiceEmailSubject:'Faktura k vaší objednávce {cislo}',
+          orderAutoCreateInvoice:false, orderAutoSendInvoiceEmail:false, orderInvoiceEmailSubject:'Faktura k vaší objednávce {cislo}',
           orderInvoiceEmailMessage:'Dobrý den,\n\nděkujeme za objednávku {cislo}.\n\nS pozdravem',
           orderShippedMessage:'Dobrý den,\n\nvaše objednávka {cislo} je na cestě k vám{sledovaci}.\n\nS pozdravem',
           ...loaded };
@@ -4969,7 +4969,7 @@ async function pollIncomingOrdersQueue(silent){
           };
         });
         if(items.length){
-          const platformLabel = (ESHOP_PLATFORMS[row.platform]||{}).label || row.platform;
+          const platformLabel = (ESHOP_PLATFORMS[row.platform]||{}).label || (row.platform==='custom' ? 'e-shopu' : row.platform);
           const unmatchedCount = items.filter(it=>!it.productId).length;
           // Napoj (nebo založ) odběratele podle e-mailu ze checkoutu, ať faktura vzniká
           // rovnou se správnou fakturační adresou.
@@ -4997,11 +4997,14 @@ async function pollIncomingOrdersQueue(silent){
             customerEmail: eo.email||'', customerPhone: eo.phone||'',
             billingAddress: eo.billing_address||null, deliveryAddress: eo.delivery_address||null,
             attachments: eo.attachments||[], photoUrl: eo.photo_url||'',
-            note: `Webhook z ${platformLabel}${eo.email?(' — '+eo.email):''}${unmatchedCount?` — ⚠️ ${unmatchedCount} položek se nepodařilo napojit na skladový produkt (SKU se neshoduje s žádným EAN/SKU/produktovým číslem), doplň ručně`:''}${eo.customer_note?` — Poznámka zákazníka: ${eo.customer_note}`:''}`
+            note: `Objednávka z ${platformLabel}${unmatchedCount?` — ⚠️ ${unmatchedCount} položek se nepodařilo napojit na skladový produkt (SKU se neshoduje s žádným EAN/SKU/produktovým číslem), doplň ručně`:''}${eo.customer_note?` — Poznámka zákazníka: ${eo.customer_note}`:''}`
           };
           state.orders.push(newOrder);
           if(clientId) saveClients();
           notifyNewOrderByEmail(newOrder);
+          if(state.integrations.orderAutoCreateInvoice && newOrder.clientId){
+            buildInvoiceFromOrder(newOrder, { markPacked:false }).catch(err=>console.warn('Automatické vystavení faktury k objednávce se nepovedlo.', err));
+          }
           imported++;
         }
       }
@@ -5458,11 +5461,15 @@ function viewSettingsTeam(){
 function viewSettingsOrders(){
   const it = state.integrations;
   return `
-    <div class="pagehead"><div><h1>Objednávky</h1><p class="desc">Automatické e-maily zákazníkům k objednávkám.</p></div></div>
+    <div class="pagehead"><div><h1>Objednávky</h1><p class="desc">Automatické faktury a e-maily zákazníkům k objednávkám.</p></div></div>
     <div class="form-card">
-      <div class="section-title" style="margin-top:0;padding-top:0;border-top:none;">Faktura po vytvoření</div>
+      <div class="section-title" style="margin-top:0;padding-top:0;border-top:none;">Vytvoření faktury</div>
       <form id="order-settings-form" class="form-card" style="padding:0;box-shadow:none;border:none;">
         ${state.orderSettingsNotice?`<div class="login-error" style="background:var(--accent-soft);color:var(--accent);">${escapeHtml(state.orderSettingsNotice)}</div>`:''}
+        <label style="display:flex;align-items:center;gap:8px;font-size:14px;margin:6px 0 4px 0;">
+          <input type="checkbox" name="orderAutoCreateInvoice" ${it.orderAutoCreateInvoice?'checked':''}> Automaticky vystavit fakturu hned, jak appka přijme novou objednávku z e-shopu
+        </label>
+        <p style="font-size:11.5px;color:var(--ink-soft);margin:0 0 14px 0;">Bez zapnutí se faktura vystaví, až projdeš „Vyřídit objednávku“ u dané objednávky. Se zapnutým přepínačem se sklad odečte a faktura vytvoří okamžitě — vhodné, pokud fyzicky nevychystáváš (např. digitální zboží nebo faktura předem).</p>
         <label style="display:flex;align-items:center;gap:8px;font-size:14px;margin:6px 0 14px 0;">
           <input type="checkbox" name="orderAutoSendInvoiceEmail" ${it.orderAutoSendInvoiceEmail?'checked':''}> Automaticky poslat zákazníkovi e-mail, jakmile se k objednávce vystaví faktura
         </label>
@@ -7843,15 +7850,32 @@ function viewOrderDetail(){
       <p style="font-size:13.5px;">${escapeHtml(o.shippingMethod||'—')}${o.shippingPrice?` — ${o.shippingPrice.toLocaleString('cs-CZ')} Kč`:''}</p>
       ${o.trackingNumber?`<p style="font-size:13.5px;color:var(--ink-soft);">Sledovací číslo: ${escapeHtml(o.trackingNumber)}</p>`:''}
 
-      ${(o.attachments||[]).length ? `
-      <div class="section-title">Nahrané soubory</div>
-      <ul style="font-size:13.5px;margin:0;padding-left:18px;">
-        ${o.attachments.map(a=>a.url
-          ? `<li><a href="${escapeAttr(a.url)}" target="_blank" rel="noopener">${escapeHtml(a.name)}</a> <span style="color:var(--ink-soft);">(${escapeHtml(a.kind||'')})</span></li>`
-          : `<li>${escapeHtml(a.name)} <span style="color:var(--ink-soft);">(${escapeHtml(a.kind||'')}, bez odkazu ke stažení)</span></li>`
-        ).join('')}
-      </ul>
-      ` : ''}
+      ${(()=>{
+        const all = o.attachments||[];
+        const previews = all.filter(a=>a.kind==='náhled etikety na lahvi' && a.url);
+        const other = all.filter(a=>a.kind!=='náhled etikety na lahvi');
+        return `
+        ${previews.length ? `
+        <div class="section-title">Náhled (etiketa na lahvi)</div>
+        <div style="display:flex;gap:12px;flex-wrap:wrap;">
+          ${previews.map(a=>`<a href="${escapeAttr(a.url)}" target="_blank" rel="noopener"><img src="${escapeAttr(a.url)}" alt="${escapeAttr(a.name)}" style="width:160px;height:160px;object-fit:contain;border:1px solid var(--line);border-radius:8px;background:#fff;"></a>`).join('')}
+        </div>
+        ` : (o.photoUrl ? `
+        <div class="section-title">Náhled (etiketa na lahvi)</div>
+        <a href="${escapeAttr(o.photoUrl)}" target="_blank" rel="noopener"><img src="${escapeAttr(o.photoUrl)}" alt="Náhled" style="width:160px;height:160px;object-fit:contain;border:1px solid var(--line);border-radius:8px;background:#fff;"></a>
+        ` : '')}
+        ${other.length ? `
+        <div class="section-title">Nahrané soubory</div>
+        <ul style="font-size:13.5px;margin:0;padding-left:18px;">
+          ${other.map(a=>a.url
+            ? `<li><a href="${escapeAttr(a.url)}" target="_blank" rel="noopener">${escapeHtml(a.name)}</a> <span style="color:var(--ink-soft);">(${escapeHtml(a.kind||'')})</span></li>`
+            : `<li>${escapeHtml(a.name)} <span style="color:var(--ink-soft);">(${escapeHtml(a.kind||'')}, bez odkazu ke stažení)</span></li>`
+          ).join('')}
+        </ul>
+        ` : ''}
+        `;
+      })()}
+
 
       ${o.note ? `<div class="section-title">Poznámka</div><p style="font-size:13.5px;white-space:pre-wrap;">${escapeHtml(o.note)}</p>` : ''}
 
@@ -13570,6 +13594,7 @@ async function onSubmitNotifications(e){
 async function onSubmitOrderSettings(e){
   e.preventDefault();
   const fd = new FormData(e.target);
+  state.integrations.orderAutoCreateInvoice = fd.get('orderAutoCreateInvoice')==='on';
   state.integrations.orderAutoSendInvoiceEmail = fd.get('orderAutoSendInvoiceEmail')==='on';
   state.integrations.orderInvoiceEmailSubject = (fd.get('orderInvoiceEmailSubject')||'').trim();
   state.integrations.orderInvoiceEmailMessage = fd.get('orderInvoiceEmailMessage')||'';
