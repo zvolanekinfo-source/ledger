@@ -4914,8 +4914,12 @@ async function pollEshopOrders(eshopId, silent){
       });
       if(!items.length) return;
       const unmatchedCount = items.filter(it=>!it.productId).length;
+      const co = companyById(state.companies[0]?.id) || state.companies[0];
+      if((co.orderNumberMode||'own_sequence')!=='invoice_first'){
+        co.orderNumberNextNumber = (co.orderNumberNextNumber||1) + 1;
+      }
       state.orders.push({
-        ...blankOrder(), id: uid(), number: eo.number, externalId: eo.externalId, eshopId: eshop.id,
+        ...blankOrder(), id: uid(), externalId: eo.externalId, eshopId: eshop.id,
         clientId: null, items, weightKg: eo.weightKg||0,
         note: `Import z ${ESHOP_PLATFORMS[eshop.platform].label}${eo.email?(' — '+eo.email):''}${unmatchedCount?` — ⚠️ ${unmatchedCount} položek se nepodařilo napojit na skladový produkt, doplň ručně`:''}`
       });
@@ -4923,7 +4927,7 @@ async function pollEshopOrders(eshopId, silent){
     });
     eshop.lastSyncAt = new Date().toISOString();
     eshop.lastSyncStatus = { ok:true, message: imported ? `Nalezeno ${imported} nových objednávek.` : 'Žádné nové objednávky.' };
-    if(imported){ await saveOrders(); if(state.view==='orders') render(); }
+    if(imported){ await saveOrders(); await saveCompanies(); if(state.view==='orders') render(); }
     await saveIntegrations();
   }catch(err){
     eshop.lastSyncAt = new Date().toISOString();
@@ -4998,8 +5002,10 @@ async function pollIncomingOrdersQueue(silent){
               clientId = newClient.id;
             }
           }
+          const co = companyById(state.companies[0]?.id) || state.companies[0];
+          const orderNumberMode = co.orderNumberMode||'own_sequence';
           const newOrder = {
-            ...blankOrder(), id: uid(), number: eo.number || row.external_id, externalId: eo.external_id,
+            ...blankOrder(), id: uid(), externalId: eo.external_id,
             clientId, items, weightKg: eo.weight_kg||0,
             shippingMethod: eo.shipping_method||'', shippingPrice: eo.shipping_price||0,
             customerEmail: eo.email||'', customerPhone: eo.phone||'',
@@ -5007,11 +5013,19 @@ async function pollIncomingOrdersQueue(silent){
             attachments: eo.attachments||[], photoUrl: eo.photo_url||'',
             note: `Objednávka z ${platformLabel}${unmatchedCount?` — ⚠️ ${unmatchedCount} položek se nepodařilo napojit na skladový produkt (SKU se neshoduje s žádným EAN/SKU/produktovým číslem), doplň ručně`:''}${eo.customer_note?` — Poznámka zákazníka: ${eo.customer_note}`:''}`
           };
+          if(orderNumberMode!=='invoice_first'){
+            co.orderNumberNextNumber = (co.orderNumberNextNumber||1) + 1;
+          }
           state.orders.push(newOrder);
           if(clientId) saveClients();
+          saveCompanies();
           notifyNewOrderByEmail(newOrder);
           if(state.integrations.orderAutoCreateInvoice && newOrder.clientId){
-            buildInvoiceFromOrder(newOrder, { markPacked:false }).catch(err=>console.warn('Automatické vystavení faktury k objednávce se nepovedlo.', err));
+            buildInvoiceFromOrder(newOrder, {
+              markPacked:false,
+              useOrderNumber: orderNumberMode==='same_as_invoice',
+              syncOrderNumber: orderNumberMode==='invoice_first'
+            }).catch(err=>console.warn('Automatické vystavení faktury k objednávce se nepovedlo.', err));
           }
           imported++;
         }
@@ -10429,18 +10443,6 @@ async function applyStockForInvoiceChange(oldItems, newItems, reasonLabel){
   const newMap = productStockDeltaMap(newItems);
   const allIds = new Set([...oldMap.keys(), ...newMap.keys()]);
   if(!allIds.size) return;
-  const negatives = [];
-  allIds.forEach(pid=>{
-    const product = productById(pid);
-    if(!product) return;
-    const delta = (newMap.get(pid)||0) - (oldMap.get(pid)||0);
-    if(delta===0) return;
-    const resulting = (product.stockCurrent||0) - delta;
-    if(resulting<0) negatives.push(product.name);
-  });
-  if(negatives.length && !confirm(`Sklad u produktů (${negatives.join(', ')}) klesne do záporných hodnot. Pokračovat a uložit fakturu?`)) {
-    throw new Error('cancelled');
-  }
   let changed = false;
   allIds.forEach(pid=>{
     const product = productById(pid);
