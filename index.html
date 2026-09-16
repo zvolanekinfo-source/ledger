@@ -5508,6 +5508,20 @@ function viewSettingsOrders(){
           <div class="field"><label>Prefix čísla objednávky</label><input name="orderNumberPrefix" value="${escapeAttr(co.orderNumberPrefix||'OBJ-')}"></div>
           <div class="field"><label>Další pořadové číslo objednávky</label><input type="number" name="orderNumberNextNumber" value="${co.orderNumberNextNumber||1}"></div>
         </div>
+        <div class="field">
+          <label>Splatnost faktur z e-shopu</label>
+          <div class="field-row" style="gap:8px;flex-wrap:wrap;" id="order-due-days-chips">
+            <button type="button" class="chip" data-due="0">Ihned</button>
+            <button type="button" class="chip" data-due="7">Týden</button>
+            <button type="button" class="chip" data-due="14">Čtrnáct dní</button>
+            <button type="button" class="chip" data-due="">Stejná jako výchozí</button>
+            <button type="button" class="chip" data-due="custom">Vlastní</button>
+          </div>
+          <input type="number" min="0" name="orderDueDays" id="order-due-days-custom" style="margin-top:8px;max-width:160px;" placeholder="počet dní" hidden>
+        </div>
+        <p style="font-size:11.5px;color:var(--ink-soft);margin:-6px 0 14px 0;">
+          Platí jen pro faktury vystavené k objednávkám z e-shopu — na běžné faktury (Nastavení → Faktury) to nemá vliv.
+        </p>
         <div class="formfoot" style="justify-content:flex-start;">
           <button type="submit" class="btn secondary">Uložit</button>
         </div>
@@ -8399,7 +8413,7 @@ async function buildInvoiceFromOrder(o, opts){
   const invoice = {
     id: uid(), number:num, clientId:o.clientId, companyId:co.id,
     docType:'invoice', relatedInvoiceId:null, creditReason:'',
-    issueDate: todayISO(), taxDate: todayISO(), dueDate: addDays(todayISO(), co.defaultDueDays||14),
+    issueDate: todayISO(), taxDate: todayISO(), dueDate: addDays(todayISO(), (co.orderDueDays!==''&&co.orderDueDays!==undefined&&co.orderDueDays!==null) ? co.orderDueDays : (co.defaultDueDays||14)),
     variableSymbol: vsKs.variableSymbol, constantSymbol: vsKs.constantSymbol, orderNumber:o.number,
     currency:'CZK', discountType:'none', discountValue:0, rounding:'none',
     paymentMethod: co.defaultPaymentMethod||'Bankovním převodem',
@@ -10976,6 +10990,35 @@ function afterRender(){
     });
   }
   const backupIntervalSelect = document.getElementById('backup-interval-select');
+  const dueChipsBox = document.getElementById('order-due-days-chips');
+  if(dueChipsBox){
+    const customInput = document.getElementById('order-due-days-custom');
+    const co0 = state.companies[0];
+    const current = (co0.orderDueDays===undefined) ? '' : co0.orderDueDays;
+    const presetValues = ['0','7','14',''];
+    const chips = Array.from(dueChipsBox.querySelectorAll('.chip'));
+    const isPreset = presetValues.includes(String(current));
+    chips.forEach(chip=>{
+      const isCustomChip = chip.dataset.due==='custom';
+      const matches = isCustomChip ? !isPreset : (chip.dataset.due === String(current));
+      chip.classList.toggle('active', matches);
+    });
+    customInput.hidden = isPreset;
+    customInput.value = current;
+    chips.forEach(chip=>{
+      chip.addEventListener('click', ()=>{
+        chips.forEach(c=>c.classList.remove('active'));
+        chip.classList.add('active');
+        if(chip.dataset.due==='custom'){
+          customInput.hidden = false;
+          customInput.focus();
+        } else {
+          customInput.hidden = true;
+          customInput.value = chip.dataset.due;
+        }
+      });
+    });
+  }
   if(backupIntervalSelect){
     backupIntervalSelect.addEventListener('change', async ()=>{
       state.backupSettings.intervalDays = parseInt(backupIntervalSelect.value)||1;
@@ -13713,6 +13756,8 @@ async function onSubmitOrderNumbering(e){
   co.orderNumberMode = fd.get('orderNumberMode')||'own_sequence';
   co.orderNumberPrefix = fd.get('orderNumberPrefix')||'OBJ-';
   co.orderNumberNextNumber = parseInt(fd.get('orderNumberNextNumber'))||1;
+  const dueRaw = fd.get('orderDueDays');
+  co.orderDueDays = (dueRaw===''||dueRaw===null) ? '' : parseInt(dueRaw);
   try{ await saveCompanies(); }catch(err){ alert('Uložení se nepovedlo, zkus to prosím znovu.'); return; }
   state.orderNumberingNotice = 'Uloženo.';
   render();
