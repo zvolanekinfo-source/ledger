@@ -4921,7 +4921,8 @@ async function pollEshopOrders(eshopId, silent){
       state.orders.push({
         ...blankOrder(), id: uid(), externalId: eo.externalId, eshopId: eshop.id,
         clientId: null, items, weightKg: eo.weightKg||0,
-        note: `Import z ${ESHOP_PLATFORMS[eshop.platform].label}${eo.email?(' — '+eo.email):''}${unmatchedCount?` — ⚠️ ${unmatchedCount} položek se nepodařilo napojit na skladový produkt, doplň ručně`:''}`
+        note: eo.customerNote || '',
+        internalNote: `Import z ${ESHOP_PLATFORMS[eshop.platform].label}${eo.email?(' — '+eo.email):''}${unmatchedCount?` — ⚠️ ${unmatchedCount} položek se nepodařilo napojit na skladový produkt, doplň ručně`:''}`
       });
       imported++;
     });
@@ -5011,7 +5012,8 @@ async function pollIncomingOrdersQueue(silent){
             customerEmail: eo.email||'', customerPhone: eo.phone||'',
             billingAddress: eo.billing_address||null, deliveryAddress: eo.delivery_address||null,
             attachments: eo.attachments||[], photoUrl: eo.photo_url||'',
-            note: `Objednávka z ${platformLabel}${unmatchedCount?` — ⚠️ ${unmatchedCount} položek se nepodařilo napojit na skladový produkt (SKU se neshoduje s žádným EAN/SKU/produktovým číslem), doplň ručně`:''}${eo.customer_note?` — Poznámka zákazníka: ${eo.customer_note}`:''}`
+            note: eo.customer_note || '',
+            internalNote: `Objednávka z ${platformLabel}${unmatchedCount?` — ⚠️ ${unmatchedCount} položek se nepodařilo napojit na skladový produkt (SKU se neshoduje s žádným EAN/SKU/produktovým číslem), doplň ručně`:''}`
           };
           if(orderNumberMode!=='invoice_first'){
             co.orderNumberNextNumber = (co.orderNumberNextNumber||1) + 1;
@@ -7929,7 +7931,8 @@ function viewOrderDetail(){
       })()}
 
 
-      ${o.note ? `<div class="section-title">Poznámka</div><p style="font-size:13.5px;white-space:pre-wrap;">${escapeHtml(o.note)}</p>` : ''}
+      ${o.note ? `<div class="section-title">Poznámka zákazníka</div><p style="font-size:13.5px;white-space:pre-wrap;">${escapeHtml(o.note)}</p>` : ''}
+      ${o.internalNote ? `<div class="section-title">Interní poznámka <span style="font-weight:400;color:var(--ink-soft);">(jen pro vás, nezobrazí se zákazníkovi ani na faktuře)</span></div><p style="font-size:13.5px;white-space:pre-wrap;color:var(--ink-soft);">${escapeHtml(o.internalNote)}</p>` : ''}
 
       <div class="section-title">Položky</div>
       <table class="fixed-table" style="margin-top:6px;">
@@ -7955,7 +7958,7 @@ function blankOrder(){
     shippingMethod:'', shippingPrice:0,
     customerEmail:'', customerPhone:'',
     billingAddress:null, deliveryAddress:null,
-    attachments:[], photoUrl:'', shippedMessageSent:false
+    attachments:[], photoUrl:'', shippedMessageSent:false, internalNote:''
   };
 }
 function orderStatusLabel(s){ return {new:'Nová',picking:'Vychystává se',packed:'Zabaleno',shipped:'Odesláno'}[s]||s; }
