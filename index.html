@@ -3293,6 +3293,14 @@ async function afterLogin(){
   } else {
     state.view = firstAccessibleView();
   }
+  // Podpora odkazů typu ledgers.cz/#orders — použije se třeba v e-mailu
+  // s upozorněním na novou objednávku, ať appka po kliknutí rovnou otevře
+  // konkrétní stránku místo výchozího Přehledu.
+  const DEEP_LINK_VIEWS = { orders:'orders', invoices:'invoices', clients:'clients', products:'products' };
+  const requestedHash = (window.location.hash||'').replace('#','').trim();
+  if(DEEP_LINK_VIEWS[requestedHash] && !isFirstTime){
+    state.view = DEEP_LINK_VIEWS[requestedHash];
+  }
   state.authError=''; state.authNotice='';
   startEshopPolling();
   flushPendingWrites();
