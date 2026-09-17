@@ -4961,44 +4961,66 @@ function startEshopPolling(){
   window._queuePollTimer = setInterval(()=>pollIncomingOrdersQueue(true), 15000);
   pollIncomingOrdersQueue(true);
 }
-/** Zahraje krátké cinkání mincí, když přijde nová objednávka. Zvuk se
-    syntetizuje přímo přes Web Audio API — appka tedy nepotřebuje žádný
-    zvukový soubor ani přístup na internet. */
+/** Zahraje krátký "cha-ching" jako pokladna, když přijde nová objednávka.
+    Zvuk se syntetizuje přímo přes Web Audio API — appka tedy nepotřebuje
+    žádný zvukový soubor ani přístup na internet. */
 function playNewOrderChime(){
   try{
     const Ctx = window.AudioContext || window.webkitAudioContext;
     if(!Ctx) return;
     const ctx = new Ctx();
-    // Jeden krátký kovový "cink" — pár vysokých tónů blízko u sebe s velmi
-    // rychlým doznění, aby to znělo jako mince, ne jako zvonek.
-    const playCoin = (startTime, baseFreq, volume)=>{
-      [1, 2.4, 3.8].forEach((mult, i)=>{
+
+    // Krátký šumový "cvak" - jako mechanika zásuvky pokladny.
+    const mechanicalClick = (startTime, volume, duration, filterFreq)=>{
+      const bufferSize = ctx.sampleRate * duration;
+      const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+      const data = buffer.getChannelData(0);
+      for(let i=0; i<bufferSize; i++){
+        data[i] = (Math.random()*2 - 1) * (1 - i/bufferSize);
+      }
+      const noise = ctx.createBufferSource();
+      noise.buffer = buffer;
+      const filter = ctx.createBiquadFilter();
+      filter.type = 'bandpass';
+      filter.frequency.value = filterFreq;
+      filter.Q.value = 1.2;
+      const gain = ctx.createGain();
+      gain.gain.setValueAtTime(volume, startTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, startTime + duration);
+      noise.connect(filter);
+      filter.connect(gain);
+      gain.connect(ctx.destination);
+      noise.start(startTime);
+      noise.stop(startTime + duration);
+    };
+
+    // Kovové cinknutí mince/zvonku.
+    const metalRing = (startTime, baseFreq, volume, duration)=>{
+      [1, 2.1, 3.4, 4.7].forEach((mult, i)=>{
         const osc = ctx.createOscillator();
         const gain = ctx.createGain();
         osc.type = 'triangle';
         osc.frequency.value = baseFreq * mult;
         osc.connect(gain);
         gain.connect(ctx.destination);
-        const vol = volume / (i + 1);
+        const vol = volume / (i*0.8 + 1);
         gain.gain.setValueAtTime(0, startTime);
-        gain.gain.linearRampToValueAtTime(vol, startTime + 0.003);
-        gain.gain.exponentialRampToValueAtTime(0.001, startTime + 0.18);
+        gain.gain.linearRampToValueAtTime(vol, startTime + 0.005);
+        gain.gain.exponentialRampToValueAtTime(0.001, startTime + duration);
         osc.start(startTime);
-        osc.stop(startTime + 0.2);
+        osc.stop(startTime + duration + 0.02);
       });
     };
+
     const now = ctx.currentTime;
-    // Několik cinknutí mincí těsně za sebou, s trochou nepravidelnosti
-    // v čase i výšce, ať to zní jako sypající se drobné, ne jako melodie.
-    const coinCount = 6;
-    let t = now;
-    for(let i=0; i<coinCount; i++){
-      const freq = 2200 + Math.random()*1400;
-      const vol = 0.22 * (1 - i/(coinCount+2));
-      playCoin(t, freq, vol);
-      t += 0.045 + Math.random()*0.05;
-    }
-    setTimeout(()=>ctx.close().catch(()=>{}), 900);
+    mechanicalClick(now, 0.12, 0.05, 2600);
+    metalRing(now + 0.08, 1568, 0.26, 0.5);
+    metalRing(now + 0.1, 2637, 0.1, 0.35);
+    [0.16, 0.2].forEach((d)=>{
+      metalRing(now + d, 2400 + Math.random()*600, 0.06, 0.15);
+    });
+
+    setTimeout(()=>ctx.close().catch(()=>{}), 1200);
   }catch(err){ console.warn('Přehrání zvukového upozornění se nepovedlo.', err); }
 }
 async function pollIncomingOrdersQueue(silent){
