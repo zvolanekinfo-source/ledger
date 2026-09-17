@@ -4961,31 +4961,43 @@ function startEshopPolling(){
   window._queuePollTimer = setInterval(()=>pollIncomingOrdersQueue(true), 15000);
   pollIncomingOrdersQueue(true);
 }
-/** Zahraje krátké "cink cink" jako kasička (podobně jako Shopify), když přijde
-    nová objednávka. Zvuk se syntetizuje přímo přes Web Audio API — appka tedy
-    nepotřebuje žádný zvukový soubor ani přístup na internet. */
+/** Zahraje krátké cinkání mincí, když přijde nová objednávka. Zvuk se
+    syntetizuje přímo přes Web Audio API — appka tedy nepotřebuje žádný
+    zvukový soubor ani přístup na internet. */
 function playNewOrderChime(){
   try{
     const Ctx = window.AudioContext || window.webkitAudioContext;
     if(!Ctx) return;
     const ctx = new Ctx();
-    const playBell = (freq, startTime, duration)=>{
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.type = 'sine';
-      osc.frequency.value = freq;
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      gain.gain.setValueAtTime(0, startTime);
-      gain.gain.linearRampToValueAtTime(0.28, startTime + 0.01);
-      gain.gain.exponentialRampToValueAtTime(0.001, startTime + duration);
-      osc.start(startTime);
-      osc.stop(startTime + duration);
+    // Jeden krátký kovový "cink" — pár vysokých tónů blízko u sebe s velmi
+    // rychlým doznění, aby to znělo jako mince, ne jako zvonek.
+    const playCoin = (startTime, baseFreq, volume)=>{
+      [1, 2.4, 3.8].forEach((mult, i)=>{
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'triangle';
+        osc.frequency.value = baseFreq * mult;
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        const vol = volume / (i + 1);
+        gain.gain.setValueAtTime(0, startTime);
+        gain.gain.linearRampToValueAtTime(vol, startTime + 0.003);
+        gain.gain.exponentialRampToValueAtTime(0.001, startTime + 0.18);
+        osc.start(startTime);
+        osc.stop(startTime + 0.2);
+      });
     };
     const now = ctx.currentTime;
-    // Dva "cinky" nahoru (jako pokladna) — druhý o kvintu výš a s malým zpožděním.
-    playBell(1318.5, now, 0.35);        // E6
-    playBell(1975.5, now + 0.12, 0.45); // B6
+    // Několik cinknutí mincí těsně za sebou, s trochou nepravidelnosti
+    // v čase i výšce, ať to zní jako sypající se drobné, ne jako melodie.
+    const coinCount = 6;
+    let t = now;
+    for(let i=0; i<coinCount; i++){
+      const freq = 2200 + Math.random()*1400;
+      const vol = 0.22 * (1 - i/(coinCount+2));
+      playCoin(t, freq, vol);
+      t += 0.045 + Math.random()*0.05;
+    }
     setTimeout(()=>ctx.close().catch(()=>{}), 900);
   }catch(err){ console.warn('Přehrání zvukového upozornění se nepovedlo.', err); }
 }
