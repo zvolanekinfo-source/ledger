@@ -688,6 +688,7 @@ let state = {
   editingCompanyId: null,
   bulkImport: null,
   selectedInvoiceIds: new Set(),
+  selectedOrderIds: new Set(),
   selectedClientIds: new Set(),
   newCompanyDraftId: null,
   newCompanyDraft: {logo:'',signature:'',stamp:''},
@@ -8092,10 +8093,15 @@ function viewOrders(){
         </select>
       </div>
     </div>
+    ${renderBulkBar(state.selectedOrderIds.size, 'objednávek', `
+      <button type="button" class="btn secondary small" data-action="bulk-mark-packed">Označit jako zabalené</button>
+      <button type="button" class="btn secondary small" data-action="bulk-mark-shipped">Označit jako odeslané</button>
+      <button type="button" class="btn danger small" data-action="bulk-delete-orders">Smazat vybrané</button>
+    `)}
     ${list.length ? `
     <div class="table-scroll">
     <table class="fixed-table">
-      <thead><tr><th style="width:190px;">Číslo</th><th>Odběratel</th><th style="width:150px;">Vytvořeno</th><th style="width:110px;">Položky</th><th style="width:150px;">Postup</th><th style="width:150px;">Stav</th><th style="width:120px;"></th></tr></thead>
+      <thead><tr><th style="width:60px;"><input type="checkbox" data-action="toggle-select-all-orders" ${list.length && list.every(o=>state.selectedOrderIds.has(o.id))?'checked':''}></th><th style="width:190px;">Číslo</th><th>Odběratel</th><th style="width:150px;">Vytvořeno</th><th style="width:110px;">Položky</th><th style="width:150px;">Postup</th><th style="width:150px;">Stav</th><th style="width:120px;"></th></tr></thead>
       <tbody>
         ${list.map(o=>{
           const c = clientById(o.clientId);
@@ -8103,6 +8109,7 @@ function viewOrders(){
           const created = o.createdAt ? new Date(o.createdAt) : null;
           const createdLabel = created ? `${created.toLocaleDateString('cs-CZ')} ${created.toLocaleTimeString('cs-CZ',{hour:'2-digit',minute:'2-digit'})}` : '—';
           return `<tr class="rowlink" data-action="view-order" data-id="${o.id}">
+            <td class="no-print" style="padding:0;"><span class="checkbox-hit" data-action="toggle-order-select" data-id="${o.id}"><input type="checkbox" data-action="toggle-order-select" data-id="${o.id}" ${state.selectedOrderIds.has(o.id)?'checked':''}></span></td>
             <td class="num" style="white-space:normal;word-break:break-all;">#${escapeHtml(o.number)}</td>
             <td>${c?escapeHtml(c.name):'—'}</td>
             <td style="color:var(--ink-soft);font-size:12.5px;">${createdLabel}</td>
@@ -12325,7 +12332,7 @@ document.addEventListener('click', async (e)=>{
     }
     if(!RESUMABLE_FORMS[targetView]) rememberResumeContext();
     persistCurrentItemDrafts();
-    stopCameraScanIfActive(); state.view = targetView; state.editingInvoiceId=null; state.editingClientId=null; state.viewingClientId=null; state.newClientDraftId=null; state.newClientDraftAttachments=[]; state.editingCompanyId=null; state.newCompanyDraftId=null; state.newCompanyDraft={logo:'',signature:'',stamp:''}; state.companyNotice=''; state.invoicingSettingsNotice=''; state.formItems=[]; state.formCompanyId=null; state.selectedInvoiceIds.clear(); state.selectedClientIds.clear(); state.editingSupplierId=null; state.viewingSupplierId=null; state.newSupplierDraftId=null; state.newSupplierDraftAttachments=[]; state.editingProductId=null; state.newProductDraftId=null; state.currentProductDraftPhoto=''; state.eanLookupStatus=''; state.selectedProductIds.clear(); closeProductContextMenu(); state.productColsPanelOpen=false; state.editingReceivedInvoiceId=null; state.receivedFormItems=[]; state.viewingReceivedInvoiceId=null; state.newInvoiceDocType='invoice'; state.newInvoiceRelatedId=null; state.newInvoiceClientId=null; state._currentInvoiceFxRate=null; state.stockMovementProductId=null; state.newMovementPanelOpen=false; state.locationScanBuffer={productId:null,locationId:null}; state.locationScanMessage=''; state.stockScanSession=[]; state.editingRecurringId=null; state.recurringFormItems=[]; state.newRecurringDraft=null; state.recurringSourceInvoiceId=null; render(); }
+    stopCameraScanIfActive(); state.view = targetView; state.editingInvoiceId=null; state.editingClientId=null; state.viewingClientId=null; state.newClientDraftId=null; state.newClientDraftAttachments=[]; state.editingCompanyId=null; state.newCompanyDraftId=null; state.newCompanyDraft={logo:'',signature:'',stamp:''}; state.companyNotice=''; state.invoicingSettingsNotice=''; state.formItems=[]; state.formCompanyId=null; state.selectedInvoiceIds.clear(); state.selectedClientIds.clear(); state.selectedOrderIds.clear(); state.editingSupplierId=null; state.viewingSupplierId=null; state.newSupplierDraftId=null; state.newSupplierDraftAttachments=[]; state.editingProductId=null; state.newProductDraftId=null; state.currentProductDraftPhoto=''; state.eanLookupStatus=''; state.selectedProductIds.clear(); closeProductContextMenu(); state.productColsPanelOpen=false; state.editingReceivedInvoiceId=null; state.receivedFormItems=[]; state.viewingReceivedInvoiceId=null; state.newInvoiceDocType='invoice'; state.newInvoiceRelatedId=null; state.newInvoiceClientId=null; state._currentInvoiceFxRate=null; state.stockMovementProductId=null; state.newMovementPanelOpen=false; state.locationScanBuffer={productId:null,locationId:null}; state.locationScanMessage=''; state.stockScanSession=[]; state.editingRecurringId=null; state.recurringFormItems=[]; state.newRecurringDraft=null; state.recurringSourceInvoiceId=null; render(); }
   else if(action==='new-invoice'){ persistCurrentItemDrafts(); state.view='invoice-form'; state.editingInvoiceId=null; state.formItems=[]; state.formCompanyId=null; state.newInvoiceDocType='invoice'; state.newInvoiceRelatedId=null; render(); }
   else if(action==='new-credit-note'){ persistCurrentItemDrafts(); state.view='invoice-form'; state.editingInvoiceId=null; state.formItems=[]; state.formCompanyId=null; state.newInvoiceDocType='credit_note'; state.newInvoiceRelatedId=null; render(); }
   else if(action==='new-proforma'){ persistCurrentItemDrafts(); state.view='invoice-form'; state.editingInvoiceId=null; state.formItems=[]; state.formCompanyId=null; state.newInvoiceDocType='proforma'; state.newInvoiceRelatedId=null; render(); }
@@ -12792,6 +12799,34 @@ document.addEventListener('click', async (e)=>{
     state.orders = state.orders.filter(o=>o.id!==id);
     try{ await saveOrders(); }catch(err){ alert('Smazání se nepovedlo.'); }
     if(ord) logAuditEvent('Smazána objednávka', 'order', ord.number, '');
+    render();
+  }
+  else if(action==='toggle-order-select'){
+    if(state.selectedOrderIds.has(id)) state.selectedOrderIds.delete(id); else state.selectedOrderIds.add(id);
+    render();
+  }
+  else if(action==='toggle-select-all-orders'){
+    const checked = el.checked;
+    document.querySelectorAll('tbody input[data-action="toggle-order-select"]').forEach(cb=>{
+      const cid = cb.getAttribute('data-id');
+      if(checked) state.selectedOrderIds.add(cid); else state.selectedOrderIds.delete(cid);
+    });
+    render();
+  }
+  else if(action==='bulk-mark-packed' || action==='bulk-mark-shipped'){
+    const newStatus = action==='bulk-mark-packed' ? 'packed' : 'shipped';
+    state.orders.forEach(o=>{ if(state.selectedOrderIds.has(o.id)) o.status = newStatus; });
+    try{ await saveOrders(); }catch(err){ alert('Uložení se nepovedlo, zkus to prosím znovu.'); }
+    state.selectedOrderIds.clear();
+    render();
+  }
+  else if(action==='bulk-delete-orders'){
+    if(!canDeleteRecords()){ alert('Na mazání záznamů nemáš oprávnění — obrať se na admina.'); return; }
+    const n = state.selectedOrderIds.size;
+    if(!confirm(`Opravdu smazat ${n} vybraných objednávek?`)) return;
+    state.orders = state.orders.filter(o=>!state.selectedOrderIds.has(o.id));
+    try{ await saveOrders(); }catch(err){ alert('Smazání se nepovedlo, zkus to prosím znovu.'); }
+    state.selectedOrderIds.clear();
     render();
   }
   else if(action==='view-order'){ state.viewingOrderId=id; state.view='order-detail'; render(); }
@@ -13457,7 +13492,7 @@ document.addEventListener('click', async (e)=>{
       render();
     }
   }
-  else if(action==='bulk-clear-selection'){ state.selectedInvoiceIds.clear(); state.selectedClientIds.clear(); state.selectedProductIds.clear(); render(); }
+  else if(action==='bulk-clear-selection'){ state.selectedInvoiceIds.clear(); state.selectedClientIds.clear(); state.selectedProductIds.clear(); state.selectedOrderIds.clear(); render(); }
   else if(action==='convert-items-to-fx'){
     if(!state._currentInvoiceFxRate || !state._currentInvoiceFxRate.rate){ alert('Nejdřív se musí načíst aktuální kurz — zkus to za chvíli znovu.'); return; }
     if(!confirm(`Přepočítat ceny všech položek z Kč podle kurzu 1 ${state._currentInvoiceFxRate.currency} = ${fmt(state._currentInvoiceFxRate.rate)} Kč? Přepíše to aktuální ceny v položkách.`)) return;
