@@ -2100,13 +2100,27 @@ function validateDiscountCode(code, subtotal){
   return { valid:true, discount:d };
 }
 function priceLevelById(id){ return (state.priceLevels||[]).find(pl=>pl.id===id); }
-function priceForClient(p, client){
-  // Cena produktu podle cenové hladiny odběratele — pokud ji odběratel nemá
-  // nastavenou, nebo produkt pro ni nemá zvláštní cenu, padá to na běžnou
-  // prodejní cenu produktu.
+function productPriceForQty(p, qty){
+  // Vrátí cenu za kus podle množstevních prahů (nejvyšší práh, který
+  // množství splňuje) — nebo null, pokud produkt žádné množstevní ceny nemá
+  // nebo množství nedosahuje ani na nejnižší práh.
+  const tiers = (p && p.priceTiers) || [];
+  if(!tiers.length) return null;
+  const q = Number(qty)||0;
+  const applicable = tiers.filter(t=>q >= t.minQty).sort((a,b)=>b.minQty-a.minQty);
+  return applicable.length ? applicable[0].price : null;
+}
+function priceForClient(p, client, qty){
+  // Cena produktu — v tomhle pořadí priority:
+  // 1) konkrétní cena pro cenovou hladinu odběratele (pokud ji má a produkt
+  //    pro ni má nastavenou cenu),
+  // 2) množstevní cena podle zadaného počtu kusů,
+  // 3) běžná prodejní cena produktu.
   if(client && client.priceLevelId && p.pricesByLevel && p.pricesByLevel[client.priceLevelId]!=null){
     return p.pricesByLevel[client.priceLevelId];
   }
+  const tierPrice = productPriceForQty(p, qty!=null?qty:1);
+  if(tierPrice!=null) return tierPrice;
   return p.salePrice||0;
 }
 
@@ -6843,7 +6857,7 @@ function blankProduct(){
   return {
     id: uid(), number:'', ean:'', internalCode:'', name:'', description:'',
     category:'', manufacturer:'', supplierId:'', unit:'ks', vatRate:21, vatRatePurchase:21, note:'',
-    composition:'', dimensionUnit:'cm', dimensions:{width:0,height:0,depth:0}, packageDimensions:{width:0,height:0,depth:0}, unitsPerStorageType:{}, pricesByLevel:{},
+    composition:'', dimensionUnit:'cm', dimensions:{width:0,height:0,depth:0}, packageDimensions:{width:0,height:0,depth:0}, unitsPerStorageType:{}, pricesByLevel:{}, priceTiers:[],
     nutrition:{ per:'100g', energyKj:null, energyKcal:null, fat:null, saturatedFat:null, carbs:null, sugars:null, fiber:null, protein:null, salt:null },
     purchasePrice:0, salePrice:0, costs:0,
     warehouseId: (defaultWarehouse()||{}).id || '',
@@ -7668,6 +7682,15 @@ function buildPriceLevelRowHtml(pl, p){
     </tr>
   `;
 }
+function buildPriceTierRowHtml(tier, idx){
+  return `
+    <tr data-price-tier-row="${idx}">
+      <td><input type="number" step="1" min="1" name="priceTierQty_${idx}" value="${tier&&tier.minQty!=null?tier.minQty:''}" placeholder="10" ${!canEditPrices()?'disabled':''} style="width:100%;padding:6px 8px;border:1px solid var(--line);border-radius:4px;"></td>
+      <td><input type="number" step="0.01" name="priceTierPrice_${idx}" value="${tier&&tier.price!=null?tier.price:''}" placeholder="0" ${!canEditPrices()?'disabled':''} style="width:100%;padding:6px 8px;border:1px solid var(--line);border-radius:4px;"></td>
+      <td><button type="button" class="btn-link" data-action="remove-price-tier-row" data-index="${idx}" style="color:var(--red);font-size:11px;">odebrat</button></td>
+    </tr>
+  `;
+}
 function warehouseCapacityUnitLabel(w){
   if(w.capacityUnitTypeId){
     const t = storageUnitTypeInWarehouse(w, w.capacityUnitTypeId);
@@ -8309,6 +8332,17 @@ function setupOrderForm(){
       let val = e.target.value;
       if(f==='qty'||f==='price'||f==='vat') val = parseFloat(val)||0;
       state.orderFormItems[idx][f] = val;
+      if(f==='qty'){
+        const it = state.orderFormItems[idx];
+        const prod = it.productId ? productById(it.productId) : null;
+        const tierPrice = prod ? productPriceForQty(prod, it.qty) : null;
+        if(tierPrice!=null){
+          it.price = tierPrice;
+          const row = e.target.closest('tr');
+          const priceInput = row && row.querySelector('input[data-field="price"]');
+          if(priceInput) priceInput.value = tierPrice;
+        }
+      }
       const row = e.target.closest('tr');
       if(row){
         const it = state.orderFormItems[idx];
@@ -9461,6 +9495,16 @@ function viewProductForm(){
         </select>
       </div>
 
+      <div class="mini-label" style="margin-top:20px;">Množstevní ceny</div>
+      <p style="font-size:11.5px;color:var(--ink-soft);margin:2px 0 8px 0;">Nepovinné — nastav různou cenu za kus podle objednaného množství (např. od 10 ks levněji). Pokud je vyplněná i cenová hladina odběratele výše, ta má přednost.</p>
+      <table class="items-table" style="max-width:420px;">
+        <thead><tr><th>Od množství (ks)</th><th style="width:150px;">Cena za kus (bez DPH)</th><th></th></tr></thead>
+        <tbody id="price-tier-rows">
+          ${(p.priceTiers||[]).map((tier, idx)=>buildPriceTierRowHtml(tier, idx)).join('')}
+        </tbody>
+      </table>
+      <button type="button" class="btn-link" id="add-price-tier-btn" style="margin-top:8px;">+ Přidat množstevní práh</button>
+
       <div class="section-title">Sklad</div>
       ${editing ? `
         <div class="stock-row">
@@ -9599,6 +9643,13 @@ function setupProductForm(){
   }
   const priceLevelRows = document.getElementById('price-level-rows');
   const addLevelSelect = document.getElementById('add-price-level-select');
+  const priceTierRows = document.getElementById('price-tier-rows');
+  const addTierBtn = document.getElementById('add-price-tier-btn');
+  if(addTierBtn && priceTierRows){
+    addTierBtn.addEventListener('click', ()=>{
+      priceTierRows.insertAdjacentHTML('beforeend', buildPriceTierRowHtml({minQty:'',price:''}, priceTierRows.children.length));
+    });
+  }
   if(addLevelSelect){
     addLevelSelect.addEventListener('change', async ()=>{
       const val = addLevelSelect.value;
@@ -9822,6 +9873,14 @@ async function onSubmitProduct(e){
     pricesByLevel: canEditPrices()
       ? Object.fromEntries((state.priceLevels||[]).map(pl=>[pl.id, fd.get('priceLevel_'+pl.id)!=='' ? (parseFloat(fd.get('priceLevel_'+pl.id))||0) : null]).filter(([,v])=>v!=null))
       : (existing ? (existing.pricesByLevel||{}) : {}),
+    priceTiers: canEditPrices()
+      ? Array.from(document.querySelectorAll('#price-tier-rows tr[data-price-tier-row]')).map(row=>{
+          const inputs = row.querySelectorAll('input[type="number"]');
+          const minQty = parseFloat(inputs[0]?.value);
+          const price = parseFloat(inputs[1]?.value);
+          return (isFinite(minQty) && minQty>0 && isFinite(price)) ? { minQty, price } : null;
+        }).filter(Boolean).sort((a,b)=>a.minQty-b.minQty)
+      : (existing ? (existing.priceTiers||[]) : []),
     nutrition: {
       per: '100g',
       energyKj: fd.get('nutri-energyKj')!=='' ? parseFloat(fd.get('nutri-energyKj')) : null,
@@ -11368,6 +11427,17 @@ function afterRender(){
       let val = e.target.value;
       if(f==='qty'||f==='price'||f==='vat') val = parseFloat(val)||0;
       state.formItems[idx][f]=val;
+      if(f==='qty'){
+        const it = state.formItems[idx];
+        const prod = it.productId ? productById(it.productId) : null;
+        const tierPrice = prod ? productPriceForQty(prod, it.qty) : null;
+        if(tierPrice!=null){
+          it.price = tierPrice;
+          const row = e.target.closest('tr');
+          const priceInput = row && row.querySelector('input[data-field="price"]');
+          if(priceInput) priceInput.value = tierPrice;
+        }
+      }
       // live update row total + totals box without full rerender (keeps focus)
       const totalsBox = document.getElementById('totals-box');
       const itemsTableEl = document.querySelector('.items-table');
@@ -12298,6 +12368,10 @@ document.addEventListener('click', async (e)=>{
   }
   else if(action==='remove-price-level-row'){
     const row = el.closest('tr[data-price-level-row]');
+    if(row) row.remove();
+  }
+  else if(action==='remove-price-tier-row'){
+    const row = el.closest('tr[data-price-tier-row]');
     if(row) row.remove();
   }
   else if(action==='choose-plan'){
