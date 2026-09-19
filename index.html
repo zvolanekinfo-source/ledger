@@ -9310,6 +9310,8 @@ function viewProductForm(){
   const status = stockStatus(p);
   const hasNutritionData = !!(p.nutrition && Object.keys(p.nutrition).some(k=>k!=='per' && p.nutrition[k]!=null));
   const productWarehouse = warehouseById(p.warehouseId) || defaultWarehouse();
+  const pfActiveCompany = activeCompany();
+  const primaryVatPayer = !!(pfActiveCompany && pfActiveCompany.vatPayer);
   return `
     <div class="pagehead"><div><h1>${editing?'Upravit produkt':'Zalistovat produkt'}</h1></div></div>
     <form id="product-form" class="pf-grid">
@@ -9374,7 +9376,7 @@ function viewProductForm(){
       <div class="pf-card">
         <div class="pf-card-title">Ceny</div>
         ${!canEditPrices() ? `<p style="font-size:12px;color:var(--ink-soft);margin-top:-6px;">Na úpravu cen nemáš oprávnění — pole jsou needitovatelná.</p>` : ''}
-        ${(()=>{ const ac = activeCompany(); const primaryVatPayer = !!(ac && ac.vatPayer); return `
+        ${(()=>{ const ac = pfActiveCompany; return `
         ${!primaryVatPayer ? `<p style="font-size:12px;color:var(--ink-soft);margin-top:-6px;">Firma, ve které zrovna pracuješ (${escapeHtml(ac?ac.name||'(bez názvu)':'')}), není plátce DPH, takže se sazby DPH neuplatňují a nezobrazují.</p>` : ''}
         <div class="field-row">
           <div class="field"><label>Nákupní cena za kus${primaryVatPayer?' (s DPH)':''}</label><input type="number" step="0.01" name="purchasePrice" id="pf-purchase-price" value="${p.purchasePrice||''}" placeholder="0" ${!canEditPrices()?'disabled':''}></div>
@@ -9399,7 +9401,7 @@ function viewProductForm(){
             <div class="mini-label">Ceny pro jednotlivé cenové hladiny</div>
             <p style="font-size:11.5px;color:var(--ink-soft);margin:2px 0 8px 0;">Nepovinné — nech prázdné a použije se prodejní cena výše.</p>
             <table class="items-table" style="max-width:520px;">
-              <thead><tr><th>Hladina</th><th style="width:150px;">Cena (bez DPH)</th><th></th></tr></thead>
+              <thead><tr><th>Hladina</th><th style="width:150px;">Cena${primaryVatPayer?' (bez DPH)':''}</th><th></th></tr></thead>
               <tbody id="price-level-rows">
                 ${(function(){
                   const existingIds = new Set(Object.keys(p.pricesByLevel||{}));
@@ -9422,7 +9424,7 @@ function viewProductForm(){
             <div class="mini-label" style="margin-top:20px;">Množstevní ceny</div>
             <p style="font-size:11.5px;color:var(--ink-soft);margin:2px 0 8px 0;">Nepovinné — nastav různou cenu za kus podle objednaného množství (např. od 10 ks levněji). Pokud je vyplněná i cenová hladina odběratele výše, ta má přednost.</p>
             <table class="items-table" style="max-width:420px;">
-              <thead><tr><th>Od množství (ks)</th><th style="width:150px;">Cena za kus (bez DPH)</th><th></th></tr></thead>
+              <thead><tr><th>Od množství (ks)</th><th style="width:150px;">Cena za kus${primaryVatPayer?' (bez DPH)':''}</th><th></th></tr></thead>
               <tbody id="price-tier-rows">
                 ${(p.priceTiers||[]).map((tier, idx)=>buildPriceTierRowHtml(tier, idx)).join('')}
               </tbody>
