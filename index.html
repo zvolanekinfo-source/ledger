@@ -9382,10 +9382,7 @@ function viewProductForm(){
           <div class="field"><label>Nákupní cena za kus${primaryVatPayer?' (s DPH)':''}</label><input type="number" step="0.01" name="purchasePrice" id="pf-purchase-price" value="${p.purchasePrice||''}" placeholder="0" ${!canEditPrices()?'disabled':''}></div>
           ${primaryVatPayer ? `<div class="field"><label>Sazba DPH (nákup)</label><input type="number" step="0.1" name="vatRatePurchase" id="pf-vat-purchase" value="${p.vatRatePurchase??21}" ${!canEditPrices()?'disabled':''}></div>` : ''}
         </div>
-        <div class="field-row">
-          <div class="field"><label>Prodejní cena za kus${primaryVatPayer?' (bez DPH)':''}</label><input type="number" step="0.01" name="salePrice" id="pf-sale-price" value="${p.salePrice||''}" placeholder="0" ${!canEditPrices()?'disabled':''}></div>
-          ${primaryVatPayer ? `<div class="field"><label>Sazba DPH (prodej)</label><input type="number" step="0.1" name="vatRate" id="pf-vat-sale" value="${p.vatRate??21}" ${!canEditPrices()?'disabled':''}></div>` : ''}
-        </div>
+        ${primaryVatPayer ? `<div class="field" style="max-width:220px;"><label>Sazba DPH (prodej)</label><input type="number" step="0.1" name="vatRate" id="pf-vat-sale" value="${p.vatRate??21}" ${!canEditPrices()?'disabled':''}></div>` : ''}
         `; })()}
         ${editing ? `
         <div class="margin-box" id="margin-box">
@@ -9395,11 +9392,29 @@ function viewProductForm(){
           <div class="mb-item"><div class="mb-label">Obchodní přirážka</div><div class="mb-value" id="mb-markup-pct">${margin.markupPct.toFixed(1)}%</div></div>
         </div>
         ` : ''}
-        <details class="pf-more" ${(Object.keys(p.pricesByLevel||{}).length || (p.priceTiers||[]).length) ? 'open' : ''}>
-          <summary>Další ceny (cenové hladiny, množstevní ceny)</summary>
+
+        <div class="mini-label" style="margin-top:18px;">Prodejní cena za kus${primaryVatPayer?' (bez DPH)':''}</div>
+        <p style="font-size:11.5px;color:var(--ink-soft);margin:2px 0 8px 0;">První řádek (1 ks) je základní prodejní cena. Přidej další řádky, pokud chceš od vyššího množství nabídnout nižší cenu za kus.</p>
+        <table class="items-table" style="max-width:420px;">
+          <thead><tr><th>Od množství (ks)</th><th style="width:150px;">Cena za kus${primaryVatPayer?' (bez DPH)':''}</th><th></th></tr></thead>
+          <tbody>
+            <tr>
+              <td style="padding:6px 10px;color:var(--ink-soft);">1 ks (základní)</td>
+              <td><input type="number" step="0.01" name="salePrice" id="pf-sale-price" value="${p.salePrice||''}" placeholder="0" ${!canEditPrices()?'disabled':''} style="width:100%;padding:6px 8px;border:1px solid var(--line);border-radius:4px;"></td>
+              <td></td>
+            </tr>
+          </tbody>
+          <tbody id="price-tier-rows">
+            ${(p.priceTiers||[]).map((tier, idx)=>buildPriceTierRowHtml(tier, idx)).join('')}
+          </tbody>
+        </table>
+        <button type="button" class="btn-link" id="add-price-tier-btn" style="margin-top:8px;">+ Přidat množstevní práh</button>
+
+        <details class="pf-more" ${Object.keys(p.pricesByLevel||{}).length ? 'open' : ''} style="margin-top:20px;">
+          <summary>Další ceny (cenové hladiny podle odběratele)</summary>
           <div class="pf-more-body">
             <div class="mini-label">Ceny pro jednotlivé cenové hladiny</div>
-            <p style="font-size:11.5px;color:var(--ink-soft);margin:2px 0 8px 0;">Nepovinné — nech prázdné a použije se prodejní cena výše.</p>
+            <p style="font-size:11.5px;color:var(--ink-soft);margin:2px 0 8px 0;">Nepovinné — nech prázdné a použije se prodejní cena výše. Pokud má odběratel přiřazenou cenovou hladinu, ta má přednost i před množstevní cenou.</p>
             <table class="items-table" style="max-width:520px;">
               <thead><tr><th>Hladina</th><th style="width:150px;">Cena${primaryVatPayer?' (bez DPH)':''}</th><th></th></tr></thead>
               <tbody id="price-level-rows">
@@ -9420,16 +9435,6 @@ function viewProductForm(){
                 <option value="__new__">+ Nová hladina…</option>
               </select>
             </div>
-
-            <div class="mini-label" style="margin-top:20px;">Množstevní ceny</div>
-            <p style="font-size:11.5px;color:var(--ink-soft);margin:2px 0 8px 0;">Nepovinné — nastav různou cenu za kus podle objednaného množství (např. od 10 ks levněji). Pokud je vyplněná i cenová hladina odběratele výše, ta má přednost.</p>
-            <table class="items-table" style="max-width:420px;">
-              <thead><tr><th>Od množství (ks)</th><th style="width:150px;">Cena za kus${primaryVatPayer?' (bez DPH)':''}</th><th></th></tr></thead>
-              <tbody id="price-tier-rows">
-                ${(p.priceTiers||[]).map((tier, idx)=>buildPriceTierRowHtml(tier, idx)).join('')}
-              </tbody>
-            </table>
-            <button type="button" class="btn-link" id="add-price-tier-btn" style="margin-top:8px;">+ Přidat množstevní práh</button>
           </div>
         </details>
       </div>
