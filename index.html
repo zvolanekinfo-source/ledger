@@ -3965,7 +3965,12 @@ function viewInvoicePreview(){
                 ${c&&c.priceLevelId&&priceLevelById(c.priceLevelId)?`<div>Cenová hladina: ${escapeHtml(priceLevelById(c.priceLevelId).name)}</div>`:''}
               </div>
               <div>
-                ${c&&c.contactPerson?`<div>K rukám: ${escapeHtml(c.contactPerson)}</div>`:''}
+                ${(()=>{
+                  const ord = inv.orderNumber ? state.orders.find(x=>x.number===inv.orderNumber) : null;
+                  const isAddressDelivery = ord && ord.shippingMethod && ord.shippingMethod.startsWith('Doručení na adresu');
+                  if(isAddressDelivery) return '<div>Doručení na adresu</div>';
+                  return c&&c.contactPerson?`<div>K rukám: ${escapeHtml(c.contactPerson)}</div>`:'';
+                })()}
                 ${c&&c.contactEmail?`<div>${escapeHtml(c.contactEmail)}</div>`:''}
                 ${c&&c.contactPhone?`<div>${escapeHtml(c.contactPhone)}</div>`:''}
                 ${c&&c.website?`<div>${escapeHtml(c.website)}</div>`:''}
@@ -4123,7 +4128,12 @@ function buildInvoiceSheetBlock(inv, idx){
                 ${c&&c.priceLevelId&&priceLevelById(c.priceLevelId)?`<div>Cenová hladina: ${escapeHtml(priceLevelById(c.priceLevelId).name)}</div>`:''}
               </div>
               <div>
-                ${c&&c.contactPerson?`<div>K rukám: ${escapeHtml(c.contactPerson)}</div>`:''}
+                ${(()=>{
+                  const ord = inv.orderNumber ? state.orders.find(x=>x.number===inv.orderNumber) : null;
+                  const isAddressDelivery = ord && ord.shippingMethod && ord.shippingMethod.startsWith('Doručení na adresu');
+                  if(isAddressDelivery) return '<div>Doručení na adresu</div>';
+                  return c&&c.contactPerson?`<div>K rukám: ${escapeHtml(c.contactPerson)}</div>`:'';
+                })()}
                 ${c&&c.contactEmail?`<div>${escapeHtml(c.contactEmail)}</div>`:''}
                 ${c&&c.contactPhone?`<div>${escapeHtml(c.contactPhone)}</div>`:''}
                 ${c&&c.website?`<div>${escapeHtml(c.website)}</div>`:''}
@@ -5120,7 +5130,10 @@ async function pollIncomingOrdersQueue(silent){
           state.orders.push(newOrder);
           if(clientId) saveClients();
           saveCompanies();
-          notifyNewOrderByEmail(newOrder);
+          // E-mail s upozorněním na novou objednávku posílá vždy order-webhook
+          // (server-side, funguje i když je appka zavřená) — kdyby ho appka
+          // poslala i odsud, přišly by 2 stejné e-maily pokaždé, když je
+          // Ledgers zrovna otevřená v okamžiku zpracování objednávky.
           if(state.integrations.orderAutoCreateInvoice && newOrder.clientId){
             buildInvoiceFromOrder(newOrder, {
               markPacked:false,
@@ -8553,7 +8566,7 @@ async function buildInvoiceFromOrder(o, opts){
     currency:'CZK', discountType:'none', discountValue:0, rounding:'none',
     paymentMethod: co.defaultPaymentMethod||'Bankovním převodem',
     includeStamp:true, colorMode:'color', includeSignature:true, includeQr:true,
-    note:o.note||'', items, paid:false, paidDate:null, createdBy:state.currentUser
+    note:co.defaultNote||'', items, paid:false, paidDate:null, createdBy:state.currentUser
   };
   await applyStockForInvoiceChange([], invoice.items, 'Objednávka '+o.number);
   state.invoices.push(invoice);
