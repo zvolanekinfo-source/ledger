@@ -189,6 +189,20 @@
 
   /* FORMS */
   .form-card{background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:26px 28px;max-width:840px;}
+  .pf-grid{display:grid;grid-template-columns:1fr 320px;gap:20px;align-items:start;max-width:1120px;}
+  .pf-main{display:flex;flex-direction:column;gap:16px;min-width:0;}
+  .pf-sidebar{display:flex;flex-direction:column;gap:16px;}
+  .pf-card{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:20px 22px;}
+  .pf-card-title{font-weight:600;font-size:14.5px;margin:0 0 14px 0;color:var(--ink);}
+  .pf-card > .pf-card-title:first-child{margin-top:0;}
+  .pf-card .section-title:first-child{margin-top:0;padding-top:0;border-top:none;}
+  details.pf-more{margin-top:6px;}
+  details.pf-more > summary{cursor:pointer;font-size:13px;font-weight:600;color:var(--accent);list-style:none;display:flex;align-items:center;gap:6px;padding:4px 0;}
+  details.pf-more > summary::-webkit-details-marker{display:none;}
+  details.pf-more > summary::before{content:'▸';transition:transform .15s;}
+  details.pf-more[open] > summary::before{transform:rotate(90deg);}
+  details.pf-more > .pf-more-body{padding-top:14px;}
+  @media (max-width: 900px){ .pf-grid{grid-template-columns:1fr;} }
   .field-row{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:14px;}
   .field{margin-bottom:14px;}
   .field label{display:block;font-size:12px;color:var(--ink-soft);margin-bottom:5px;font-weight:500;}
@@ -9298,60 +9312,213 @@ function viewProductForm(){
   const productWarehouse = warehouseById(p.warehouseId) || defaultWarehouse();
   return `
     <div class="pagehead"><div><h1>${editing?'Upravit produkt':'Zalistovat produkt'}</h1></div></div>
-    <form id="product-form" class="form-card">
+    <form id="product-form" class="pf-grid">
+    <div class="pf-main">
 
-      <div class="section-title" style="margin-top:0;padding-top:0;border-top:none;">Rychlé přidání podle EAN</div>
-      <div class="field-row" style="align-items:flex-end;">
-        <div class="field"><label>EAN</label><input name="ean" id="product-ean" value="${escapeAttr(p.ean)}" placeholder="Načti čtečkou nebo napiš ručně"></div>
-        <div class="field"><label>&nbsp;</label><button type="button" class="btn secondary" id="ean-lookup-btn" style="width:100%;">Načíst údaje podle EAN</button></div>
-      </div>
-      <p id="ean-lookup-status" style="font-size:12px;color:var(--ink-soft);margin:-6px 0 14px 0;">${escapeHtml(state.eanLookupStatus||'')}</p>
-      <div class="barcode-preview-box" id="ean-barcode-box" style="max-width:300px;${p.ean?'':'display:none;'}">
-        <svg id="ean-barcode-svg"></svg>
-        <div id="ean-barcode-error" style="display:none;font-size:11.5px;color:var(--red);margin-top:6px;">Kód se v tomto formátu nepodařilo vykreslit jako obrázek — zkontroluj zadané číslo.</div>
+      <div class="pf-card">
+        <div class="pf-card-title">Základní údaje</div>
+        <div class="field"><label>Název produktu</label><input name="name" value="${escapeAttr(p.name)}" required autofocus></div>
+        <div class="field"><label>Popis</label><textarea name="description">${escapeHtml(p.description||'')}</textarea></div>
       </div>
 
-      <div class="section-title">Fotografie</div>
-      <div class="field-row">
-        <div class="field">
-          <div class="photo-drop" id="product-photo-drop">
-            ${photo ? `<img src="${photo}" alt="Fotografie produktu">` : `<div class="pd-empty">Přetáhni fotku sem, vlož ze schránky (Ctrl+V) nebo klikni pro výběr souboru</div>`}
+      <div class="pf-card">
+        <div class="pf-card-title">Fotografie</div>
+        <div class="field-row">
+          <div class="field">
+            <div class="photo-drop" id="product-photo-drop">
+              ${photo ? `<img src="${photo}" alt="Fotografie produktu">` : `<div class="pd-empty">Přetáhni fotku sem, vlož ze schránky (Ctrl+V) nebo klikni pro výběr souboru</div>`}
+            </div>
+            <input type="file" id="product-photo-input" accept="image/*" style="display:none;">
+            ${photo?`<button type="button" class="btn-link" data-action="remove-product-photo">Odebrat fotografii</button>`:''}
           </div>
-          <input type="file" id="product-photo-input" accept="image/*" style="display:none;">
-          ${photo?`<button type="button" class="btn-link" data-action="remove-product-photo">Odebrat fotografii</button>`:''}
-        </div>
-        <div class="field">
-          <label>Odkaz na produkt</label>
-          <input name="link" value="${escapeAttr(p.link||'')}" placeholder="https://…">
-          <p style="font-size:11px;color:var(--ink-soft);margin:4px 0 0 0;">Např. na e-shop dodavatele — otevře se v novém okně.</p>
+          <div class="field">
+            <label>Odkaz na produkt</label>
+            <input name="link" value="${escapeAttr(p.link||'')}" placeholder="https://…">
+            <p style="font-size:11px;color:var(--ink-soft);margin:4px 0 0 0;">Např. na e-shop dodavatele — otevře se v novém okně.</p>
+          </div>
         </div>
       </div>
 
-      <div class="section-title">Základní údaje</div>
-      <div class="field"><label>Název produktu</label><input name="name" value="${escapeAttr(p.name)}" required autofocus></div>
-      <div class="field"><label>Popis</label><textarea name="description">${escapeHtml(p.description||'')}</textarea></div>
-      <div class="field">
-        <label>SKU (= EAN-13 na štítku)</label>
-        <div style="display:flex;gap:8px;">
-          <input name="number" id="product-number-input" value="${escapeAttr(p.number)}" placeholder="${editing?'':escapeAttr(peekProductNumber('EAN13'))+' (auto)'}" style="flex:1;">
-          <button type="button" class="btn secondary small" id="regen-number-btn">↻ Vygenerovat</button>
+      <div class="pf-card">
+        <div class="pf-card-title">Identifikace (EAN, SKU)</div>
+        <div class="field-row" style="align-items:flex-end;">
+          <div class="field"><label>EAN</label><input name="ean" id="product-ean" value="${escapeAttr(p.ean)}" placeholder="Načti čtečkou nebo napiš ručně"></div>
+          <div class="field"><label>&nbsp;</label><button type="button" class="btn secondary" id="ean-lookup-btn" style="width:100%;">Načíst údaje podle EAN</button></div>
         </div>
-        <p style="font-size:11px;color:var(--ink-soft);margin:4px 0 0 0;">Necháš prázdné = program vygeneruje platný EAN-13 (nejběžnější typ, funguje skoro na vše) — nikdy se nebude opakovat u jiného produktu. Můžeš si ale klidně napsat i vlastní 13místné číslo.</p>
+        <p id="ean-lookup-status" style="font-size:12px;color:var(--ink-soft);margin:-6px 0 14px 0;">${escapeHtml(state.eanLookupStatus||'')}</p>
+        <div class="barcode-preview-box" id="ean-barcode-box" style="max-width:300px;${p.ean?'':'display:none;'}">
+          <svg id="ean-barcode-svg"></svg>
+          <div id="ean-barcode-error" style="display:none;font-size:11.5px;color:var(--red);margin-top:6px;">Kód se v tomto formátu nepodařilo vykreslit jako obrázek — zkontroluj zadané číslo.</div>
+        </div>
+        <div class="field" style="margin-top:14px;">
+          <label>SKU (= EAN-13 na štítku)</label>
+          <div style="display:flex;gap:8px;">
+            <input name="number" id="product-number-input" value="${escapeAttr(p.number)}" placeholder="${editing?'':escapeAttr(peekProductNumber('EAN13'))+' (auto)'}" style="flex:1;">
+            <button type="button" class="btn secondary small" id="regen-number-btn">↻ Vygenerovat</button>
+          </div>
+          <p style="font-size:11px;color:var(--ink-soft);margin:4px 0 0 0;">Necháš prázdné = program vygeneruje platný EAN-13 (nejběžnější typ, funguje skoro na vše) — nikdy se nebude opakovat u jiného produktu. Můžeš si ale klidně napsat i vlastní 13místné číslo.</p>
+        </div>
+        <div class="field">
+          <label>Produktové číslo</label>
+          <input name="internalCode" value="${escapeAttr(p.internalCode||'')}" placeholder="Vlastní/katalogové číslo produktu — zadává se ručně">
+          <p style="font-size:11px;color:var(--ink-soft);margin:4px 0 0 0;">Volitelné — program ho nijak negeneruje ani nekontroluje.</p>
+        </div>
+        <input type="hidden" name="barcodeType" value="EAN13">
+        <div class="barcode-preview-box" style="max-width:340px;">
+          <svg id="product-number-barcode-svg"></svg>
+          <div id="product-number-barcode-error" style="display:none;font-size:11.5px;color:var(--red);margin-top:6px;">Zadané číslo není platný EAN-13 — obrázek zobrazen jako Code 128.</div>
+          <p style="font-size:11px;color:var(--ink-soft);margin:8px 0 0 0;">Tisk kódu, tisk informací a jejich uložení najdeš v seznamu Produkty po označení produktu.</p>
+        </div>
       </div>
-      <div class="field">
-        <label>Produktové číslo</label>
-        <input name="internalCode" value="${escapeAttr(p.internalCode||'')}" placeholder="Vlastní/katalogové číslo produktu — zadává se ručně">
-        <p style="font-size:11px;color:var(--ink-soft);margin:4px 0 0 0;">Volitelné — program ho nijak negeneruje ani nekontroluje.</p>
+
+      <div class="pf-card">
+        <div class="pf-card-title">Ceny</div>
+        ${!canEditPrices() ? `<p style="font-size:12px;color:var(--ink-soft);margin-top:-6px;">Na úpravu cen nemáš oprávnění — pole jsou needitovatelná.</p>` : ''}
+        ${(()=>{ const ac = activeCompany(); const primaryVatPayer = !!(ac && ac.vatPayer); return `
+        ${!primaryVatPayer ? `<p style="font-size:12px;color:var(--ink-soft);margin-top:-6px;">Firma, ve které zrovna pracuješ (${escapeHtml(ac?ac.name||'(bez názvu)':'')}), není plátce DPH, takže se sazby DPH neuplatňují a nezobrazují.</p>` : ''}
+        <div class="field-row">
+          <div class="field"><label>Nákupní cena za kus${primaryVatPayer?' (s DPH)':''}</label><input type="number" step="0.01" name="purchasePrice" id="pf-purchase-price" value="${p.purchasePrice||''}" placeholder="0" ${!canEditPrices()?'disabled':''}></div>
+          ${primaryVatPayer ? `<div class="field"><label>Sazba DPH (nákup)</label><input type="number" step="0.1" name="vatRatePurchase" id="pf-vat-purchase" value="${p.vatRatePurchase??21}" ${!canEditPrices()?'disabled':''}></div>` : ''}
+        </div>
+        <div class="field-row">
+          <div class="field"><label>Prodejní cena za kus${primaryVatPayer?' (bez DPH)':''}</label><input type="number" step="0.01" name="salePrice" id="pf-sale-price" value="${p.salePrice||''}" placeholder="0" ${!canEditPrices()?'disabled':''}></div>
+          ${primaryVatPayer ? `<div class="field"><label>Sazba DPH (prodej)</label><input type="number" step="0.1" name="vatRate" id="pf-vat-sale" value="${p.vatRate??21}" ${!canEditPrices()?'disabled':''}></div>` : ''}
+        </div>
+        `; })()}
+        ${editing ? `
+        <div class="margin-box" id="margin-box">
+          <div class="mb-item"><div class="mb-label">Prodejní cena (s DPH)</div><div class="mb-value" style="font-size:14px;" id="mb-sale-incl-vat">${fmt((p.salePrice||0)*(1+(p.vatRate??21)/100))} Kč</div></div>
+          <div class="mb-item"><div class="mb-label">Zisk čistý (bez DPH)</div><div class="mb-value" id="mb-profit">${fmt(margin.profit)} Kč</div></div>
+          <div class="mb-item"><div class="mb-label">Marže</div><div class="mb-value" id="mb-margin-pct">${margin.marginPct.toFixed(1)}%</div></div>
+          <div class="mb-item"><div class="mb-label">Obchodní přirážka</div><div class="mb-value" id="mb-markup-pct">${margin.markupPct.toFixed(1)}%</div></div>
+        </div>
+        ` : ''}
+        <details class="pf-more" ${(Object.keys(p.pricesByLevel||{}).length || (p.priceTiers||[]).length) ? 'open' : ''}>
+          <summary>Další ceny (cenové hladiny, množstevní ceny)</summary>
+          <div class="pf-more-body">
+            <div class="mini-label">Ceny pro jednotlivé cenové hladiny</div>
+            <p style="font-size:11.5px;color:var(--ink-soft);margin:2px 0 8px 0;">Nepovinné — nech prázdné a použije se prodejní cena výše.</p>
+            <table class="items-table" style="max-width:520px;">
+              <thead><tr><th>Hladina</th><th style="width:150px;">Cena (bez DPH)</th><th></th></tr></thead>
+              <tbody id="price-level-rows">
+                ${(function(){
+                  const existingIds = new Set(Object.keys(p.pricesByLevel||{}));
+                  const shown = (state.priceLevels||[]).filter(pl=>existingIds.has(pl.id));
+                  return shown.map(pl=>buildPriceLevelRowHtml(pl,p)).join('');
+                })()}
+              </tbody>
+            </table>
+            <div style="margin-top:8px;max-width:260px;">
+              <select id="add-price-level-select">
+                <option value="">+ Přidat cenovou hladinu…</option>
+                ${(function(){
+                  const existingIds = new Set(Object.keys(p.pricesByLevel||{}));
+                  return (state.priceLevels||[]).filter(pl=>!existingIds.has(pl.id)).map(pl=>`<option value="${pl.id}">${escapeHtml(pl.name)}</option>`).join('');
+                })()}
+                <option value="__new__">+ Nová hladina…</option>
+              </select>
+            </div>
+
+            <div class="mini-label" style="margin-top:20px;">Množstevní ceny</div>
+            <p style="font-size:11.5px;color:var(--ink-soft);margin:2px 0 8px 0;">Nepovinné — nastav různou cenu za kus podle objednaného množství (např. od 10 ks levněji). Pokud je vyplněná i cenová hladina odběratele výše, ta má přednost.</p>
+            <table class="items-table" style="max-width:420px;">
+              <thead><tr><th>Od množství (ks)</th><th style="width:150px;">Cena za kus (bez DPH)</th><th></th></tr></thead>
+              <tbody id="price-tier-rows">
+                ${(p.priceTiers||[]).map((tier, idx)=>buildPriceTierRowHtml(tier, idx)).join('')}
+              </tbody>
+            </table>
+            <button type="button" class="btn-link" id="add-price-tier-btn" style="margin-top:8px;">+ Přidat množstevní práh</button>
+          </div>
+        </details>
       </div>
-      <input type="hidden" name="barcodeType" value="EAN13">
-      <div class="barcode-preview-box" style="max-width:340px;">
-        <svg id="product-number-barcode-svg"></svg>
-        <div id="product-number-barcode-error" style="display:none;font-size:11.5px;color:var(--red);margin-top:6px;">Zadané číslo není platný EAN-13 — obrázek zobrazen jako Code 128.</div>
-        <p style="font-size:11px;color:var(--ink-soft);margin:8px 0 0 0;">Tisk kódu, tisk informací a jejich uložení najdeš v seznamu Produkty po označení produktu.</p>
+
+      <div class="pf-card">
+        <div class="pf-card-title">Sklad</div>
+        ${editing ? `
+          <div class="stock-row">
+            <div class="sr-item"><div class="sr-label">Aktuální stav</div><div class="sr-value">${p.stockCurrent||0} ${escapeHtml(p.unit||'ks')}</div></div>
+            <div class="sr-item"><div class="sr-label">Rezervováno</div><div class="sr-value">${p.stockReserved||0}</div></div>
+            <div class="sr-item"><div class="sr-label">Dostupné</div><div class="sr-value">${stockAvailable(p)}</div></div>
+            <div class="sr-item"><div class="sr-label">Stav</div><div class="sr-value"><span class="pill ${stockPillClass(status)}">${stockLabel(status)}</span></div></div>
+          </div>
+          <div class="field-row">
+            <div class="field"><label>Minimální stav</label><input type="number" step="1" name="stockMin" value="${p.stockMin||0}"></div>
+            <div class="field"></div>
+          </div>
+        ` : `
+          <div class="field-row">
+            <div class="field"><label>Počáteční stav skladu</label><input type="number" step="1" name="stockCurrent" value="${p.stockCurrent||0}"></div>
+            <div class="field"><label>Minimální stav</label><input type="number" step="1" name="stockMin" value="${p.stockMin||0}"></div>
+          </div>
+        `}
+        ${editing ? renderStockMovementPanel(p) : ''}
       </div>
+
+      <div class="pf-card">
+        <div class="pf-card-title">Rozměry a balení</div>
+        <div class="field" style="max-width:180px;"><label>Jednotka rozměrů</label><select name="dimensionUnit">
+          ${['mm','cm','m'].map(u=>`<option value="${u}" ${(p.dimensionUnit||'cm')===u?'selected':''}>${u}</option>`).join('')}
+        </select></div>
+        <div class="field-row" style="grid-template-columns:repeat(3,1fr);">
+          <div class="field"><label>Rozměry produktu — šířka</label><input type="number" step="0.1" min="0" name="dimWidth" value="${(p.dimensions&&p.dimensions.width)||''}"></div>
+          <div class="field"><label>Výška</label><input type="number" step="0.1" min="0" name="dimHeight" value="${(p.dimensions&&p.dimensions.height)||''}"></div>
+          <div class="field"><label>Hloubka</label><input type="number" step="0.1" min="0" name="dimDepth" value="${(p.dimensions&&p.dimensions.depth)||''}"></div>
+        </div>
+        <div class="field-row" style="grid-template-columns:repeat(3,1fr);">
+          <div class="field"><label>Rozměry balení — šířka</label><input type="number" step="0.1" min="0" name="pkgWidth" value="${(p.packageDimensions&&p.packageDimensions.width)||''}"></div>
+          <div class="field"><label>Výška</label><input type="number" step="0.1" min="0" name="pkgHeight" value="${(p.packageDimensions&&p.packageDimensions.height)||''}"></div>
+          <div class="field"><label>Hloubka</label><input type="number" step="0.1" min="0" name="pkgDepth" value="${(p.packageDimensions&&p.packageDimensions.depth)||''}"></div>
+        </div>
+        <div class="mini-label" style="margin-top:14px;">Kolik kusů se vejde do jedné skladové jednotky (pro výpočet kapacity skladu — jednotky patří skladu „${productWarehouse?escapeHtml(productWarehouse.name):''}", spravuje se v jeho nastavení)</div>
+        <div class="field-row" id="units-per-storage-fields">
+          ${(function(){
+            const allUnitTypes = (productWarehouse&&productWarehouse.storageUnitTypes)||[];
+            const existingIds = new Set(Object.keys(p.unitsPerStorageType||{}));
+            const shown = allUnitTypes.filter(u=>existingIds.has(u.id));
+            return shown.map(u=>buildUnitTypeFieldHtml(u,p)).join('');
+          })()}
+        </div>
+        <div style="margin-top:8px;max-width:260px;">
+          <select id="add-storage-unit-select">
+            <option value="">+ Přidat jednotku…</option>
+            ${(function(){
+              const allUnitTypes = (productWarehouse&&productWarehouse.storageUnitTypes)||[];
+              const existingIds = new Set(Object.keys(p.unitsPerStorageType||{}));
+              return allUnitTypes.filter(u=>!existingIds.has(u.id)).map(u=>`<option value="${u.id}">${escapeHtml(u.name)}</option>`).join('');
+            })()}
+            <option value="__new__">+ Nová jednotka…</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="pf-card">
+        <div class="pf-card-title">Nutriční údaje</div>
+        <label style="display:flex;align-items:center;gap:8px;font-size:14px;margin:0 0 12px 0;">
+          <input type="checkbox" id="has-nutrition-checkbox" ${hasNutritionData?'checked':''}> Tento produkt má nutriční údaje
+        </label>
+        <div id="nutrition-fields-box" style="display:${hasNutritionData?'block':'none'};">
+          <p style="font-size:12.5px;color:var(--ink-soft);margin-top:-6px;">Vyplní se automaticky při „Dohledat podle EAN" (pokud je produkt v databázi), nebo napiš ručně. Na 100 g/100 ml.</p>
+          <table class="items-table" style="max-width:520px;">
+            <tbody>
+              ${[
+                ['energyKj','Energie (kJ)'],['energyKcal','Energie (kcal)'],
+                ['fat','Tuky (g)'],['saturatedFat','z toho nasycené (g)'],
+                ['carbs','Sacharidy (g)'],['sugars','z toho cukry (g)'],
+                ['fiber','Vláknina (g)'],['protein','Bílkoviny (g)'],['salt','Sůl (g)']
+              ].map(([key,label])=>`
+                <tr>
+                  <td style="padding:6px 10px;font-size:13px;">${label}</td>
+                  <td style="padding:6px 10px;width:120px;"><input type="number" step="0.01" min="0" name="nutri-${key}" value="${(p.nutrition&&p.nutrition[key]!=null)?p.nutrition[key]:''}" style="width:100%;padding:6px 8px;border:1px solid var(--line);border-radius:var(--radius);"></td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
       ${editing ? `
-        ${renderStockMovementPanel(p)}
-        <div class="mini-label" style="margin-top:18px;">Historie pohybů</div>
+      <div class="pf-card">
+        <div class="pf-card-title">Historie pohybů</div>
         ${(p.movements||[]).length ? `
           <div class="movement-row" style="font-weight:600;color:var(--ink-soft);font-size:11px;text-transform:uppercase;">
             <div>Datum</div><div>Typ</div><div>Poznámka</div><div>Kdo</div><div>Množství</div><div>Trvanlivost</div><div></div>
@@ -9371,8 +9538,20 @@ function viewProductForm(){
             </div>
           `).join('')}
         ` : `<p style="font-size:12.5px;color:var(--ink-soft);">Zatím žádné skladové pohyby.</p>`}
+      </div>
       ` : ''}
-      <div class="field-row">
+
+      <div class="formfoot">
+        <button type="submit" class="btn">Uložit produkt</button>
+        <button type="button" class="btn secondary" data-action="nav" data-view="products">Zrušit</button>
+        ${editing ? `<button type="button" class="btn danger" data-action="delete-product" data-id="${p.id}">Smazat produkt</button>` : ''}
+      </div>
+      <input type="hidden" name="id" value="${p.id}">
+    </div>
+
+    <div class="pf-sidebar">
+      <div class="pf-card">
+        <div class="pf-card-title">Zařazení</div>
         <div class="field"><label>Kategorie</label><select name="category" id="product-category-select">
           <option value="">— bez kategorie —</option>
           ${state.categories.map(c=>`<option value="${escapeAttr(c.name)}" ${p.category===c.name?'selected':''}>${escapeHtml(c.name)}</option>`).join('')}
@@ -9381,8 +9560,6 @@ function viewProductForm(){
         <div class="field"><label>Výrobce</label><input name="manufacturer" list="product-manufacturer-options" value="${escapeAttr(p.manufacturer||'')}">
           <datalist id="product-manufacturer-options">${[...new Set(state.products.map(x=>x.manufacturer).filter(Boolean))].map(m=>`<option value="${escapeAttr(m)}">`).join('')}</datalist>
         </div>
-      </div>
-      <div class="field-row">
         <div class="field"><label>Dodavatel</label><select name="supplierId">
           <option value="">— nevybráno —</option>
           ${state.suppliers.map(s=>`<option value="${s.id}" ${p.supplierId===s.id?'selected':''}>${escapeHtml(s.name)}</option>`).join('')}
@@ -9390,146 +9567,10 @@ function viewProductForm(){
         <div class="field"><label>Jednotka</label><select name="unit">
           ${PRODUCT_UNITS.map(u=>`<option value="${u}" ${(p.unit||'ks')===u?'selected':''}>${u}</option>`).join('')}
         </select></div>
+        <div class="field"><label>Složení</label><textarea name="composition" placeholder="např. seznam ingrediencí/materiálů">${escapeHtml(p.composition||'')}</textarea></div>
       </div>
-      <div class="field"><label>Složení</label><textarea name="composition" placeholder="např. seznam ingrediencí/materiálů">${escapeHtml(p.composition||'')}</textarea></div>
+    </div>
 
-      <div class="section-title">Rozměry a balení</div>
-      <div class="field" style="max-width:180px;"><label>Jednotka rozměrů</label><select name="dimensionUnit">
-        ${['mm','cm','m'].map(u=>`<option value="${u}" ${(p.dimensionUnit||'cm')===u?'selected':''}>${u}</option>`).join('')}
-      </select></div>
-      <div class="field-row" style="grid-template-columns:repeat(3,1fr);">
-        <div class="field"><label>Rozměry produktu — šířka</label><input type="number" step="0.1" min="0" name="dimWidth" value="${(p.dimensions&&p.dimensions.width)||''}"></div>
-        <div class="field"><label>Výška</label><input type="number" step="0.1" min="0" name="dimHeight" value="${(p.dimensions&&p.dimensions.height)||''}"></div>
-        <div class="field"><label>Hloubka</label><input type="number" step="0.1" min="0" name="dimDepth" value="${(p.dimensions&&p.dimensions.depth)||''}"></div>
-      </div>
-      <div class="field-row" style="grid-template-columns:repeat(3,1fr);">
-        <div class="field"><label>Rozměry balení — šířka</label><input type="number" step="0.1" min="0" name="pkgWidth" value="${(p.packageDimensions&&p.packageDimensions.width)||''}"></div>
-        <div class="field"><label>Výška</label><input type="number" step="0.1" min="0" name="pkgHeight" value="${(p.packageDimensions&&p.packageDimensions.height)||''}"></div>
-        <div class="field"><label>Hloubka</label><input type="number" step="0.1" min="0" name="pkgDepth" value="${(p.packageDimensions&&p.packageDimensions.depth)||''}"></div>
-      </div>
-      <div class="mini-label" style="margin-top:14px;">Kolik kusů se vejde do jedné skladové jednotky (pro výpočet kapacity skladu — jednotky patří skladu „${productWarehouse?escapeHtml(productWarehouse.name):''}", spravuje se v jeho nastavení)</div>
-      <div class="field-row" id="units-per-storage-fields">
-        ${(function(){
-          const allUnitTypes = (productWarehouse&&productWarehouse.storageUnitTypes)||[];
-          const existingIds = new Set(Object.keys(p.unitsPerStorageType||{}));
-          const shown = allUnitTypes.filter(u=>existingIds.has(u.id));
-          return shown.map(u=>buildUnitTypeFieldHtml(u,p)).join('');
-        })()}
-      </div>
-      <div style="margin-top:8px;max-width:260px;">
-        <select id="add-storage-unit-select">
-          <option value="">+ Přidat jednotku…</option>
-          ${(function(){
-            const allUnitTypes = (productWarehouse&&productWarehouse.storageUnitTypes)||[];
-            const existingIds = new Set(Object.keys(p.unitsPerStorageType||{}));
-            return allUnitTypes.filter(u=>!existingIds.has(u.id)).map(u=>`<option value="${u.id}">${escapeHtml(u.name)}</option>`).join('');
-          })()}
-          <option value="__new__">+ Nová jednotka…</option>
-        </select>
-      </div>
-
-      <div class="section-title">Nutriční údaje</div>
-      <label style="display:flex;align-items:center;gap:8px;font-size:14px;margin:0 0 12px 0;">
-        <input type="checkbox" id="has-nutrition-checkbox" ${hasNutritionData?'checked':''}> Tento produkt má nutriční údaje
-      </label>
-      <div id="nutrition-fields-box" style="display:${hasNutritionData?'block':'none'};">
-        <p style="font-size:12.5px;color:var(--ink-soft);margin-top:-6px;">Vyplní se automaticky při „Dohledat podle EAN" (pokud je produkt v databázi), nebo napiš ručně. Na 100 g/100 ml.</p>
-        <table class="items-table" style="max-width:520px;">
-          <tbody>
-            ${[
-              ['energyKj','Energie (kJ)'],['energyKcal','Energie (kcal)'],
-              ['fat','Tuky (g)'],['saturatedFat','z toho nasycené (g)'],
-              ['carbs','Sacharidy (g)'],['sugars','z toho cukry (g)'],
-              ['fiber','Vláknina (g)'],['protein','Bílkoviny (g)'],['salt','Sůl (g)']
-            ].map(([key,label])=>`
-              <tr>
-                <td style="padding:6px 10px;font-size:13px;">${label}</td>
-                <td style="padding:6px 10px;width:120px;"><input type="number" step="0.01" min="0" name="nutri-${key}" value="${(p.nutrition&&p.nutrition[key]!=null)?p.nutrition[key]:''}" style="width:100%;padding:6px 8px;border:1px solid var(--line);border-radius:var(--radius);"></td>
-              </tr>
-            `).join('')}
-          </tbody>
-        </table>
-      </div>
-
-      <div class="section-title">Ceny</div>
-      ${!canEditPrices() ? `<p style="font-size:12px;color:var(--ink-soft);margin-top:-6px;">Na úpravu cen nemáš oprávnění — pole jsou needitovatelná.</p>` : ''}
-      ${(()=>{ const ac = activeCompany(); const primaryVatPayer = !!(ac && ac.vatPayer); return `
-      ${!primaryVatPayer ? `<p style="font-size:12px;color:var(--ink-soft);margin-top:-6px;">Firma, ve které zrovna pracuješ (${escapeHtml(ac?ac.name||'(bez názvu)':'')}), není plátce DPH, takže se sazby DPH neuplatňují a nezobrazují.</p>` : ''}
-      <div class="field-row">
-        <div class="field"><label>Nákupní cena za kus${primaryVatPayer?' (s DPH)':''}</label><input type="number" step="0.01" name="purchasePrice" id="pf-purchase-price" value="${p.purchasePrice||''}" placeholder="0" ${!canEditPrices()?'disabled':''}></div>
-        ${primaryVatPayer ? `<div class="field"><label>Sazba DPH (nákup)</label><input type="number" step="0.1" name="vatRatePurchase" id="pf-vat-purchase" value="${p.vatRatePurchase??21}" ${!canEditPrices()?'disabled':''}></div>` : ''}
-      </div>
-      <div class="field-row">
-        <div class="field"><label>Prodejní cena za kus${primaryVatPayer?' (bez DPH)':''}</label><input type="number" step="0.01" name="salePrice" id="pf-sale-price" value="${p.salePrice||''}" placeholder="0" ${!canEditPrices()?'disabled':''}></div>
-        ${primaryVatPayer ? `<div class="field"><label>Sazba DPH (prodej)</label><input type="number" step="0.1" name="vatRate" id="pf-vat-sale" value="${p.vatRate??21}" ${!canEditPrices()?'disabled':''}></div>` : ''}
-      </div>
-      `; })()}
-      ${editing ? `
-      <div class="margin-box" id="margin-box">
-        <div class="mb-item"><div class="mb-label">Prodejní cena (s DPH)</div><div class="mb-value" style="font-size:14px;" id="mb-sale-incl-vat">${fmt((p.salePrice||0)*(1+(p.vatRate??21)/100))} Kč</div></div>
-        <div class="mb-item"><div class="mb-label">Zisk čistý (bez DPH)</div><div class="mb-value" id="mb-profit">${fmt(margin.profit)} Kč</div></div>
-        <div class="mb-item"><div class="mb-label">Marže</div><div class="mb-value" id="mb-margin-pct">${margin.marginPct.toFixed(1)}%</div></div>
-        <div class="mb-item"><div class="mb-label">Obchodní přirážka</div><div class="mb-value" id="mb-markup-pct">${margin.markupPct.toFixed(1)}%</div></div>
-      </div>
-      ` : ''}
-      <div class="mini-label" style="margin-top:14px;">Ceny pro jednotlivé cenové hladiny</div>
-      <p style="font-size:11.5px;color:var(--ink-soft);margin:2px 0 8px 0;">Nepovinné — nech prázdné a použije se prodejní cena výše.</p>
-      <table class="items-table" style="max-width:520px;">
-        <thead><tr><th>Hladina</th><th style="width:150px;">Cena (bez DPH)</th><th></th></tr></thead>
-        <tbody id="price-level-rows">
-          ${(function(){
-            const existingIds = new Set(Object.keys(p.pricesByLevel||{}));
-            const shown = (state.priceLevels||[]).filter(pl=>existingIds.has(pl.id));
-            return shown.map(pl=>buildPriceLevelRowHtml(pl,p)).join('');
-          })()}
-        </tbody>
-      </table>
-      <div style="margin-top:8px;max-width:260px;">
-        <select id="add-price-level-select">
-          <option value="">+ Přidat cenovou hladinu…</option>
-          ${(function(){
-            const existingIds = new Set(Object.keys(p.pricesByLevel||{}));
-            return (state.priceLevels||[]).filter(pl=>!existingIds.has(pl.id)).map(pl=>`<option value="${pl.id}">${escapeHtml(pl.name)}</option>`).join('');
-          })()}
-          <option value="__new__">+ Nová hladina…</option>
-        </select>
-      </div>
-
-      <div class="mini-label" style="margin-top:20px;">Množstevní ceny</div>
-      <p style="font-size:11.5px;color:var(--ink-soft);margin:2px 0 8px 0;">Nepovinné — nastav různou cenu za kus podle objednaného množství (např. od 10 ks levněji). Pokud je vyplněná i cenová hladina odběratele výše, ta má přednost.</p>
-      <table class="items-table" style="max-width:420px;">
-        <thead><tr><th>Od množství (ks)</th><th style="width:150px;">Cena za kus (bez DPH)</th><th></th></tr></thead>
-        <tbody id="price-tier-rows">
-          ${(p.priceTiers||[]).map((tier, idx)=>buildPriceTierRowHtml(tier, idx)).join('')}
-        </tbody>
-      </table>
-      <button type="button" class="btn-link" id="add-price-tier-btn" style="margin-top:8px;">+ Přidat množstevní práh</button>
-
-      <div class="section-title">Sklad</div>
-      ${editing ? `
-        <div class="stock-row">
-          <div class="sr-item"><div class="sr-label">Aktuální stav</div><div class="sr-value">${p.stockCurrent||0} ${escapeHtml(p.unit||'ks')}</div></div>
-          <div class="sr-item"><div class="sr-label">Rezervováno</div><div class="sr-value">${p.stockReserved||0}</div></div>
-          <div class="sr-item"><div class="sr-label">Dostupné</div><div class="sr-value">${stockAvailable(p)}</div></div>
-          <div class="sr-item"><div class="sr-label">Stav</div><div class="sr-value"><span class="pill ${stockPillClass(status)}">${stockLabel(status)}</span></div></div>
-        </div>
-        <div class="field-row">
-          <div class="field"><label>Minimální stav</label><input type="number" step="1" name="stockMin" value="${p.stockMin||0}"></div>
-          <div class="field"></div>
-        </div>
-      ` : `
-        <div class="field-row">
-          <div class="field"><label>Počáteční stav skladu</label><input type="number" step="1" name="stockCurrent" value="${p.stockCurrent||0}"></div>
-          <div class="field"><label>Minimální stav</label><input type="number" step="1" name="stockMin" value="${p.stockMin||0}"></div>
-        </div>
-      `}
-
-      <div class="formfoot">
-        <button type="submit" class="btn">Uložit produkt</button>
-        <button type="button" class="btn secondary" data-action="nav" data-view="products">Zrušit</button>
-        ${editing ? `<button type="button" class="btn danger" data-action="delete-product" data-id="${p.id}">Smazat produkt</button>` : ''}
-      </div>
-      <input type="hidden" name="id" value="${p.id}">
     </form>
   `;
 }
@@ -9871,7 +9912,15 @@ async function onSubmitProduct(e){
       return Object.fromEntries(((pw&&pw.storageUnitTypes)||[]).map(u=>[u.id, parseFloat(fd.get('unitsPerStorageType_'+u.id))||0]).filter(([,v])=>v>0));
     })(),
     pricesByLevel: canEditPrices()
-      ? Object.fromEntries((state.priceLevels||[]).map(pl=>[pl.id, fd.get('priceLevel_'+pl.id)!=='' ? (parseFloat(fd.get('priceLevel_'+pl.id))||0) : null]).filter(([,v])=>v!=null))
+      ? Object.fromEntries((state.priceLevels||[]).map(pl=>{
+          // Čte se přímo z DOM (ne z FormData), protože FormData.get() vrací
+          // pro chybějící pole null — a "null !== ''" vychází jako true,
+          // takže by appka smazaný řádek omylem uložila s cenou 0 místo
+          // toho, aby ho úplně vynechala.
+          const input = document.querySelector(`[name="priceLevel_${pl.id}"]`);
+          if(!input) return [pl.id, null];
+          return [pl.id, input.value!=='' ? (parseFloat(input.value)||0) : null];
+        }).filter(([,v])=>v!=null))
       : (existing ? (existing.pricesByLevel||{}) : {}),
     priceTiers: canEditPrices()
       ? Array.from(document.querySelectorAll('#price-tier-rows tr[data-price-tier-row]')).map(row=>{
