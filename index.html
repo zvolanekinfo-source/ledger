@@ -3967,8 +3967,7 @@ function viewInvoicePreview(){
               <div>
                 ${(()=>{
                   const ord = inv.orderNumber ? state.orders.find(x=>x.number===inv.orderNumber) : null;
-                  const isAddressDelivery = ord && ord.shippingMethod && ord.shippingMethod.startsWith('Doručení na adresu');
-                  if(isAddressDelivery) return '<div>Doručení na adresu</div>';
+                  if(ord && ord.shippingMethod) return `<div>${escapeHtml(ord.shippingMethod)}</div>`;
                   return c&&c.contactPerson?`<div>K rukám: ${escapeHtml(c.contactPerson)}</div>`:'';
                 })()}
                 ${c&&c.contactEmail?`<div>${escapeHtml(c.contactEmail)}</div>`:''}
@@ -4130,8 +4129,7 @@ function buildInvoiceSheetBlock(inv, idx){
               <div>
                 ${(()=>{
                   const ord = inv.orderNumber ? state.orders.find(x=>x.number===inv.orderNumber) : null;
-                  const isAddressDelivery = ord && ord.shippingMethod && ord.shippingMethod.startsWith('Doručení na adresu');
-                  if(isAddressDelivery) return '<div>Doručení na adresu</div>';
+                  if(ord && ord.shippingMethod) return `<div>${escapeHtml(ord.shippingMethod)}</div>`;
                   return c&&c.contactPerson?`<div>K rukám: ${escapeHtml(c.contactPerson)}</div>`:'';
                 })()}
                 ${c&&c.contactEmail?`<div>${escapeHtml(c.contactEmail)}</div>`:''}
