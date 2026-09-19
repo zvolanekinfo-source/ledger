@@ -7701,6 +7701,8 @@ function buildPriceTierRowHtml(tier, idx){
     <tr data-price-tier-row="${idx}">
       <td><input type="number" step="1" min="1" name="priceTierQty_${idx}" value="${tier&&tier.minQty!=null?tier.minQty:''}" placeholder="10" ${!canEditPrices()?'disabled':''} style="width:100%;padding:6px 8px;border:1px solid var(--line);border-radius:4px;"></td>
       <td><input type="number" step="0.01" name="priceTierPrice_${idx}" value="${tier&&tier.price!=null?tier.price:''}" placeholder="0" ${!canEditPrices()?'disabled':''} style="width:100%;padding:6px 8px;border:1px solid var(--line);border-radius:4px;"></td>
+      <td class="pf-tier-profit num" style="color:var(--ink-soft);">—</td>
+      <td class="pf-tier-margin num" style="color:var(--ink-soft);">—</td>
       <td><button type="button" class="btn-link" data-action="remove-price-tier-row" data-index="${idx}" style="color:var(--red);font-size:11px;">odebrat</button></td>
     </tr>
   `;
@@ -9227,6 +9229,7 @@ function viewProducts(){
       <button type="button" class="btn secondary small" data-action="bulk-save-product-code">Uložit produktový kód</button>
       <button type="button" class="btn secondary small" data-action="bulk-print-product-info">Tisk informací</button>
       <button type="button" class="btn secondary small" data-action="bulk-save-product-info">Uložit informace</button>
+      <button type="button" class="btn secondary small" data-action="bulk-new-movement">+ Nový pohyb</button>
       <button type="button" class="btn secondary small" data-action="bulk-edit-products-price">Změnit ceny</button>
       <button type="button" class="btn secondary small" data-action="bulk-edit-products-vat">Změnit DPH</button>
       <button type="button" class="btn secondary small" data-action="bulk-edit-products-supplier">Změnit dodavatele</button>
@@ -9384,23 +9387,17 @@ function viewProductForm(){
         </div>
         ${primaryVatPayer ? `<div class="field" style="max-width:220px;"><label>Sazba DPH (prodej)</label><input type="number" step="0.1" name="vatRate" id="pf-vat-sale" value="${p.vatRate??21}" ${!canEditPrices()?'disabled':''}></div>` : ''}
         `; })()}
-        ${editing ? `
-        <div class="margin-box" id="margin-box">
-          <div class="mb-item"><div class="mb-label">Prodejní cena (s DPH)</div><div class="mb-value" style="font-size:14px;" id="mb-sale-incl-vat">${fmt((p.salePrice||0)*(1+(p.vatRate??21)/100))} Kč</div></div>
-          <div class="mb-item"><div class="mb-label">Zisk čistý (bez DPH)</div><div class="mb-value" id="mb-profit">${fmt(margin.profit)} Kč</div></div>
-          <div class="mb-item"><div class="mb-label">Marže</div><div class="mb-value" id="mb-margin-pct">${margin.marginPct.toFixed(1)}%</div></div>
-          <div class="mb-item"><div class="mb-label">Obchodní přirážka</div><div class="mb-value" id="mb-markup-pct">${margin.markupPct.toFixed(1)}%</div></div>
-        </div>
-        ` : ''}
 
         <div class="mini-label" style="margin-top:18px;">Prodejní cena za kus${primaryVatPayer?' (bez DPH)':''}</div>
-        <p style="font-size:11.5px;color:var(--ink-soft);margin:2px 0 8px 0;">První řádek (1 ks) je základní prodejní cena. Přidej další řádky, pokud chceš od vyššího množství nabídnout nižší cenu za kus.</p>
-        <table class="items-table" style="max-width:420px;">
-          <thead><tr><th>Od množství (ks)</th><th style="width:150px;">Cena za kus${primaryVatPayer?' (bez DPH)':''}</th><th></th></tr></thead>
+        <p style="font-size:11.5px;color:var(--ink-soft);margin:2px 0 8px 0;">První řádek (1 ks) je základní prodejní cena. Přidej další řádky, pokud chceš od vyššího množství nabídnout nižší cenu za kus. Zisk a marže se počítají podle nákupní ceny výše.</p>
+        <table class="items-table" id="pf-price-table" style="max-width:620px;">
+          <thead><tr><th>Od množství (ks)</th><th style="width:130px;">Cena za kus</th><th style="width:110px;">Zisk/ks</th><th style="width:90px;">Marže</th><th></th></tr></thead>
           <tbody>
             <tr>
               <td style="padding:6px 10px;color:var(--ink-soft);">1 ks (základní)</td>
               <td><input type="number" step="0.01" name="salePrice" id="pf-sale-price" value="${p.salePrice||''}" placeholder="0" ${!canEditPrices()?'disabled':''} style="width:100%;padding:6px 8px;border:1px solid var(--line);border-radius:4px;"></td>
+              <td class="pf-tier-profit num" style="color:var(--ink-soft);">—</td>
+              <td class="pf-tier-margin num" style="color:var(--ink-soft);">—</td>
               <td></td>
             </tr>
           </tbody>
@@ -9588,28 +9585,36 @@ function setupProductForm(){
   setupProductPhotoDropzone();
 
   function updateMarginBox(){
-    const box = document.getElementById('margin-box');
-    if(!box) return;
+    const table = document.getElementById('pf-price-table');
+    if(!table) return;
     const purchase = parseFloat((document.getElementById('pf-purchase-price')||{}).value)||0;
-    const sale = parseFloat((document.getElementById('pf-sale-price')||{}).value)||0;
-    const saleVat = parseFloat((document.getElementById('pf-vat-sale')||{}).value)||0;
-    const saleIncl = document.getElementById('mb-sale-incl-vat');
-    const profitEl = document.getElementById('mb-profit');
-    const marginEl = document.getElementById('mb-margin-pct');
-    const markupEl = document.getElementById('mb-markup-pct');
-    const purchaseExVat = exVat(purchase, ((document.getElementById('pf-vat-purchase')||{}).value)||0);
-    const profit = sale - purchaseExVat;
-    const marginPct = sale>0 ? (profit/sale)*100 : 0;
-    const markupPct = purchaseExVat>0 ? (profit/purchaseExVat)*100 : 0;
-    if(saleIncl) saleIncl.textContent = fmt(sale*(1+saleVat/100)) + ' Kč';
-    if(profitEl) profitEl.textContent = fmt(profit) + ' Kč';
-    if(marginEl) marginEl.textContent = marginPct.toFixed(1) + '%';
-    if(markupEl) markupEl.textContent = markupPct.toFixed(1) + '%';
+    const purchaseVatEl = document.getElementById('pf-vat-purchase');
+    const purchaseExVat = purchaseVatEl ? exVat(purchase, purchaseVatEl.value||0) : purchase;
+    table.querySelectorAll('tbody tr').forEach(row=>{
+      const priceInput = row.querySelector('input[type="number"][name="salePrice"], input[type="number"][name^="priceTierPrice_"]');
+      const profitCell = row.querySelector('.pf-tier-profit');
+      const marginCell = row.querySelector('.pf-tier-margin');
+      if(!priceInput || !profitCell || !marginCell) return;
+      const price = parseFloat(priceInput.value)||0;
+      if(!price){ profitCell.textContent = '—'; marginCell.textContent = '—'; return; }
+      const profit = price - purchaseExVat;
+      const marginPct = price>0 ? (profit/price)*100 : 0;
+      profitCell.textContent = fmt(profit) + ' Kč';
+      marginCell.textContent = marginPct.toFixed(1) + '%';
+      profitCell.style.color = profit<0 ? 'var(--red)' : 'var(--ink)';
+    });
   }
-  ['pf-purchase-price','pf-vat-purchase','pf-sale-price','pf-vat-sale'].forEach(id=>{
+  ['pf-purchase-price','pf-vat-purchase','pf-sale-price'].forEach(id=>{
     const el = document.getElementById(id);
     if(el) el.addEventListener('input', updateMarginBox);
   });
+  const pfPriceTableEl = document.getElementById('pf-price-table');
+  if(pfPriceTableEl) pfPriceTableEl.addEventListener('input', (e)=>{
+    if(e.target.name && e.target.name.startsWith('priceTierPrice_')) updateMarginBox();
+  });
+  const addTierBtnForMargin = document.getElementById('add-price-tier-btn');
+  if(addTierBtnForMargin) addTierBtnForMargin.addEventListener('click', ()=>setTimeout(updateMarginBox,0));
+  updateMarginBox();
 
   function updatePalletHeightEstimates(){
     const existingP = state.editingProductId ? productById(state.editingProductId) : null;
@@ -10247,6 +10252,7 @@ function viewStock(){
       <button type="button" class="btn secondary small" data-action="bulk-save-product-code">Uložit produktový kód</button>
       <button type="button" class="btn secondary small" data-action="bulk-print-product-info">Tisk informací</button>
       <button type="button" class="btn secondary small" data-action="bulk-save-product-info">Uložit informace</button>
+      <button type="button" class="btn secondary small" data-action="bulk-new-movement">+ Nový pohyb</button>
       <button type="button" class="btn secondary small" data-action="bulk-edit-products-price">Změnit ceny</button>
       <button type="button" class="btn secondary small" data-action="bulk-edit-products-vat">Změnit DPH</button>
       <button type="button" class="btn secondary small" data-action="bulk-edit-products-supplier">Změnit dodavatele</button>
@@ -13635,6 +13641,30 @@ document.addEventListener('click', async (e)=>{
   else if(action==='bulk-save-product-code'){ await downloadProductCodeFiles([...state.selectedProductIds]); }
   else if(action==='bulk-print-product-info'){ printProductInfoSheet([...state.selectedProductIds]); }
   else if(action==='bulk-save-product-info'){ await downloadProductInfoFiles([...state.selectedProductIds]); }
+  else if(action==='bulk-new-movement'){
+    const ids = [...state.selectedProductIds];
+    if(!ids.length) return;
+    const types = ['příjem','výdej','prodej','vrácení','reklamace','inventura','ruční úprava'];
+    const typeInput = prompt(`Typ pohybu (${types.join(' / ')}):`, 'příjem');
+    if(typeInput===null) return;
+    const type = types.includes(typeInput.trim()) ? typeInput.trim() : 'ruční úprava';
+    const qtyRaw = prompt(`Množství — použije se u KAŽDÉHO z ${ids.length} vybraných produktů (kladné = přijde na sklad, záporné = odejde ze skladu):`, '1');
+    if(qtyRaw===null) return;
+    const qty = parseFloat(qtyRaw);
+    if(isNaN(qty) || qty===0){ alert('Zadej platné nenulové množství.'); return; }
+    const reason = prompt('Důvod / poznámka (stejná pro všechny):', type) || type;
+    const affected = ids.map(id=>productById(id)).filter(Boolean);
+    const wouldGoNegative = affected.filter(p=>((p.stockCurrent||0)+qty)<0);
+    if(wouldGoNegative.length && !confirm(`U ${wouldGoNegative.length} z ${affected.length} vybraných produktů klesne sklad do záporných hodnot. Pokračovat u všech?`)) return;
+    affected.forEach(p=>{
+      const resulting = (p.stockCurrent||0) + qty;
+      p.stockCurrent = resulting;
+      p.movements = p.movements || [];
+      p.movements.push({ id: uid(), type, qty, reason, note:'', date: new Date().toISOString(), user: state.currentUser, resultingStock: resulting, unitCost: p.purchasePrice||0 });
+    });
+    try{ await saveProducts(); }catch(err){ alert('Uložení se nepovedlo, zkus to prosím znovu.'); return; }
+    render();
+  }
   else if(action==='bulk-edit-products-price'){
     const mode = prompt('Jak upravit prodejní cenu vybraných produktů?\nNapiš buď pevnou částku (např. 199), nebo procentuální změnu s % (např. +10% nebo -5%).');
     if(mode===null) return;
